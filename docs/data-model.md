@@ -28,7 +28,10 @@ One vacancy, independent of where it was seen.
 |---|---|
 | `title`, `company_id` | |
 | `state` | `new` → `interested` / `ignore` / `applied`. Changed only by the user |
-| `score` | Nullable float; filled by scoring (#13) |
+| `score` | Nullable float, 0–10; rule-based for now (#13) |
+| `score_reasons` | JSON list of `{"sign": "+" or "-", "text": ...}` explaining the score |
+| `location`, `salary` | As shown by the source, free text |
+| `easy_apply` | Nullable bool: LinkedIn Easy Apply |
 | `created_at`, `updated_at` | UTC |
 
 ## SourceRecord

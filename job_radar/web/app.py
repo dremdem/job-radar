@@ -7,11 +7,11 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..config import Settings, get_settings
 from ..db import make_engine, make_session_factory
-from ..models import Opportunity, OpportunityState
+from ..models import Opportunity, OpportunityState, SourceRecord
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
@@ -51,11 +51,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def queue(request: Request, session: SessionDep) -> HTMLResponse:
         opportunities = session.scalars(
-            select(Opportunity).options(joinedload(Opportunity.company))
+            select(Opportunity).options(
+                joinedload(Opportunity.company),
+                selectinload(Opportunity.source_records).selectinload(SourceRecord.snapshots),
+            )
         ).all()
-        opportunities = sorted(
-            opportunities, key=lambda o: (_STATE_ORDER.index(o.state), -o.created_at.timestamp())
-        )
+        opportunities = sorted(opportunities, key=_queue_order)
         return templates.TemplateResponse(
             request,
             "queue.html",
@@ -79,6 +80,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     return app
+
+
+def _queue_order(o: Opportunity) -> tuple:
+    score = o.score if o.score is not None else -1
+    return (_STATE_ORDER.index(o.state), -score, -o.created_at.timestamp())
 
 
 def _manual_states() -> list[OpportunityState]:

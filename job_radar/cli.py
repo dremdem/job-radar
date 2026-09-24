@@ -13,6 +13,8 @@ db_app = typer.Typer(help="Database commands.", no_args_is_help=True)
 app.add_typer(db_app, name="db")
 gmail_app = typer.Typer(help="Gmail (read-only).", no_args_is_help=True)
 app.add_typer(gmail_app, name="gmail")
+import_app = typer.Typer(help="Turn stored data into opportunities.", no_args_is_help=True)
+app.add_typer(import_app, name="import")
 
 
 @db_app.command("upgrade")
@@ -67,6 +69,26 @@ def gmail_auth() -> None:
     typer.echo(f"Token saved to {settings.gmail_token}")
 
 
+@import_app.command("linkedin")
+def import_linkedin() -> None:
+    """Create opportunities from LinkedIn alert emails already in the database."""
+    settings = Settings()
+    upgrade_database(settings.database_url)
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            _import_linkedin(session)
+    finally:
+        engine.dispose()
+
+
+def _import_linkedin(session) -> None:
+    from .linkedin.alerts import import_alerts
+
+    stats = import_alerts(session)
+    typer.echo(f"linkedin: {stats.emails} alert emails, {stats.jobs} jobs, {stats.new} new")
+
+
 @app.command()
 def sync(
     source: SourceType,
@@ -119,6 +141,7 @@ def _sync_gmail(names: list[str] | None, since: datetime | None) -> None:
                 since=since.date() if since else None,
                 progress=_report_progress,
             )
+            _import_linkedin(session)
     finally:
         engine.dispose()
     for name, stats in results.items():

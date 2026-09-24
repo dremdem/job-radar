@@ -44,3 +44,32 @@ def test_set_state_unknown_opportunity(client):
 
 def test_healthz(client):
     assert client.get("/healthz").json() == {"status": "ok"}
+
+
+def test_queue_shows_details_and_sorts_by_score(client, session):
+    from job_radar.dedup import upsert_source_record
+    from job_radar.models import SourceType
+
+    low = add_opportunity(session, title="Low match")
+    low.score = 2
+    high = add_opportunity(session, title="High match")
+    high.score = 9
+    high.location = "Worldwide (Remote)"
+    high.easy_apply = True
+    high.score_reasons = [{"sign": "+", "text": "Python"}, {"sign": "-", "text": "Frontend"}]
+    upsert_source_record(
+        session,
+        source_type=SourceType.LINKEDIN_ALERT,
+        external_id="42",
+        url="https://www.linkedin.com/jobs/view/42/",
+        opportunity=high,
+    )
+    session.commit()
+
+    text = client.get("/").text
+    assert text.index("High match") < text.index("Low match")
+    assert "Worldwide (Remote)" in text
+    assert "Easy Apply" in text
+    assert "+ Python" in text and "\u2212 Frontend" in text
+    assert 'href="https://www.linkedin.com/jobs/view/42/"' in text
+    assert "verify manually" in text

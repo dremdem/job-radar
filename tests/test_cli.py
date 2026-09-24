@@ -32,3 +32,10 @@ def test_sync_gmail_rejects_unknown_query(tmp_path, monkeypatch):
     result = runner.invoke(app, ["sync", "gmail", "--query", "nope"])
     assert result.exit_code == 2
     assert "Unknown query" in result.output
+
+
+def test_import_linkedin(tmp_path, monkeypatch):
+    monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
+    result = runner.invoke(app, ["import", "linkedin"])
+    assert result.exit_code == 0, result.output
+    assert "0 alert emails" in result.output

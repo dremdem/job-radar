@@ -63,6 +63,10 @@ class Opportunity(Base):
         _enum(OpportunityState), default=OpportunityState.NEW, index=True
     )
     score: Mapped[float | None]
+    score_reasons: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
+    location: Mapped[str | None] = mapped_column(String(255))
+    salary: Mapped[str | None] = mapped_column(String(64))
+    easy_apply: Mapped[bool | None]
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
