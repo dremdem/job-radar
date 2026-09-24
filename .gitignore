@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Local data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets (Gmail OAuth, API keys)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials*.json
+token*.json
+
+# System
+.DS_Store
+*.swp
+*~
