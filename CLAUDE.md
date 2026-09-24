@@ -25,7 +25,7 @@ Job Radar: local-first assistant for reviewing job opportunities. Plan and scope
 ## Project rules
 
 - **Human in the loop.** No auto-apply, no automatic messages to recruiters or companies.
-- **No LinkedIn scraping.** LinkedIn data comes only from alert emails the user already receives.
+- **LinkedIn access.** Never automate LinkedIn with the user's account: no Playwright/browser automation, no login, no cookies, no clicks, no Easy Apply. LinkedIn data comes from alert emails. Original postings are looked up via official public ATS APIs (#22). Fetching the public job page without login is allowed only behind an opt-in flag, off by default, rate-limited, stopping on any authwall/429 (#23).
 - **Gmail is read-only.** Never send, delete or modify mail.
 - **Don't invent facts.** Scores, summaries and company history must be based on stored data; say "unknown" instead of guessing.
 - **Secrets** live only in `.env` or `secrets/` (both git-ignored). Never commit tokens, credentials or personal data (`*.db`, exported mail).
