@@ -12,6 +12,7 @@ EXPECTED_TABLES = {
     "job_snapshots",
     "applications",
     "email_messages",
+    "sync_cursors",
 }
 
 

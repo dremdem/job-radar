@@ -71,5 +71,19 @@ A Gmail message relevant to the search. Unique on `gmail_message_id`.
 | `gmail_message_id`, `gmail_thread_id` | |
 | `direction` | `in` / `out` |
 | `sent_at`, `from_addr`, `to_addr`, `subject` | |
+| `snippet` | Gmail snippet |
+| `label_ids` | JSON list of Gmail label ids |
+| `categories` | JSON list of sync query names that returned it (`linkedin_alerts`, `job_proposal`) |
+| `body_html`, `body_text` | Stored only for LinkedIn alerts, see [gmail.md](gmail.md#privacy-decisions) |
 | `detected_event` | Nullable: `alert`, `application_confirmation`, `rejection`, `interview`, … |
 | `company_id` | Optional link |
+
+## SyncCursor
+
+Per-query position of an incremental import.
+
+| Column | Notes |
+|---|---|
+| `name` | Primary key, e.g. `gmail:linkedin_alerts` |
+| `last_message_at` | Date of the newest message seen |
+| `last_run_at` | UTC time of the last successful run |

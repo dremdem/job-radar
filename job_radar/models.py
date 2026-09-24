@@ -120,5 +120,19 @@ class EmailMessage(Base):
     from_addr: Mapped[str] = mapped_column(String(320))
     to_addr: Mapped[str] = mapped_column(Text)
     subject: Mapped[str] = mapped_column(Text, default="")
+    snippet: Mapped[str] = mapped_column(Text, default="")
+    label_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    categories: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Full bodies only for generated mailings (LinkedIn alerts), see docs/gmail.md.
+    body_html: Mapped[str | None] = mapped_column(Text)
+    body_text: Mapped[str | None] = mapped_column(Text)
     detected_event: Mapped[str | None] = mapped_column(String(32))
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
+
+
+class SyncCursor(Base):
+    __tablename__ = "sync_cursors"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    last_message_at: Mapped[datetime | None]
+    last_run_at: Mapped[datetime | None]

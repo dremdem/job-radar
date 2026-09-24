@@ -26,7 +26,9 @@ The queue is empty until a source is imported. To look around first: `uv run job
 | `job-radar db upgrade` | Apply Alembic migrations to the configured database |
 | `job-radar serve [--host] [--port] [--reload]` | Run the web UI (review queue) |
 | `job-radar demo [--remove]` | Add a few demo opportunities (companies marked `(demo)`) to try the queue; `--remove` deletes only them |
-| `job-radar sync <source>` | Import from a source. Placeholder until sources land (#12, #13) |
+| `job-radar gmail auth` | One-time Gmail OAuth consent (read-only), see [docs/gmail.md](docs/gmail.md) |
+| `job-radar sync gmail [--query NAME] [--since DATE]` | Incremental read-only import of job mail into the database |
+| `job-radar sync <other source>` | Placeholder until the source lands |
 
 ## Configuration
 
@@ -35,6 +37,8 @@ Settings come from environment variables with the `JOB_RADAR_` prefix, or from `
 | Variable | Default | Meaning |
 |---|---|---|
 | `JOB_RADAR_DATABASE_URL` | `sqlite:///data/job_radar.db` | SQLAlchemy URL of the database |
+| `JOB_RADAR_GMAIL_CLIENT_SECRET` | `secrets/gmail_client_secret.json` | OAuth Desktop client downloaded from Google Cloud |
+| `JOB_RADAR_GMAIL_TOKEN` | `secrets/gmail_token.json` | Where the OAuth token is stored |
 
 ## Layout
 
@@ -45,6 +49,7 @@ job_radar/
   models.py       SQLAlchemy models, see docs/data-model.md
   dedup.py        idempotent upserts: companies, source records, snapshots
   demo.py         demo data for `job-radar demo`
+  gmail/          read-only Gmail client, OAuth, sync (docs/gmail.md)
   web/            FastAPI app, Jinja2 + HTMX templates
   cli.py          `job-radar` entry point
   migrations/     Alembic migrations
