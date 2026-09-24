@@ -17,12 +17,15 @@ uv run job-radar db upgrade  # create / migrate the SQLite database
 uv run job-radar serve       # http://127.0.0.1:8000 — review queue
 ```
 
+The queue is empty until a source is imported. To look around first: `uv run job-radar demo`.
+
 ## CLI
 
 | Command | What it does |
 |---|---|
 | `job-radar db upgrade` | Apply Alembic migrations to the configured database |
 | `job-radar serve [--host] [--port] [--reload]` | Run the web UI (review queue) |
+| `job-radar demo [--remove]` | Add a few demo opportunities (companies marked `(demo)`) to try the queue; `--remove` deletes only them |
 | `job-radar sync <source>` | Import from a source. Placeholder until sources land (#12, #13) |
 
 ## Configuration
@@ -41,6 +44,7 @@ job_radar/
   db.py           engine and session factory
   models.py       SQLAlchemy models, see docs/data-model.md
   dedup.py        idempotent upserts: companies, source records, snapshots
+  demo.py         demo data for `job-radar demo`
   web/            FastAPI app, Jinja2 + HTMX templates
   cli.py          `job-radar` entry point
   migrations/     Alembic migrations
