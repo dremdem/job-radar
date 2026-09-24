@@ -4,4 +4,54 @@ Local-first assistant for reviewing job opportunities: collects vacancies (Linke
 
 Human-in-the-loop only: no auto-apply, no LinkedIn scraping.
 
-Plan and scope: [Epic #9](https://github.com/dremdem/job-radar/issues/9).
+Plan and scope: [Epic #9](https://github.com/dremdem/job-radar/issues/9). Rules for contributors and agents: [CLAUDE.md](CLAUDE.md).
+
+## Setup
+
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+.
+
+```sh
+uv sync                      # install deps into .venv
+cp .env.example .env         # optional: override settings
+uv run job-radar db upgrade  # create / migrate the SQLite database
+uv run job-radar serve       # http://127.0.0.1:8000 — review queue
+```
+
+## CLI
+
+| Command | What it does |
+|---|---|
+| `job-radar db upgrade` | Apply Alembic migrations to the configured database |
+| `job-radar serve [--host] [--port] [--reload]` | Run the web UI (review queue) |
+| `job-radar sync <source>` | Import from a source. Placeholder until sources land (#12, #13) |
+
+## Configuration
+
+Settings come from environment variables with the `JOB_RADAR_` prefix, or from `.env` (see [.env.example](.env.example)).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `JOB_RADAR_DATABASE_URL` | `sqlite:///data/job_radar.db` | SQLAlchemy URL of the database |
+
+## Layout
+
+```
+job_radar/
+  config.py       settings (pydantic-settings)
+  db.py           engine and session factory
+  models.py       SQLAlchemy models, see docs/data-model.md
+  dedup.py        idempotent upserts: companies, source records, snapshots
+  web/            FastAPI app, Jinja2 + HTMX templates
+  cli.py          `job-radar` entry point
+  migrations/     Alembic migrations
+tests/            pytest
+```
+
+## Development
+
+```sh
+uv run ruff check . && uv run ruff format --check .
+uv run pytest
+```
+
+Schema changes: edit `job_radar/models.py`, then `uv run alembic revision --autogenerate -m "..."` and review the generated file.

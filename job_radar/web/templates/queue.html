@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Review queue</h2>
+{% if opportunities %}
+<table>
+  <thead><tr><th>Title</th><th>Company</th><th>Score</th><th>State</th><th></th></tr></thead>
+  <tbody>
+    {% for o in opportunities %}{% include "_row.html" %}{% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No opportunities yet. Import some with <code>job-radar sync &lt;source&gt;</code>.</p>
+{% endif %}
+{% endblock %}

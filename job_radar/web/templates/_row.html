@@ -1,0 +1,13 @@
+<tr id="opportunity-{{ o.id }}">
+  <td>{{ o.title }}</td>
+  <td>{{ o.company.name }}</td>
+  <td>{{ "%.1f"|format(o.score) if o.score is not none else "—" }}</td>
+  <td class="state">{{ o.state.value }}</td>
+  <td class="actions">
+    {% for s in states %}
+    <button hx-post="/opportunities/{{ o.id }}/state" hx-vals='{"state": "{{ s.value }}"}'
+            hx-target="#opportunity-{{ o.id }}" hx-swap="outerHTML"
+            {% if o.state == s %}disabled{% endif %}>{{ s.value }}</button>
+    {% endfor %}
+  </td>
+</tr>
