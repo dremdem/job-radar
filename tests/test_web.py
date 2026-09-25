@@ -2,8 +2,12 @@ from job_radar.dedup import get_or_create_company
 from job_radar.models import Opportunity, OpportunityState
 
 
-def add_opportunity(session, title="Senior Python Engineer") -> Opportunity:
-    opportunity = Opportunity(title=title, company=get_or_create_company(session, "Acme"))
+def add_opportunity(
+    session, title="Senior Python Engineer", company="Acme", score=None
+) -> Opportunity:
+    opportunity = Opportunity(
+        title=title, company=get_or_create_company(session, company), score=score
+    )
     session.add(opportunity)
     session.commit()
     return opportunity
@@ -73,3 +77,39 @@ def test_queue_shows_details_and_sorts_by_score(client, session):
     assert "+ Python" in text and "\u2212 Frontend" in text
     assert 'href="https://www.linkedin.com/jobs/view/42/"' in text
     assert "verify manually" in text
+
+
+def test_reject_flags_all_company_opportunities(client, session):
+    one = add_opportunity(session, title="Python Engineer", company="Globex", score=9)
+    add_opportunity(session, title="Backend Engineer", company="Globex", score=8)
+    add_opportunity(session, title="Other role", company="Initech", score=5)
+
+    response = client.post(f"/opportunities/{one.id}/rejected")
+    assert response.status_code == 200
+    text = response.text
+    # Both Globex rows are flagged, Initech is not.
+    assert text.count("rejected ·") == 2
+    # Penalised score is shown (9 - 5 = 4.0), not the intrinsic 9.
+    assert "4.0" in text
+    assert "Rejected by Globex" in text
+    # The button now offers to undo.
+    assert "un-reject" in text
+
+
+def test_reject_sorts_to_bottom_but_stays_visible(client, session):
+    rejected = add_opportunity(session, title="Great but rejected", company="Globex", score=10)
+    add_opportunity(session, title="Modest match", company="Initech", score=3)
+
+    client.post(f"/opportunities/{rejected.id}/rejected")
+    text = client.get("/").text
+    # Still listed, but below the lower-scored non-rejected one.
+    assert "Great but rejected" in text
+    assert text.index("Modest match") < text.index("Great but rejected")
+
+
+def test_reject_is_a_toggle(client, session):
+    o = add_opportunity(session, title="Python Engineer", company="Globex", score=9)
+    client.post(f"/opportunities/{o.id}/rejected")
+    text = client.post(f"/opportunities/{o.id}/rejected").text
+    assert "rejected ·" not in text
+    assert "un-reject" not in text

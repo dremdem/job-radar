@@ -7,15 +7,17 @@
       {{ o.location or "" }}{% if o.salary %} · {{ o.salary }}{% endif %}
       {% if o.easy_apply %}<span class="badge">Easy Apply</span>{% endif %}
       {% if not has_description %}<span class="badge warn">verify manually</span>{% endif %}
+      {% if rejected_at %}<span class="badge reject">rejected · {{ rejected_at.strftime("%Y-%m-%d") }}</span>{% endif %}
     </div>
-    {% if o.score_reasons %}
+    {% if rejected_at or o.score_reasons %}
     <ul class="reasons">
+      {% if rejected_at %}<li class="neg">− Rejected by {{ o.company.name }} on {{ rejected_at.strftime("%Y-%m-%d") }}</li>{% endif %}
       {% for r in o.score_reasons %}<li class="{{ 'pos' if r.sign == '+' else 'neg' }}">{{ '+' if r.sign == '+' else '−' }} {{ r.text }}</li>{% endfor %}
     </ul>
     {% endif %}
   </td>
   <td>{{ o.company.name }}</td>
-  <td>{{ "%.1f"|format(o.score) if o.score is not none else "—" }}</td>
+  <td>{{ "%.1f"|format(eff_score) if eff_score is not none else "—" }}</td>
   <td class="state">{{ o.state.value }}</td>
   <td class="actions">
     {% for s in states %}
@@ -23,5 +25,7 @@
             hx-target="#opportunity-{{ o.id }}" hx-swap="outerHTML"
             {% if o.state == s %}disabled{% endif %}>{{ s.value }}</button>
     {% endfor %}
+    <button hx-post="/opportunities/{{ o.id }}/rejected"
+            hx-target="#queue" hx-swap="outerHTML">{{ "un-reject" if rejected_at else "rejected" }}</button>
   </td>
 </tr>

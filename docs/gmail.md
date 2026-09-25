@@ -43,6 +43,44 @@ Queries (`job_radar/gmail/queries.py`):
 - **Resumable.** Messages are committed per thread; if a run is interrupted, the next one skips what is stored. The cursor moves only after a query finishes.
 - **Direction** is `out` when the message has the `SENT` label, otherwise `in`.
 
+## Rejections
+
+LinkedIn sends an "application update" email from `jobs-noreply@linkedin.com` with
+a subject like `Your application to <role> at <company>` and a body that says the
+application will not move forward.
+
+`import_rejections` (`job_radar/linkedin/rejections.py`, run after `sync gmail` and
+available as `job-radar import rejections`) treats an email as a rejection only when
+the subject matches **and** the body contains a rejection phrase. Company and role come
+from the subject, the date from the email; a `Rejection` is recorded (`source=gmail`,
+see [data-model.md](data-model.md#rejection)). It is idempotent per email id and sets
+`EmailMessage.detected_event` and `company_id` for provenance. The job cards in the
+email's "Top jobs" section are **not** imported as opportunities: the alert parser only
+reads `jobalerts-noreply@linkedin.com`.
+
+What real emails look like (checked against the mailbox):
+
+- The **text/plain part is a stub** ("Your update from <company>" + footer); the
+  rejection sentence is only in the **HTML**. Detection reads the HTML text and the
+  plain text together.
+- Phrases seen: "we will not be moving forward with your application",
+  "<company> did not select your application to move forward",
+  "we have not selected your application to move forward".
+- Employers can write their own text into the same template: "we regret to inform
+  you", "decided to proceed with another candidate", "move forward with other
+  candidates", or Russian ("К сожалению, мы решили не рассматривать Вашу заявку").
+- "Your application was viewed by …" has a different subject and is not a rejection.
+
+**Emails without a stored body.** Only mail found by the `linkedin_alerts` query keeps
+its body, and that query looks back 30 days on the first run. Older application
+updates reach the database through `label:job-proposal`, headers only. For those,
+`import_rejections` fetches the body from Gmail by message id (read-only), runs the
+same detection and **stores only the result**, never the body (see privacy decisions
+below). A checked email gets `detected_event` = `rejection` or `application_update`,
+so it is fetched once; after the rules improve, `job-radar import rejections --recheck`
+re-examines the `application_update` ones. Without a Gmail token this step is skipped and the command
+says how many emails are waiting.
+
 ## Privacy decisions
 
 - Headers (date, from, to, subject), labels and Gmail's `snippet` are stored for every message.

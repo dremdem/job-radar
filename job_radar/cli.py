@@ -89,6 +89,45 @@ def _import_linkedin(session) -> None:
     typer.echo(f"linkedin: {stats.emails} alert emails, {stats.jobs} jobs, {stats.new} new")
 
 
+@import_app.command("rejections")
+def import_rejections(
+    recheck: Annotated[
+        bool, typer.Option("--recheck", help="Re-examine emails earlier runs found not rejections.")
+    ] = False,
+) -> None:
+    """Record rejections from LinkedIn application-update emails already in the database."""
+    settings = Settings()
+    upgrade_database(settings.database_url)
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            _import_rejections(session, recheck=recheck)
+    finally:
+        engine.dispose()
+
+
+def _import_rejections(session, client=None, *, recheck: bool = False) -> None:
+    from .gmail.auth import GmailAuthError, load_credentials
+    from .gmail.client import ApiGmailClient, body_fetcher
+    from .linkedin.rejections import import_rejections as run
+
+    if client is None:
+        try:
+            client = ApiGmailClient(load_credentials(Settings().gmail_token))
+        except GmailAuthError:
+            client = None
+    stats = run(session, fetch_body=body_fetcher(client) if client else None, recheck=recheck)
+    typer.echo(
+        f"rejections: {stats.emails} emails, {stats.detected} rejections, {stats.new} new"
+        + (f", {stats.fetched} bodies checked in Gmail" if stats.fetched else "")
+    )
+    if stats.pending:
+        typer.echo(
+            f"rejections: {stats.pending} without body wait for Gmail access; "
+            "run `job-radar gmail auth`, then this command again."
+        )
+
+
 @app.command()
 def sync(
     source: SourceType,
@@ -142,6 +181,7 @@ def _sync_gmail(names: list[str] | None, since: datetime | None) -> None:
                 progress=_report_progress,
             )
             _import_linkedin(session)
+            _import_rejections(session, client)
     finally:
         engine.dispose()
     for name, stats in results.items():

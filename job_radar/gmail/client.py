@@ -74,6 +74,7 @@ class ApiGmailClient:
     def __init__(self, credentials: Credentials, execute: RateLimitedExecutor | None = None):
         service = build("gmail", "v1", credentials=credentials, cache_discovery=False)
         self._threads = service.users().threads()
+        self._messages = service.users().messages()
         self._execute = execute or RateLimitedExecutor()
 
     def list_thread_ids(self, query: str) -> Iterator[str]:
@@ -89,3 +90,21 @@ class ApiGmailClient:
 
     def get_thread(self, thread_id: str) -> dict:
         return self._execute(self._threads.get(userId="me", id=thread_id, format="full"))
+
+    def get_message(self, gmail_message_id: str) -> dict:
+        return self._execute(self._messages.get(userId="me", id=gmail_message_id, format="full"))
+
+
+class MessageSource(Protocol):
+    def get_message(self, gmail_message_id: str) -> dict: ...
+
+
+def body_fetcher(client: MessageSource) -> Callable[[str], tuple[str | None, str | None]]:
+    """(html, text) of a message by id, for callers that must not persist the body."""
+    from .parse import parse_message
+
+    def fetch(gmail_message_id: str) -> tuple[str | None, str | None]:
+        parsed = parse_message(client.get_message(gmail_message_id))
+        return parsed.body_html, parsed.body_text
+
+    return fetch

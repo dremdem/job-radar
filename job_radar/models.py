@@ -40,6 +40,11 @@ class EmailDirection(enum.StrEnum):
     OUT = "out"
 
 
+class RejectionSource(enum.StrEnum):
+    MANUAL = "manual"
+    GMAIL = "gmail"
+
+
 class Company(Base):
     __tablename__ = "companies"
 
@@ -51,6 +56,7 @@ class Company(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     opportunities: Mapped[list["Opportunity"]] = relationship(back_populates="company")
+    rejections: Mapped[list["Rejection"]] = relationship(back_populates="company")
 
 
 class Opportunity(Base):
@@ -111,6 +117,28 @@ class Application(Base):
     applied_at: Mapped[datetime]
     status: Mapped[str] = mapped_column(String(32), default="applied")
     notes: Mapped[str | None] = mapped_column(Text)
+
+
+class Rejection(Base):
+    """A company said no. One rejection is enough to flag all of that company's
+    opportunities; see docs/data-model.md. Recorded manually or detected from mail.
+    """
+
+    __tablename__ = "rejections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id"))
+    # One rejection per source email; NULLs (manual rejections) stay distinct in SQLite.
+    email_message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_messages.id"), unique=True
+    )
+    source: Mapped[RejectionSource] = mapped_column(_enum(RejectionSource))
+    role: Mapped[str | None] = mapped_column(String(255))
+    rejected_at: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    company: Mapped[Company] = relationship(back_populates="rejections")
 
 
 class EmailMessage(Base):

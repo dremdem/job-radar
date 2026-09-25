@@ -13,6 +13,7 @@ EXPECTED_TABLES = {
     "applications",
     "email_messages",
     "sync_cursors",
+    "rejections",
 }
 
 

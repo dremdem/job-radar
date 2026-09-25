@@ -5,7 +5,8 @@ Minimal schema for step 1 (#11). Tables grow only when a source or feature needs
 ```
 Company 1───* Opportunity 1───* SourceRecord 1───* JobSnapshot
    │               │
-   └──* Application *┘ (opportunity optional)
+   ├──* Application *┘ (opportunity optional)
+   └──* Rejection   (opportunity + email optional)
 EmailMessage *───1 Company (optional)
 ```
 
@@ -28,7 +29,7 @@ One vacancy, independent of where it was seen.
 |---|---|
 | `title`, `company_id` | |
 | `state` | `new` → `interested` / `ignore` / `applied`. Changed only by the user |
-| `score` | Nullable float, 0–10; rule-based for now (#13) |
+| `score` | Nullable float, 0–10; rule-based for now (#13). Intrinsic (title/location) score; the rejection penalty is applied at display time, see [Rejection](#rejection) |
 | `score_reasons` | JSON list of `{"sign": "+" or "-", "text": ...}` explaining the score |
 | `location`, `salary` | As shown by the source, free text |
 | `easy_apply` | Nullable bool: LinkedIn Easy Apply |
@@ -64,6 +65,29 @@ A fact that the user applied somewhere, with its current status.
 | `company_id` | Required |
 | `opportunity_id` | Optional: historic applications may not map to a known vacancy |
 | `applied_at`, `status`, `notes` | `status` is free text for now (`applied`, `rejected`, `interview`, …) |
+
+## Rejection
+
+A company said no. A rejection is a fact about the **company**: one rejection flags
+**all** of that company's opportunities in the review queue. Recorded manually (a
+button in the queue) or auto-detected from mail (#28).
+
+| Column | Notes |
+|---|---|
+| `company_id` | Required. The rejecting company |
+| `opportunity_id` | Optional: the opportunity the rejection was recorded from |
+| `email_message_id` | Optional: the source email (auto-detect). Unique, so re-runs don't duplicate |
+| `source` | `manual` / `gmail` |
+| `role` | Optional: role the rejection was for (from the email subject) |
+| `rejected_at` | When rejected (click time for manual, email date for auto) |
+| `created_at` | UTC |
+
+Queue behaviour: a company with ≥1 rejection has every opportunity marked with a
+`rejected · <date>` badge (the most recent `rejected_at`), a `− Rejected by …`
+reason, an effective score of `score − REJECTION_PENALTY` (clamped at 0), and is
+sorted to the very bottom — still visible, so the user can decide whether an old
+rejection is worth a retry. The manual toggle only removes `manual` rejections;
+auto-detected ones stay.
 
 ## EmailMessage
 

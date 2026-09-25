@@ -73,3 +73,17 @@ def test_other_errors_are_not_retried():
     with pytest.raises(HttpError):
         executor(clock)(request)
     assert request.calls == 1
+
+
+def test_body_fetcher_returns_html_and_text():
+    from datetime import UTC, datetime
+
+    from gmail_fakes import message
+
+    from job_radar.gmail.client import body_fetcher
+
+    class Client:
+        def get_message(self, gmail_message_id):
+            return message(gmail_message_id, "t", sent_at=datetime(2026, 1, 1, tzinfo=UTC))
+
+    assert body_fetcher(Client())("m1") == ("<p>Hello <b>there</b></p>", "Hello there")

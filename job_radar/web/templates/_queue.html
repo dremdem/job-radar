@@ -1,0 +1,8 @@
+<table id="queue">
+  <thead><tr><th>Title</th><th>Company</th><th>Score</th><th>State</th><th></th></tr></thead>
+  <tbody>
+    {% for row in rows %}
+    {% with o = row.o, rejected_at = row.rejected_at, eff_score = row.eff_score %}{% include "_row.html" %}{% endwith %}
+    {% endfor %}
+  </tbody>
+</table>

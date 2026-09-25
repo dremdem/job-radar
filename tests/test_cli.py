@@ -39,3 +39,32 @@ def test_import_linkedin(tmp_path, monkeypatch):
     result = runner.invoke(app, ["import", "linkedin"])
     assert result.exit_code == 0, result.output
     assert "0 alert emails" in result.output
+
+
+def test_import_rejections_without_gmail_reports_pending(tmp_path, monkeypatch):
+    from datetime import UTC, datetime
+
+    from job_radar.db import make_engine, make_session_factory, upgrade_database
+    from job_radar.models import EmailDirection, EmailMessage
+
+    url = f"sqlite:///{tmp_path / 'j.db'}"
+    monkeypatch.setenv("JOB_RADAR_DATABASE_URL", url)
+    monkeypatch.setenv("JOB_RADAR_GMAIL_TOKEN", str(tmp_path / "missing.json"))
+    upgrade_database(url)
+    with make_session_factory(make_engine(url))() as session:
+        session.add(
+            EmailMessage(
+                gmail_message_id="old1",
+                gmail_thread_id="old1",
+                direction=EmailDirection.IN,
+                sent_at=datetime(2026, 1, 1, tzinfo=UTC),
+                from_addr="LinkedIn <jobs-noreply@linkedin.com>",
+                to_addr="user@example.com",
+                subject="Your application to Python Developer at Acme",
+            )
+        )
+        session.commit()
+    result = runner.invoke(app, ["import", "rejections"])
+    assert result.exit_code == 0, result.output
+    assert "1 without body" in result.output
+    assert "job-radar gmail auth" in result.output

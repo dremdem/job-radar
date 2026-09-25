@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from ..config import Settings, get_settings
 from ..db import make_engine, make_session_factory
 from ..models import Opportunity, OpportunityState, SourceRecord
+from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
@@ -50,18 +51,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def queue(request: Request, session: SessionDep) -> HTMLResponse:
-        opportunities = session.scalars(
-            select(Opportunity).options(
-                joinedload(Opportunity.company),
-                selectinload(Opportunity.source_records).selectinload(SourceRecord.snapshots),
-            )
-        ).all()
-        opportunities = sorted(opportunities, key=_queue_order)
-        return templates.TemplateResponse(
-            request,
-            "queue.html",
-            {"opportunities": opportunities, "states": _manual_states()},
-        )
+        return templates.TemplateResponse(request, "queue.html", _queue_context(session))
 
     @app.post("/opportunities/{opportunity_id}/state", response_class=HTMLResponse)
     def set_state(
@@ -70,21 +60,67 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         state: Annotated[OpportunityState, Form()],
         session: SessionDep,
     ) -> HTMLResponse:
-        opportunity = session.get(Opportunity, opportunity_id)
-        if opportunity is None:
-            raise HTTPException(status_code=404, detail="Opportunity not found")
+        opportunity = _get_opportunity(session, opportunity_id)
         opportunity.state = state
         session.commit()
-        return templates.TemplateResponse(
-            request, "_row.html", {"o": opportunity, "states": _manual_states()}
-        )
+        return templates.TemplateResponse(request, "_row.html", _row_context(session, opportunity))
+
+    @app.post("/opportunities/{opportunity_id}/rejected", response_class=HTMLResponse)
+    def set_rejected(request: Request, opportunity_id: int, session: SessionDep) -> HTMLResponse:
+        # Rejection is per company, so a toggle can move several rows: re-render the queue.
+        opportunity = _get_opportunity(session, opportunity_id)
+        toggle_manual_rejection(session, opportunity)
+        session.commit()
+        return templates.TemplateResponse(request, "_queue.html", _queue_context(session))
 
     return app
 
 
-def _queue_order(o: Opportunity) -> tuple:
-    score = o.score if o.score is not None else -1
-    return (_STATE_ORDER.index(o.state), -score, -o.created_at.timestamp())
+def _load_opportunities(session: Session):
+    return session.scalars(
+        select(Opportunity).options(
+            joinedload(Opportunity.company),
+            selectinload(Opportunity.source_records).selectinload(SourceRecord.snapshots),
+        )
+    ).all()
+
+
+def _get_opportunity(session: Session, opportunity_id: int) -> Opportunity:
+    opportunity = session.get(Opportunity, opportunity_id)
+    if opportunity is None:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    return opportunity
+
+
+def _row_context(session: Session, opportunity: Opportunity, rejected: dict | None = None) -> dict:
+    if rejected is None:
+        rejected = latest_rejections(session)
+    rejected_at = rejected.get(opportunity.company_id)
+    return {
+        "o": opportunity,
+        "states": _manual_states(),
+        "rejected_at": rejected_at,
+        "eff_score": effective_score(opportunity.score, rejected=rejected_at is not None),
+    }
+
+
+def _queue_context(session: Session) -> dict:
+    rejected = latest_rejections(session)
+    rows = [_row_context(session, o, rejected) for o in _load_opportunities(session)]
+    rows.sort(key=_queue_order)
+    return {"rows": rows, "has_any": bool(rows)}
+
+
+def _queue_order(row: dict) -> tuple:
+    o = row["o"]
+    score = row["eff_score"] if row["eff_score"] is not None else -1
+    # Rejected companies sink to the very bottom, but stay visible.
+    return (
+        row["rejected_at"] is not None,
+        _STATE_ORDER.index(o.state),
+        -score,
+        -o.created_at.timestamp(),
+    )
 
 
 def _manual_states() -> list[OpportunityState]:
