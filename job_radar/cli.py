@@ -169,6 +169,31 @@ def _import_applications(session, client=None) -> None:
         )
 
 
+@import_app.command("contacts")
+def import_contacts() -> None:
+    """Link mail to companies and label it, for company history in the queue."""
+    settings = Settings()
+    upgrade_database(settings.database_url)
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            _import_contacts(session)
+    finally:
+        engine.dispose()
+
+
+def _import_contacts(session) -> None:
+    from .contacts import link_and_label
+
+    stats = link_and_label(session)
+    linked = stats.by_thread + stats.by_domain
+    typer.echo(
+        f"contacts: {linked} linked ({stats.by_thread} by thread, {stats.by_domain} by domain), "
+        f"{stats.probable} probable by name, {stats.labeled} labeled, "
+        f"{stats.rejections} rejections from other mail"
+    )
+
+
 @app.command()
 def sync(
     source: SourceType,
@@ -224,6 +249,7 @@ def _sync_gmail(names: list[str] | None, since: datetime | None) -> None:
             _import_linkedin(session)
             _import_rejections(session, client)
             _import_applications(session, client)
+            _import_contacts(session)
     finally:
         engine.dispose()
     for name, stats in results.items():

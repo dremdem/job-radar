@@ -116,6 +116,7 @@ def import_rejections(
         company = get_or_create_company(session, info.company)
         email.detected_event = REJECTION_EVENT
         email.company_id = company.id
+        email.company_match = "exact"
         mark_rejected(
             session,
             company_id=company.id,

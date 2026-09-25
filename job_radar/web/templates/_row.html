@@ -9,6 +9,19 @@
       {% if not has_description %}<span class="badge warn">verify manually</span>{% endif %}
       {% if rejected_at %}<span class="badge reject">rejected · {{ rejected_at.strftime("%Y-%m-%d") }}</span>{% endif %}
     </div>
+    {% if history_count %}
+    <details class="history small">
+      <summary><span class="badge">contacted · {{ history_count }}</span>{% if applied_before %} <span class="badge warn">already applied {{ applied_before.strftime("%Y-%m-%d") }}</span>{% endif %}</summary>
+      <ul>
+        {% for e in history %}
+        <li>{{ e.at.strftime("%Y-%m-%d") }} · <b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}</li>
+        {% endfor %}
+        {% if history_count > history | length %}<li class="muted">… {{ history_count - history | length }} more</li>{% endif %}
+      </ul>
+    </details>
+    {% else %}
+    <div class="muted small">no contacts found</div>
+    {% endif %}
     {% if rejected_at or o.score_reasons %}
     <ul class="reasons">
       {% if rejected_at %}<li class="neg">− Rejected by {{ o.company.name }} on {{ rejected_at.strftime("%Y-%m-%d") }}</li>{% endif %}

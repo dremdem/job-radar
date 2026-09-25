@@ -185,6 +185,7 @@ class EmailMessage(Base):
     body_text: Mapped[str | None] = mapped_column(Text)
     detected_event: Mapped[str | None] = mapped_column(String(32))
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
+    company_match: Mapped[str | None] = mapped_column(String(16))  # exact / probable
 
 
 class SyncCursor(Base):

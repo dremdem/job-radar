@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .. import applications as apps
 from ..config import Settings, get_settings
+from ..contacts import company_history
 from ..db import make_engine, make_session_factory
 from ..models import (
     Application,
@@ -22,6 +23,7 @@ from ..models import (
 )
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
 
+HISTORY_SHOWN = 8
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 # Queue order: undecided first, then the ones worth a look.
@@ -151,7 +153,12 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
     if rejected is None:
         rejected = latest_rejections(session)
     rejected_at = rejected.get(opportunity.company_id)
+    history = company_history(session, opportunity.company_id)
+    applied = [e.at for e in history if e.kind == "applied"]
     return {
+        "history": history[:HISTORY_SHOWN],
+        "history_count": len(history),
+        "applied_before": max(applied) if applied else None,
         "o": opportunity,
         "states": _manual_states(),
         "rejected_at": rejected_at,

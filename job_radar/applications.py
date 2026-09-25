@@ -283,6 +283,7 @@ def import_applications(session: Session, fetch_body: FetchBody | None = None) -
         app.linkedin_job_id = app.linkedin_job_id or found.linkedin_job_id
         app.opportunity_id = app.opportunity_id or _opportunity_for(session, found.linkedin_job_id)
         email.company_id = company.id
+        email.company_match = "exact"
         if waiting:
             stats.pending += 1  # revisited on a run with Gmail access
         else:

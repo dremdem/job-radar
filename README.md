@@ -30,6 +30,7 @@ The queue is empty until a source is imported. To look around first: `uv run job
 | `job-radar sync gmail [--query NAME] [--since DATE]` | Incremental read-only import of job mail into the database |
 | `job-radar import linkedin` | Turn stored LinkedIn alert emails into opportunities, see [docs/linkedin-alerts.md](docs/linkedin-alerts.md) |
 | `job-radar import applications` | Past applications from mail, see [docs/applications.md](docs/applications.md) |
+| `job-radar import contacts` | Link mail to companies and label it, for company history in the queue |
 | `job-radar sync <other source>` | Placeholder until the source lands |
 
 ## Configuration

@@ -38,3 +38,40 @@ LinkedIn confirmations are generated mail. For the ones stored without a body (t
 uv run job-radar import applications            # from mail already in the database
 uv run job-radar sync gmail                      # syncs, then imports alerts, rejections, applications
 ```
+
+# Company history
+
+Before applying, the queue shows what already happened with the company (#14): applications, rejections and other mail. It is a warning, never a block.
+
+## Linking mail to a company
+
+`EmailMessage.company_id` + `company_match`:
+
+| How | Match |
+|---|---|
+| The email is an application confirmation, a rejection or LinkedIn's "application was viewed by <company>" (company from its subject / sender) | `exact` |
+| Another message in the same Gmail thread is linked (your replies, the recruiter's follow-ups) | `exact` |
+| Sender domain is a known domain of the company, learned from exactly linked mail (free-mail and ATS domains are never learned) | `exact` |
+| The company name appears as whole words in the subject; only names of at least two words or 6+ characters, to avoid "Rain" or "Known" matching everywhere | `probable`; `exact` when the sender's own domain carries the name (`anna@northwind.com`), and then the domain is learned |
+
+## What an email is
+
+Linked mail without an event gets a rule-based label in `detected_event` (a hint for the history list, never a status change):
+
+- `viewed`: LinkedIn "Your application was viewed by <company>";
+- `interview`: interview / собеседование / meeting invite / technical task / next steps / scheduling links;
+- `rejection`: the rejection wording from [gmail.md](gmail.md#rejections) in subject or snippet (ATS and direct mail too); also recorded as a `Rejection` when the company is known;
+- `recruiter_outreach`: the thread was started by someone else and is not an ATS or LinkedIn notification;
+- `other`.
+
+## In the queue
+
+- **contacted · N** badge with the latest events: date, type, role or subject, link to the Gmail thread; an extra warning when you already applied;
+- or **no contacts found**, stated explicitly.
+
+## Commands
+
+```sh
+uv run job-radar import contacts   # link and label mail already in the database
+uv run job-radar sync gmail        # runs it last
+```

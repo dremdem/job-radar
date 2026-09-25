@@ -113,3 +113,29 @@ def test_reject_is_a_toggle(client, session):
     text = client.post(f"/opportunities/{o.id}/rejected").text
     assert "rejected ·" not in text
     assert "un-reject" not in text
+
+
+def test_queue_shows_company_history(client, session):
+    from datetime import UTC, datetime
+
+    from job_radar.models import Application, ApplicationReview, ApplicationSource
+
+    known = add_opportunity(session, title="Known company role")
+    session.add(
+        Application(
+            company_id=known.company_id,
+            applied_at=datetime(2026, 3, 12, tzinfo=UTC),
+            role="Python Developer",
+            source=ApplicationSource.LINKEDIN,
+            review=ApplicationReview.CONFIRMED,
+        )
+    )
+    session.commit()
+    text = client.get("/").text
+    assert "contacted · 1" in text
+    assert "already applied 2026-03-12" in text
+
+
+def test_queue_says_no_contacts(client, session):
+    add_opportunity(session, title="Fresh company role")
+    assert "no contacts found" in client.get("/").text

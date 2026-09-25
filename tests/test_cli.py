@@ -76,3 +76,10 @@ def test_import_applications(tmp_path, monkeypatch):
     result = runner.invoke(app, ["import", "applications"])
     assert result.exit_code == 0, result.output
     assert "applications: 0 found, 0 new" in result.output
+
+
+def test_import_contacts(tmp_path, monkeypatch):
+    monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
+    result = runner.invoke(app, ["import", "contacts"])
+    assert result.exit_code == 0, result.output
+    assert "contacts: 0 linked" in result.output

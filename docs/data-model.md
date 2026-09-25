@@ -109,8 +109,9 @@ A Gmail message relevant to the search. Unique on `gmail_message_id`.
 | `label_ids` | JSON list of Gmail label ids |
 | `categories` | JSON list of sync query names that returned it (`linkedin_alerts`, `job_proposal`) |
 | `body_html`, `body_text` | Stored only for LinkedIn alerts, see [gmail.md](gmail.md#privacy-decisions) |
-| `detected_event` | Nullable: `alert`, `application_confirmation`, `rejection`, `interview`, … |
-| `company_id` | Optional link |
+| `detected_event` | Nullable: `application_confirmation`, `application_update`, `rejection`, `interview`, `recruiter_outreach`, `other` |
+| `company_id` | Optional link, see [applications.md](applications.md#linking-mail-to-a-company) |
+| `company_match` | Nullable: `exact` or `probable` |
 
 ## SyncCursor
 
