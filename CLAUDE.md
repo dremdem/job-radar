@@ -6,7 +6,7 @@ Job Radar: local-first assistant for reviewing job opportunities. Plan and scope
 
 1. **Issue first.** Every change starts from a GitHub issue. If none exists, create one with goal, scope and "done" criteria.
 2. **Branch.** Branch off fresh `main`, named `<type>/<short-slug>` (`feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, `test/`). Never commit directly to `main`.
-3. **PR.** Open a PR that references the issue (`Closes #N`). Squash-merge, delete the branch.
+3. **PR.** Open a PR that references the issue (`Closes #N`). Merge only when CI is green; squash-merge, delete the branch.
 4. Keep PRs small and focused on one issue. Unrelated findings go into new issues, not into the current PR.
 
 ## Documentation first, test first

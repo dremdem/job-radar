@@ -66,4 +66,6 @@ uv run ruff check . && uv run ruff format --check .
 uv run pytest
 ```
 
+The same checks run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) on every PR and on `main`. Tests use fixtures only: no secrets, no Gmail.
+
 Schema changes: edit `job_radar/models.py`, then `uv run alembic revision --autogenerate -m "..."` and review the generated file.
