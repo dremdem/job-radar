@@ -23,7 +23,7 @@ class AlertJob:
     company: str
     location: str | None
     salary: str | None
-    easy_apply: bool
+    easy_apply: bool | None  # None: the source does not say
 
     @property
     def url(self) -> str:
@@ -91,6 +91,39 @@ class ImportStats:
     new: int = 0
 
 
+LINKEDIN_SOURCES = (SourceType.LINKEDIN_ALERT, SourceType.LINKEDIN_SEARCH)
+
+
+def add_linkedin_job(
+    session: Session, job: AlertJob, source_type: SourceType, *, remote_known: bool = True
+) -> bool:
+    """Create an opportunity for a LinkedIn job id not seen by any LinkedIn source yet."""
+    exists = session.scalar(
+        select(SourceRecord.id).where(
+            SourceRecord.source_type.in_(LINKEDIN_SOURCES), SourceRecord.external_id == job.job_id
+        )
+    )
+    if exists is not None:
+        return False
+    score = score_job(job.title, job.location, remote_known=remote_known)
+    opportunity = Opportunity(
+        title=job.title,
+        company=get_or_create_company(session, job.company),
+        location=job.location,
+        salary=job.salary,
+        easy_apply=job.easy_apply,
+        score=score.value,
+        score_reasons=[r.as_dict() for r in score.reasons],
+    )
+    session.add(
+        SourceRecord(
+            source_type=source_type, external_id=job.job_id, url=job.url, opportunity=opportunity
+        )
+    )
+    session.flush()
+    return True
+
+
 def import_alerts(session: Session) -> ImportStats:
     """Create opportunities for jobs from stored alert emails. Idempotent by LinkedIn job id."""
     stats = ImportStats()
@@ -103,33 +136,7 @@ def import_alerts(session: Session) -> ImportStats:
         stats.emails += 1
         for job in parse_alert(email.body_html or ""):
             stats.jobs += 1
-            exists = session.scalar(
-                select(SourceRecord.id).where(
-                    SourceRecord.source_type == SourceType.LINKEDIN_ALERT,
-                    SourceRecord.external_id == job.job_id,
-                )
-            )
-            if exists is not None:
-                continue
-            score = score_job(job.title, job.location)
-            opportunity = Opportunity(
-                title=job.title,
-                company=get_or_create_company(session, job.company),
-                location=job.location,
-                salary=job.salary,
-                easy_apply=job.easy_apply,
-                score=score.value,
-                score_reasons=[r.as_dict() for r in score.reasons],
-            )
-            session.add(
-                SourceRecord(
-                    source_type=SourceType.LINKEDIN_ALERT,
-                    external_id=job.job_id,
-                    url=job.url,
-                    opportunity=opportunity,
-                )
-            )
-            session.flush()
-            stats.new += 1
+            if add_linkedin_job(session, job, SourceType.LINKEDIN_ALERT):
+                stats.new += 1
     session.commit()
     return stats

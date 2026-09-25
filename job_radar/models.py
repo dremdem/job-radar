@@ -23,6 +23,7 @@ def _enum(cls: type[enum.Enum]) -> Enum:
 
 class SourceType(enum.StrEnum):
     LINKEDIN_ALERT = "linkedin_alert"
+    LINKEDIN_SEARCH = "linkedin_search"  # opt-in public guest search, see docs
     GMAIL = "gmail"
     HIMALAYAS = "himalayas"
     TELEGRAM = "telegram"
@@ -194,3 +195,21 @@ class SyncCursor(Base):
     name: Mapped[str] = mapped_column(String(64), primary_key=True)
     last_message_at: Mapped[datetime | None]
     last_run_at: Mapped[datetime | None]
+
+
+class LinkedInFetch(Base):
+    """Audit log of requests to LinkedIn's public guest search (opt-in, #23)."""
+
+    __tablename__ = "linkedin_fetches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
+    email_message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_messages.id"), index=True
+    )
+    keywords: Mapped[str] = mapped_column(String(255))
+    geo_id: Mapped[str | None] = mapped_column(String(32))
+    start: Mapped[int]
+    http_status: Mapped[int | None]
+    status: Mapped[str] = mapped_column(String(16))  # ok / blocked / error
+    jobs: Mapped[int] = mapped_column(default=0)

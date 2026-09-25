@@ -169,3 +169,19 @@ def test_history_is_expanded_and_can_be_toggled(client, session):
     text = client.get("/").text
     assert '<details class="history small" open>' in text
     assert 'id="expand-all"' in text and 'id="collapse-all"' in text
+
+
+def test_public_search_jobs_are_marked(client, session):
+    from job_radar.dedup import upsert_source_record
+    from job_radar.models import SourceType
+
+    o = add_opportunity(session, title="Found by search")
+    upsert_source_record(
+        session,
+        source_type=SourceType.LINKEDIN_SEARCH,
+        external_id="7",
+        url="https://www.linkedin.com/jobs/view/7/",
+        opportunity=o,
+    )
+    session.commit()
+    assert '<span class="badge">public search</span>' in client.get("/").text

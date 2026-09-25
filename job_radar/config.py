@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///data/job_radar.db"
     gmail_client_secret: Path = Path("secrets/gmail_client_secret.json")
     gmail_token: Path = Path("secrets/gmail_token.json")
+    # Opt-in public LinkedIn guest search, see docs/linkedin-public-search.md.
+    linkedin_public_search: bool = False
+    linkedin_public_max_searches_per_day: int = 5
+    linkedin_public_max_jobs: int = 25
+    linkedin_public_delay_seconds: float = 3.0
 
 
 @lru_cache

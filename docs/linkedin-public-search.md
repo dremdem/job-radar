@@ -1,0 +1,34 @@
+# LinkedIn public search (opt-in)
+
+An alert email lists about 6 jobs; the same search on LinkedIn shows ~25 on its first page. With this **opt-in** feature (#23) Job Radar reads that first page from LinkedIn's **public guest search**, without logging in. Off by default.
+
+What it never does: log in, send cookies, use a browser or a browser profile, click, apply. It is still automated reading of linkedin.com and against LinkedIn's terms; the account is not involved, the IP may get throttled. See the LinkedIn rule in [CLAUDE.md](../CLAUDE.md).
+
+## Flow
+
+1. A new alert email arrives (`job-radar sync gmail`).
+2. Its "Your job alert for …" link carries the search: `keywords`, `geoId`, `f_TPR=a<timestamp>-` (jobs since the previous alert). Only these are taken; the personal tokens in the link are ignored.
+3. The guest endpoint `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search` is requested with those parameters (`f_TPR` becomes `r<seconds since then>`, between 1 hour and 7 days), 10 cards per request, `start=0,10,20`, **first 25 jobs** only.
+4. Cards become opportunities like alert jobs: dedup by LinkedIn job id across alert and search, same score. Guest cards show neither the work format nor Easy Apply, so the "No remote marker" penalty is replaced by a small "work format not shown" risk, and Easy Apply is unknown.
+
+Each alert email is searched once. Only alerts from the last 3 days are considered, so turning the feature on does not dig through old mail.
+
+## Safety limits
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `JOB_RADAR_LINKEDIN_PUBLIC_SEARCH` | `false` | Master switch |
+| `JOB_RADAR_LINKEDIN_PUBLIC_MAX_SEARCHES_PER_DAY` | `5` | Alert searches per UTC day |
+| `JOB_RADAR_LINKEDIN_PUBLIC_MAX_JOBS` | `25` | Jobs taken per search |
+| `JOB_RADAR_LINKEDIN_PUBLIC_DELAY_SECONDS` | `3` | Pause between requests |
+
+**Stop on the first sign of blocking**: HTTP 429 or 999, a redirect to login/authwall/checkpoint, or a page without job cards that mentions a challenge/captcha. The fetch is recorded as `blocked` and nothing more is requested until the next UTC day. No retries, no workarounds.
+
+Every request is written to `linkedin_fetches` (time, search, `start`, HTTP status, result, number of cards) for audit.
+
+## Commands
+
+```sh
+JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true uv run job-radar sync gmail   # or put it in .env
+uv run job-radar import linkedin-search                               # only this step
+```

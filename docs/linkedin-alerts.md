@@ -41,6 +41,8 @@ Rule-based, from title and location only (`job_radar/scoring.py`). Starts at 5, 
 - **positives**: Senior/Staff/Lead, Python, Backend, FastAPI/Django/Flask, Platform/Data;
 - **risks**: Frontend, Java/.NET/PHP/… without Python, Junior/Intern, Full-stack, on-site/hybrid, remote limited to one country ("remote in Germany" is not "remote from Thailand").
 
+Only the ~6 jobs in the email are seen; the rest of the search's first page can be read with the opt-in [public search](linkedin-public-search.md).
+
 An alert has no full description, so every such opportunity is marked **verify manually** until a full description is found (#22, #23).
 
 ## Commands

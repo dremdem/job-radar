@@ -89,6 +89,42 @@ def _import_linkedin(session) -> None:
     typer.echo(f"linkedin: {stats.emails} alert emails, {stats.jobs} jobs, {stats.new} new")
 
 
+@import_app.command("linkedin-search")
+def import_linkedin_search() -> None:
+    """Opt-in: first page of LinkedIn's public search for each new alert (no login)."""
+    settings = Settings()
+    upgrade_database(settings.database_url)
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            _import_linkedin_search(session, settings)
+    finally:
+        engine.dispose()
+
+
+def _import_linkedin_search(session, settings: Settings) -> None:
+    from .linkedin.public import PublicSearchClient, import_public_search
+
+    if not settings.linkedin_public_search:
+        typer.echo(
+            "linkedin-search: disabled; set JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true to enable "
+            "(see docs/linkedin-public-search.md)."
+        )
+        return
+    stats = import_public_search(
+        session,
+        PublicSearchClient(delay=settings.linkedin_public_delay_seconds),
+        max_searches=settings.linkedin_public_max_searches_per_day,
+        max_jobs=settings.linkedin_public_max_jobs,
+    )
+    typer.echo(
+        f"linkedin-search: {stats.searches} searches, {stats.requests} requests, "
+        f"{stats.jobs} jobs, {stats.new} new" + (f", {stats.errors} errors" if stats.errors else "")
+    )
+    if stats.blocked:
+        typer.echo("linkedin-search: LinkedIn is blocking guest requests; stopped until tomorrow.")
+
+
 @import_app.command("rejections")
 def import_rejections(
     recheck: Annotated[
@@ -247,6 +283,8 @@ def _sync_gmail(names: list[str] | None, since: datetime | None) -> None:
                 progress=_report_progress,
             )
             _import_linkedin(session)
+            if settings.linkedin_public_search:
+                _import_linkedin_search(session, settings)
             _import_rejections(session, client)
             _import_applications(session, client)
             _import_contacts(session)

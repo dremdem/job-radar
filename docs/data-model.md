@@ -32,7 +32,7 @@ One vacancy, independent of where it was seen.
 | `score` | Nullable float, 0–10; rule-based for now (#13). Intrinsic (title/location) score; the rejection penalty is applied at display time, see [Rejection](#rejection) |
 | `score_reasons` | JSON list of `{"sign": "+" or "-", "text": ...}` explaining the score |
 | `location`, `salary` | As shown by the source, free text |
-| `easy_apply` | Nullable bool: LinkedIn Easy Apply |
+| `easy_apply` | Nullable bool: LinkedIn Easy Apply; unknown (null) for public search |
 | `created_at`, `updated_at` | UTC |
 
 ## SourceRecord
@@ -41,7 +41,7 @@ One sighting of an opportunity in a source. Unique on `(source_type, external_id
 
 | Column | Notes |
 |---|---|
-| `source_type` | `linkedin_alert`, `gmail`, `himalayas`, `telegram` |
+| `source_type` | `linkedin_alert`, `linkedin_search` (public guest search, [linkedin-public-search.md](linkedin-public-search.md)), `gmail`, `himalayas`, `telegram`. A LinkedIn job id is one opportunity whichever LinkedIn source saw it |
 | `external_id` | Stable id inside the source (e.g. LinkedIn job id) |
 | `url` | Canonical URL, tracking parameters stripped |
 | `opportunity_id` | |
@@ -122,3 +122,16 @@ Per-query position of an incremental import.
 | `name` | Primary key, e.g. `gmail:linkedin_alerts` |
 | `last_message_at` | Date of the newest message seen |
 | `last_run_at` | UTC time of the last successful run |
+
+## LinkedInFetch
+
+Audit log of requests to LinkedIn's public guest search (`linkedin_fetches`).
+
+| Column | Notes |
+|---|---|
+| `at` | UTC |
+| `email_message_id` | The alert whose search was run |
+| `keywords`, `geo_id`, `start` | What was requested |
+| `http_status` | Nullable |
+| `status` | `ok`, `blocked`, `error` |
+| `jobs` | Cards on the page |

@@ -57,7 +57,7 @@ def _title_reasons(title: str) -> list[tuple[float, Reason]]:
     return out
 
 
-def _location_reasons(location: str | None) -> list[tuple[float, Reason]]:
+def _location_reasons(location: str | None, remote_known: bool) -> list[tuple[float, Reason]]:
     if not location:
         return []
     if _has(r"worldwide|anywhere|global", location):
@@ -71,10 +71,15 @@ def _location_reasons(location: str | None) -> list[tuple[float, Reason]]:
         if place:
             return [(-0.5, Reason("-", f"Remote listed for {place}: check if Thailand is allowed"))]
         return []
+    if not remote_known:
+        # Public search cards never show the work format; absence says nothing.
+        text = f"Work format not shown for {location}: check remote and Thailand"
+        return [(-0.5, Reason("-", text))]
     return [(-2.0, Reason("-", "No remote marker in location"))]
 
 
-def score_job(title: str, location: str | None) -> Score:
-    fired = _title_reasons(title) + _location_reasons(location)
+def score_job(title: str, location: str | None, *, remote_known: bool = True) -> Score:
+    """``remote_known=False`` when the source never shows the work format (public search)."""
+    fired = _title_reasons(title) + _location_reasons(location, remote_known)
     value = BASE + sum(points for points, _ in fired)
     return Score(value=round(min(10.0, max(0.0, value)), 1), reasons=[r for _, r in fired])
