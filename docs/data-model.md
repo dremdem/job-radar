@@ -58,13 +58,20 @@ Raw text of a vacancy at a point in time. Unique on `(source_record_id, content_
 
 ## Application
 
-A fact that the user applied somewhere, with its current status.
+A fact that the user applied somewhere. Built from mail by [applications.md](applications.md) or entered by hand.
 
 | Column | Notes |
 |---|---|
 | `company_id` | Required |
-| `opportunity_id` | Optional: historic applications may not map to a known vacancy |
-| `applied_at`, `status`, `notes` | `status` is free text for now (`applied`, `rejected`, `interview`, …) |
+| `opportunity_id` | Optional: set when the LinkedIn job id matches a known opportunity |
+| `applied_at` | Date of the confirmation email |
+| `role` | Nullable: unknown when the email does not say |
+| `status` | `applied` by default; shown as `rejected` when a later rejection exists |
+| `source` | `linkedin`, `ats`, `manual` |
+| `review` | `confirmed`, `suggested` (needs the user), `dismissed` (kept so it is not re-suggested) |
+| `email_message_id` | Unique, nullable: the email it came from |
+| `linkedin_job_id` | Nullable: from the "View job" link |
+| `notes` | |
 
 ## Rejection
 

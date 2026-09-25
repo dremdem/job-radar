@@ -128,6 +128,47 @@ def _import_rejections(session, client=None, *, recheck: bool = False) -> None:
         )
 
 
+@import_app.command("applications")
+def import_applications() -> None:
+    """Past applications from confirmation emails already in the database."""
+    settings = Settings()
+    upgrade_database(settings.database_url)
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            _import_applications(session)
+    finally:
+        engine.dispose()
+
+
+def _gmail_client_or_none():
+    from .gmail.auth import GmailAuthError, load_credentials
+    from .gmail.client import ApiGmailClient
+
+    try:
+        return ApiGmailClient(load_credentials(Settings().gmail_token))
+    except GmailAuthError:
+        return None
+
+
+def _import_applications(session, client=None) -> None:
+    from .applications import import_applications as run
+    from .gmail.client import body_fetcher
+
+    client = client or _gmail_client_or_none()
+    stats = run(session, fetch_body=body_fetcher(client) if client else None)
+    typer.echo(
+        f"applications: {stats.detected} found, {stats.new} new, "
+        f"{stats.linked} linked to an existing one"
+        + (f", {stats.fetched} bodies checked in Gmail" if stats.fetched else "")
+    )
+    if stats.pending:
+        typer.echo(
+            f"applications: role unknown for {stats.pending} LinkedIn confirmations until "
+            "Gmail access; run `job-radar gmail auth`, then this command again."
+        )
+
+
 @app.command()
 def sync(
     source: SourceType,
@@ -182,6 +223,7 @@ def _sync_gmail(names: list[str] | None, since: datetime | None) -> None:
             )
             _import_linkedin(session)
             _import_rejections(session, client)
+            _import_applications(session, client)
     finally:
         engine.dispose()
     for name, stats in results.items():

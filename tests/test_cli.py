@@ -68,3 +68,11 @@ def test_import_rejections_without_gmail_reports_pending(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "1 without body" in result.output
     assert "job-radar gmail auth" in result.output
+
+
+def test_import_applications(tmp_path, monkeypatch):
+    monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
+    monkeypatch.setenv("JOB_RADAR_GMAIL_TOKEN", str(tmp_path / "missing.json"))
+    result = runner.invoke(app, ["import", "applications"])
+    assert result.exit_code == 0, result.output
+    assert "applications: 0 found, 0 new" in result.output

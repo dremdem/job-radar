@@ -45,6 +45,18 @@ class RejectionSource(enum.StrEnum):
     GMAIL = "gmail"
 
 
+class ApplicationSource(enum.StrEnum):
+    LINKEDIN = "linkedin"
+    ATS = "ats"
+    MANUAL = "manual"
+
+
+class ApplicationReview(enum.StrEnum):
+    CONFIRMED = "confirmed"
+    SUGGESTED = "suggested"  # found by heuristics, waits for the user
+    DISMISSED = "dismissed"  # kept so re-imports do not suggest it again
+
+
 class Company(Base):
     __tablename__ = "companies"
 
@@ -117,6 +129,19 @@ class Application(Base):
     applied_at: Mapped[datetime]
     status: Mapped[str] = mapped_column(String(32), default="applied")
     notes: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str | None] = mapped_column(String(255))
+    source: Mapped[ApplicationSource] = mapped_column(
+        _enum(ApplicationSource), default=ApplicationSource.MANUAL
+    )
+    review: Mapped[ApplicationReview] = mapped_column(
+        _enum(ApplicationReview), default=ApplicationReview.CONFIRMED, index=True
+    )
+    email_message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_messages.id"), unique=True
+    )
+    linkedin_job_id: Mapped[str | None] = mapped_column(String(32))
+
+    company: Mapped[Company] = relationship()
 
 
 class Rejection(Base):

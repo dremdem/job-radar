@@ -9,9 +9,17 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from .. import applications as apps
 from ..config import Settings, get_settings
 from ..db import make_engine, make_session_factory
-from ..models import Opportunity, OpportunityState, SourceRecord
+from ..models import (
+    Application,
+    ApplicationReview,
+    EmailMessage,
+    Opportunity,
+    OpportunityState,
+    SourceRecord,
+)
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -73,7 +81,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session.commit()
         return templates.TemplateResponse(request, "_queue.html", _queue_context(session))
 
+    @app.get("/applications", response_class=HTMLResponse)
+    def applications_page(request: Request, session: SessionDep) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request, "applications.html", _applications_context(session)
+        )
+
+    @app.post("/applications/confirm-all", response_class=HTMLResponse)
+    def applications_confirm_all(request: Request, session: SessionDep) -> HTMLResponse:
+        apps.confirm_all(session)
+        return templates.TemplateResponse(
+            request, "_applications.html", _applications_context(session)
+        )
+
+    @app.post("/applications/{app_id}/{action}", response_class=HTMLResponse)
+    def applications_review(
+        request: Request, app_id: int, action: str, session: SessionDep
+    ) -> HTMLResponse:
+        handlers = {"confirm": apps.confirm, "dismiss": apps.dismiss}
+        if action not in handlers:
+            raise HTTPException(status_code=404, detail="Unknown action")
+        if handlers[action](session, app_id) is None:
+            raise HTTPException(status_code=404, detail="Application not found")
+        return templates.TemplateResponse(
+            request, "_applications.html", _applications_context(session)
+        )
+
     return app
+
+
+def _gmail_link(thread_id: str | None) -> str | None:
+    return f"https://mail.google.com/mail/u/0/#all/{thread_id}" if thread_id else None
+
+
+def _applications_context(session: Session) -> dict:
+    rows = session.execute(
+        select(Application, EmailMessage.gmail_thread_id)
+        .outerjoin(EmailMessage, Application.email_message_id == EmailMessage.id)
+        .options(joinedload(Application.company))
+        .where(Application.review != ApplicationReview.DISMISSED)
+        .order_by(Application.applied_at.desc())
+    ).all()
+    items = [
+        {"a": a, "status": apps.application_status(session, a), "gmail": _gmail_link(thread)}
+        for a, thread in rows
+    ]
+    suggested = [i for i in items if i["a"].review is ApplicationReview.SUGGESTED]
+    confirmed = [i for i in items if i["a"].review is ApplicationReview.CONFIRMED]
+    return {"suggested": suggested, "confirmed": confirmed, "has_any": bool(items)}
 
 
 def _load_opportunities(session: Session):
