@@ -146,9 +146,9 @@ def test_queue_rows_have_state_buttons(client, session):
     text = client.get("/").text
     for state in ("interested", "ignore", "applied"):
         assert (
-            f'hx-post="/opportunities/{opportunity.id}/state" hx-vals=\'{{"state": "{state}"}}\''
-            in text
-        )
+            f'hx-post="/opportunities/{opportunity.id}/state" '
+            f'hx-vals=\'{{"state": "{state}", "tab": "review"}}\''
+        ) in text
 
 
 def test_history_is_expanded_and_can_be_toggled(client, session):

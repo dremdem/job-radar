@@ -17,6 +17,8 @@ uv run job-radar db upgrade  # create / migrate the SQLite database
 uv run job-radar serve       # http://127.0.0.1:8000 — review queue
 ```
 
+How the queue works (tabs, buttons): [docs/queue.md](docs/queue.md).
+
 The queue is empty until a source is imported. To look around first: `uv run job-radar demo`.
 
 ## CLI

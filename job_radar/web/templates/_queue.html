@@ -1,4 +1,7 @@
-<table id="queue">
+<div id="queue">
+{% include "_tabs.html" %}
+{% if rows %}
+<table>
   <thead><tr><th>Title</th><th>Company</th><th>Score</th><th>State</th><th></th></tr></thead>
   <tbody>
     {% for row in rows %}
@@ -6,3 +9,7 @@
     {% endfor %}
   </tbody>
 </table>
+{% else %}
+<p class="muted">Nothing here.</p>
+{% endif %}
+</div>

@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .. import applications as apps
@@ -43,6 +43,21 @@ _STATE_ORDER = [
 ]
 
 
+# Queue tabs: key -> (label, states shown; None = all).
+TABS: dict[str, tuple[str, list[OpportunityState] | None]] = {
+    "review": ("To review", [OpportunityState.NEW]),
+    "interested": ("Interested", [OpportunityState.INTERESTED]),
+    "applied": ("Applied", [OpportunityState.APPLIED]),
+    "ignored": ("Ignored", [OpportunityState.IGNORE]),
+    "all": ("All", None),
+}
+DEFAULT_TAB = "review"
+
+
+def _tab(value: str | None) -> str:
+    return value if value in TABS else DEFAULT_TAB
+
+
 def get_session(request: Request) -> Iterator[Session]:
     with request.app.state.session_factory() as session:
         yield session
@@ -68,8 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/", response_class=HTMLResponse)
-    def queue(request: Request, session: SessionDep) -> HTMLResponse:
-        return templates.TemplateResponse(request, "queue.html", _queue_context(session))
+    def queue(request: Request, session: SessionDep, tab: str = DEFAULT_TAB) -> HTMLResponse:
+        return templates.TemplateResponse(request, "queue.html", _queue_context(session, _tab(tab)))
 
     @app.post("/opportunities/{opportunity_id}/state", response_class=HTMLResponse)
     def set_state(
@@ -77,19 +92,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         opportunity_id: int,
         state: Annotated[OpportunityState, Form()],
         session: SessionDep,
+        tab: Annotated[str, Form()] = DEFAULT_TAB,
     ) -> HTMLResponse:
+        tab = _tab(tab)
         opportunity = _get_opportunity(session, opportunity_id)
         opportunity.state = state
         session.commit()
-        return templates.TemplateResponse(request, "_row.html", _row_context(session, opportunity))
+        if tab == "all":
+            # Keep the row in place; refresh the tab counts out of band.
+            context = _row_context(session, opportunity) | _tabs_context(session, tab)
+            return templates.TemplateResponse(request, "_row_and_tabs.html", context)
+        return templates.TemplateResponse(request, "_queue.html", _queue_context(session, tab))
 
     @app.post("/opportunities/{opportunity_id}/rejected", response_class=HTMLResponse)
-    def set_rejected(request: Request, opportunity_id: int, session: SessionDep) -> HTMLResponse:
+    def set_rejected(
+        request: Request,
+        opportunity_id: int,
+        session: SessionDep,
+        tab: Annotated[str, Form()] = DEFAULT_TAB,
+    ) -> HTMLResponse:
         # Rejection is per company, so a toggle can move several rows: re-render the queue.
         opportunity = _get_opportunity(session, opportunity_id)
         toggle_manual_rejection(session, opportunity)
         session.commit()
-        return templates.TemplateResponse(request, "_queue.html", _queue_context(session))
+        return templates.TemplateResponse(
+            request, "_queue.html", _queue_context(session, _tab(tab))
+        )
 
     @app.post("/opportunities/{opportunity_id}/notes", response_class=HTMLResponse)
     def add_opportunity_note(
@@ -100,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         kind: Annotated[NoteKind, Form()] = NoteKind.NOTE,
         detail: Annotated[str, Form()] = "",
         comment: Annotated[str, Form()] = "",
+        tab: Annotated[str, Form()] = DEFAULT_TAB,
     ) -> HTMLResponse:
         # Penalties and history are per company, so the whole queue is re-rendered.
         opportunity = _get_opportunity(session, opportunity_id)
@@ -112,13 +141,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(status_code=422, detail="Unknown action")
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
-        return templates.TemplateResponse(request, "_queue.html", _queue_context(session))
+        return templates.TemplateResponse(
+            request, "_queue.html", _queue_context(session, _tab(tab))
+        )
 
     @app.post("/notes/{note_id}/delete", response_class=HTMLResponse)
-    def remove_note(request: Request, note_id: int, session: SessionDep) -> HTMLResponse:
+    def remove_note(
+        request: Request,
+        note_id: int,
+        session: SessionDep,
+        tab: Annotated[str, Form()] = DEFAULT_TAB,
+    ) -> HTMLResponse:
         if not delete_note(session, note_id):
             raise HTTPException(status_code=404, detail="Note not found")
-        return templates.TemplateResponse(request, "_queue.html", _queue_context(session))
+        return templates.TemplateResponse(
+            request, "_queue.html", _queue_context(session, _tab(tab))
+        )
 
     @app.get("/applications", response_class=HTMLResponse)
     def applications_page(request: Request, session: SessionDep) -> HTMLResponse:
@@ -170,13 +208,14 @@ def _applications_context(session: Session) -> dict:
     return {"suggested": suggested, "confirmed": confirmed, "has_any": bool(items)}
 
 
-def _load_opportunities(session: Session):
-    return session.scalars(
-        select(Opportunity).options(
-            joinedload(Opportunity.company),
-            selectinload(Opportunity.source_records).selectinload(SourceRecord.snapshots),
-        )
-    ).all()
+def _load_opportunities(session: Session, states: list[OpportunityState] | None = None):
+    query = select(Opportunity).options(
+        joinedload(Opportunity.company),
+        selectinload(Opportunity.source_records).selectinload(SourceRecord.snapshots),
+    )
+    if states is not None:
+        query = query.where(Opportunity.state.in_(states))
+    return session.scalars(query).all()
 
 
 def _get_opportunity(session: Session, opportunity_id: int) -> Opportunity:
@@ -213,12 +252,29 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
     }
 
 
-def _queue_context(session: Session) -> dict:
+def _tabs_context(session: Session, tab: str) -> dict:
+    counts = dict(
+        session.execute(select(Opportunity.state, func.count()).group_by(Opportunity.state)).all()
+    )
+    tabs = [
+        (
+            key,
+            label,
+            sum(counts.values()) if states is None else sum(counts.get(s, 0) for s in states),
+        )
+        for key, (label, states) in TABS.items()
+    ]
+    return {"tab": tab, "tabs": tabs, "total": sum(counts.values())}
+
+
+def _queue_context(session: Session, tab: str = DEFAULT_TAB) -> dict:
     rejected = latest_rejections(session)
-    rows = [_row_context(session, o, rejected) for o in _load_opportunities(session)]
+    opportunities = _load_opportunities(session, TABS[tab][1])
+    rows = [_row_context(session, o, rejected) for o in opportunities]
     rows.sort(key=_queue_order)
+    context = _tabs_context(session, tab)
     # _queue.html includes _row.html per row; the buttons need the states in scope.
-    return {"rows": rows, "has_any": bool(rows), "states": _manual_states()}
+    return context | {"rows": rows, "has_any": context["total"] > 0, "states": _manual_states()}
 
 
 def _queue_order(row: dict) -> tuple:

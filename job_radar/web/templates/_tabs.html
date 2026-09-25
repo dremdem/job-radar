@@ -1,0 +1,3 @@
+<nav id="tabs" class="tabs"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% for key, label, count in tabs %}<a href="/?tab={{ key }}"{% if key == tab %} class="active" aria-current="page"{% endif %}>{{ label }} ({{ count }})</a>{% if not loop.last %} · {% endif %}{% endfor %}
+</nav>
