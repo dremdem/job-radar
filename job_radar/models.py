@@ -58,6 +58,16 @@ class ApplicationReview(enum.StrEnum):
     DISMISSED = "dismissed"  # kept so re-imports do not suggest it again
 
 
+class NoteKind(enum.StrEnum):
+    ONLY_LOCATION = "only_location"
+    STACK = "stack"
+    SENIORITY = "seniority"
+    SALARY = "salary"
+    CONTRACT = "contract"
+    OTHER = "other"
+    NOTE = "note"  # a free note, not a reason to ignore
+
+
 class Company(Base):
     __tablename__ = "companies"
 
@@ -213,3 +223,19 @@ class LinkedInFetch(Base):
     http_status: Mapped[int | None]
     status: Mapped[str] = mapped_column(String(16))  # ok / blocked / error
     jobs: Mapped[int] = mapped_column(default=0)
+
+
+class OpportunityNote(Base):
+    """Why a vacancy was ignored, or a free note. See docs/applications.md#reasons-and-notes."""
+
+    __tablename__ = "opportunity_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    opportunity_id: Mapped[int] = mapped_column(ForeignKey("opportunities.id"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    kind: Mapped[NoteKind] = mapped_column(_enum(NoteKind))
+    detail: Mapped[str | None] = mapped_column(String(255))
+    comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    company: Mapped[Company] = relationship()

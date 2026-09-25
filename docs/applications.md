@@ -75,3 +75,21 @@ Linked mail without an event gets a rule-based label in `detected_event` (a hint
 uv run job-radar import contacts   # link and label mail already in the database
 uv run job-radar sync gmail        # runs it last
 ```
+
+# Reasons and notes
+
+`ignore` is about the vacancy, `rejected` is about the company (it said no). When a vacancy does not fit, say why:
+
+- **Ignore with a reason** (the row's *reason / note* form): `only <country>` (the country is prefilled from the location and can be edited), `stack`, `seniority`, `salary`, `contract`, `other`, plus an optional comment. The vacancy becomes `ignore`. A plain `ignore` button still works without a reason.
+- **Note**: the same form without ignoring, for any vacancy ("ask about EOR").
+
+Both are stored in `opportunity_notes` and appear in the company history as `ignored` / `note` events (date, reason, comment), with a delete button.
+
+## Effect on the score
+
+When a company had a vacancy ignored as `only <country>`, its **other** vacancies get a risk:
+
+- `− Last time <company> hired only in <country> (<date>)`: **−1.5**;
+- **−3** when the new vacancy is in the same country again.
+
+Only the latest such reason counts. Like the rejection penalty it is applied when the queue is shown, so it also affects vacancies already in the queue, and deleting the reason removes it. The company is never blocked. Other reasons (`stack`, `salary`, …) are shown in the history but do not change the score yet.

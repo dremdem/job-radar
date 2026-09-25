@@ -17,9 +17,17 @@ from ..models import (
     Application,
     ApplicationReview,
     EmailMessage,
+    NoteKind,
     Opportunity,
     OpportunityState,
     SourceRecord,
+)
+from ..notes import (
+    add_note,
+    country_from_location,
+    delete_note,
+    ignore_with_reason,
+    location_penalty,
 )
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
 
@@ -81,6 +89,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         opportunity = _get_opportunity(session, opportunity_id)
         toggle_manual_rejection(session, opportunity)
         session.commit()
+        return templates.TemplateResponse(request, "_queue.html", _queue_context(session))
+
+    @app.post("/opportunities/{opportunity_id}/notes", response_class=HTMLResponse)
+    def add_opportunity_note(
+        request: Request,
+        opportunity_id: int,
+        session: SessionDep,
+        action: Annotated[str, Form()],
+        kind: Annotated[NoteKind, Form()] = NoteKind.NOTE,
+        detail: Annotated[str, Form()] = "",
+        comment: Annotated[str, Form()] = "",
+    ) -> HTMLResponse:
+        # Penalties and history are per company, so the whole queue is re-rendered.
+        opportunity = _get_opportunity(session, opportunity_id)
+        try:
+            if action == "ignore":
+                ignore_with_reason(session, opportunity, kind, detail, comment)
+            elif action == "note":
+                add_note(session, opportunity, NoteKind.NOTE, comment=comment)
+            else:
+                raise HTTPException(status_code=422, detail="Unknown action")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        return templates.TemplateResponse(request, "_queue.html", _queue_context(session))
+
+    @app.post("/notes/{note_id}/delete", response_class=HTMLResponse)
+    def remove_note(request: Request, note_id: int, session: SessionDep) -> HTMLResponse:
+        if not delete_note(session, note_id):
+            raise HTTPException(status_code=404, detail="Note not found")
         return templates.TemplateResponse(request, "_queue.html", _queue_context(session))
 
     @app.get("/applications", response_class=HTMLResponse)
@@ -154,6 +191,13 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         rejected = latest_rejections(session)
     rejected_at = rejected.get(opportunity.company_id)
     history = company_history(session, opportunity.company_id)
+    eff_score = effective_score(opportunity.score, rejected=rejected_at is not None)
+    extra_reasons = []
+    if penalty := location_penalty(session, opportunity):
+        points, reason = penalty
+        extra_reasons.append(reason)
+        if eff_score is not None:
+            eff_score = round(max(0.0, eff_score + points), 1)
     applied = [e.at for e in history if e.kind == "applied"]
     return {
         "history": history[:HISTORY_SHOWN],
@@ -162,7 +206,10 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         "o": opportunity,
         "states": _manual_states(),
         "rejected_at": rejected_at,
-        "eff_score": effective_score(opportunity.score, rejected=rejected_at is not None),
+        "eff_score": eff_score,
+        "extra_reasons": extra_reasons,
+        "country": country_from_location(opportunity.location) or "",
+        "reason_kinds": [k for k in NoteKind if k is not NoteKind.NOTE],
     }
 
 

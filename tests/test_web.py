@@ -185,3 +185,54 @@ def test_public_search_jobs_are_marked(client, session):
     )
     session.commit()
     assert '<span class="badge">public search</span>' in client.get("/").text
+
+
+def test_ignore_with_reason_from_the_queue(client, session):
+    from job_radar.models import OpportunityNote, OpportunityState
+
+    o = add_opportunity(session, title="India only role")
+    o.location = "Lucknow, Uttar Pradesh, India"
+    other = add_opportunity(session, title="Another role")
+    other.score = 8.0
+    session.commit()
+    text = client.get("/").text
+    assert 'name="detail" value="India"' in text
+
+    response = client.post(
+        f"/opportunities/{o.id}/notes",
+        data={
+            "action": "ignore",
+            "kind": "only_location",
+            "detail": "India",
+            "comment": "residents",
+        },
+    )
+    assert response.status_code == 200
+    session.refresh(o)
+    assert o.state is OpportunityState.IGNORE
+    assert "only India · residents" in response.text
+    # The other vacancy of the same company now carries the risk and a lower score.
+    assert "Last time Acme hired only in India" in response.text
+    assert ">6.5<" in response.text
+
+    note = session.query(OpportunityNote).one()
+    after = client.post(f"/notes/{note.id}/delete").text
+    assert "Last time Acme hired only in India" not in after
+
+
+def test_add_note_from_the_queue(client, session):
+    o = add_opportunity(session)
+    response = client.post(
+        f"/opportunities/{o.id}/notes",
+        data={"action": "note", "kind": "note", "comment": "ask about EOR"},
+    )
+    assert response.status_code == 200
+    assert "ask about EOR" in response.text
+
+
+def test_empty_note_is_rejected(client, session):
+    o = add_opportunity(session)
+    response = client.post(
+        f"/opportunities/{o.id}/notes", data={"action": "note", "kind": "note", "comment": ""}
+    )
+    assert response.status_code == 422

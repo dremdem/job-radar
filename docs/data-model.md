@@ -135,3 +135,15 @@ Audit log of requests to LinkedIn's public guest search (`linkedin_fetches`).
 | `http_status` | Nullable |
 | `status` | `ok`, `blocked`, `error` |
 | `jobs` | Cards on the page |
+
+## OpportunityNote
+
+A reason to ignore a vacancy, or a free note (`opportunity_notes`). See [applications.md](applications.md#reasons-and-notes).
+
+| Column | Notes |
+|---|---|
+| `opportunity_id`, `company_id` | The vacancy and its company (company kept for history and score) |
+| `kind` | `only_location`, `stack`, `seniority`, `salary`, `contract`, `other`, `note` |
+| `detail` | For `only_location`: the country or region |
+| `comment` | Optional free text |
+| `created_at` | UTC |

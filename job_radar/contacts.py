@@ -19,9 +19,12 @@ from .models import (
     Company,
     EmailDirection,
     EmailMessage,
+    NoteKind,
+    OpportunityNote,
     Rejection,
     RejectionSource,
 )
+from .notes import describe
 from .rejections import mark_rejected
 
 EXACT, PROBABLE = "exact", "probable"
@@ -250,6 +253,7 @@ class HistoryEvent:
     text: str
     gmail_url: str | None
     probable: bool = False
+    note_id: int | None = None  # reasons and notes can be deleted from the history
 
 
 def gmail_url(thread_id: str | None) -> str | None:
@@ -293,6 +297,13 @@ def company_history(session: Session, company_id: int) -> list[HistoryEvent]:
                 gmail_url(e.gmail_thread_id),
                 probable=e.company_match == PROBABLE,
             )
+        )
+    for note in session.scalars(
+        select(OpportunityNote).where(OpportunityNote.company_id == company_id)
+    ):
+        kind = "note" if note.kind is NoteKind.NOTE else "ignored"
+        events.append(
+            HistoryEvent(_as_utc(note.created_at), kind, describe(note), None, note_id=note.id)
         )
     return sorted(events, key=lambda ev: ev.at, reverse=True)
 
