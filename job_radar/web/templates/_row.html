@@ -10,7 +10,7 @@
       {% if rejected_at %}<span class="badge reject">rejected · {{ rejected_at.strftime("%Y-%m-%d") }}</span>{% endif %}
     </div>
     {% if history_count %}
-    <details class="history small">
+    <details class="history small" open>
       <summary><span class="badge">contacted · {{ history_count }}</span>{% if applied_before %} <span class="badge warn">already applied {{ applied_before.strftime("%Y-%m-%d") }}</span>{% endif %}</summary>
       <ul>
         {% for e in history %}

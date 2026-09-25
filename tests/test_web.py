@@ -149,3 +149,23 @@ def test_queue_rows_have_state_buttons(client, session):
             f'hx-post="/opportunities/{opportunity.id}/state" hx-vals=\'{{"state": "{state}"}}\''
             in text
         )
+
+
+def test_history_is_expanded_and_can_be_toggled(client, session):
+    from datetime import UTC, datetime
+
+    from job_radar.models import Application, ApplicationReview, ApplicationSource
+
+    known = add_opportunity(session)
+    session.add(
+        Application(
+            company_id=known.company_id,
+            applied_at=datetime(2026, 3, 12, tzinfo=UTC),
+            source=ApplicationSource.LINKEDIN,
+            review=ApplicationReview.CONFIRMED,
+        )
+    )
+    session.commit()
+    text = client.get("/").text
+    assert '<details class="history small" open>' in text
+    assert 'id="expand-all"' in text and 'id="collapse-all"' in text

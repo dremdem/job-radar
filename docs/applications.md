@@ -66,7 +66,7 @@ Linked mail without an event gets a rule-based label in `detected_event` (a hint
 
 ## In the queue
 
-- **contacted · N** badge with the latest events: date, type, role or subject, link to the Gmail thread; an extra warning when you already applied;
+- **contacted · N** with the latest events, **expanded by default**: date, type, role or subject, link to the Gmail thread; an extra warning when you already applied. **Expand all** / **Collapse all** above the queue toggle every list at once;
 - or **no contacts found**, stated explicitly.
 
 ## Commands

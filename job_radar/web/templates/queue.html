@@ -2,6 +2,16 @@
 {% block content %}
 <h2>Review queue</h2>
 {% if has_any %}
+<p class="small">Company history:
+  <button id="expand-all" type="button" onclick="toggleHistory(true)">Expand all</button>
+  <button id="collapse-all" type="button" onclick="toggleHistory(false)">Collapse all</button>
+</p>
+<script>
+  // Works on rows re-rendered by HTMX too: it looks the lists up on every click.
+  function toggleHistory(open) {
+    document.querySelectorAll("details.history").forEach((d) => { d.open = open; });
+  }
+</script>
 {% include "_queue.html" %}
 {% else %}
 <p class="muted">No opportunities yet. Import some with <code>job-radar sync &lt;source&gt;</code>.</p>
