@@ -170,7 +170,8 @@ def _queue_context(session: Session) -> dict:
     rejected = latest_rejections(session)
     rows = [_row_context(session, o, rejected) for o in _load_opportunities(session)]
     rows.sort(key=_queue_order)
-    return {"rows": rows, "has_any": bool(rows)}
+    # _queue.html includes _row.html per row; the buttons need the states in scope.
+    return {"rows": rows, "has_any": bool(rows), "states": _manual_states()}
 
 
 def _queue_order(row: dict) -> tuple:

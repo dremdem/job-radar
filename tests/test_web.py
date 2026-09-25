@@ -139,3 +139,13 @@ def test_queue_shows_company_history(client, session):
 def test_queue_says_no_contacts(client, session):
     add_opportunity(session, title="Fresh company role")
     assert "no contacts found" in client.get("/").text
+
+
+def test_queue_rows_have_state_buttons(client, session):
+    opportunity = add_opportunity(session)
+    text = client.get("/").text
+    for state in ("interested", "ignore", "applied"):
+        assert (
+            f'hx-post="/opportunities/{opportunity.id}/state" hx-vals=\'{{"state": "{state}"}}\''
+            in text
+        )
