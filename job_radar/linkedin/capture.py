@@ -19,7 +19,7 @@ _NOISE = re.compile(
     r"^(promoted( by hirer)?|viewed|applied|saved|new|top applicant|easy apply|"
     r"be an early applicant|actively (reviewing applicants|recruiting|hiring)|"
     r"responses managed off linkedin|remote|hybrid|on-site|"
-    r"(reposted )?\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago|"
+    r"(reposted |posted )?\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago|"
     r"\d+\+?\s+(connections?|school alumni|alumni|applicants?)\b.*|over \d+ .*|"
     r"dismiss.*|your profile matches.*|.* with verification)$",
     re.IGNORECASE,
@@ -28,12 +28,16 @@ _SALARY = re.compile(r"[$€£¥₹]|/\s*(yr|year|hr|hour|mo|month)\b", re.IGNOR
 _MAX_TEXT = 20000
 
 
+_VERIFIED = re.compile(r"\s*\((verified job|with verification)\)\s*$", re.IGNORECASE)
+
+
 def _lines(text: str) -> list[str]:
     out: list[str] = []
     # "Be an early applicant · 1 day ago" is two noise items on one line.
     for raw in text.splitlines():
         for part in raw.split(" · "):
-            line = part.strip().strip("·").strip()
+            # Semantic search repeats the title as "<title> (Verified job)".
+            line = _VERIFIED.sub("", part.strip().strip("·").strip())
             if not line or _NOISE.match(line) or (out and line == out[-1]):
                 continue
             out.append(line)
@@ -100,6 +104,11 @@ def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
     if job_id := _job_id(detail.get("job_id")):
         record = _record(session, job_id)
         title, company = (detail.get("title") or "").strip(), (detail.get("company") or "").strip()
+        if not (title and company):
+            # The tab title of a job page: "<title> | <company> | LinkedIn".
+            parts = [p.strip() for p in str(detail.get("page_title") or "").split(" | ")]
+            if len(parts) >= 3 and parts[-1] == "LinkedIn":
+                title, company = title or parts[0], company or parts[1]
         if record is None and title and company:
             job = AlertJob(
                 job_id, title, company, (detail.get("location") or "").strip() or None, None, None

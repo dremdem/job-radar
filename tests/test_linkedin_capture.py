@@ -150,3 +150,60 @@ def test_detail_for_a_card_on_the_same_page(session):
         ),
     )
     assert (stats.new, stats.descriptions) == (1, 1)
+
+
+# Real card texts from LinkedIn's semantic search page (/jobs/search-results/), sanitized.
+SEMANTIC = __import__("json").loads(
+    (
+        __import__("pathlib").Path(__file__).parent
+        / "fixtures"
+        / "linkedin_capture"
+        / "semantic_search.json"
+    ).read_text()
+)
+
+
+def test_semantic_page_all_cards_parse():
+    jobs = [parse_card_text(c["job_id"], c["text"]) for c in SEMANTIC["cards"]]
+    assert len(jobs) == 25 and all(jobs)
+    first = jobs[0]
+    assert (first.title, first.company, first.location) == (
+        "Python Developer",
+        "Empat",
+        "Ukraine (Remote)",
+    )
+    assert all("Verified job" not in j.title for j in jobs)
+    assert all(j.location and not j.location.lower().startswith("posted") for j in jobs)
+
+
+def test_semantic_page_salary_easy_apply_and_badges():
+    by_id = {c["job_id"]: parse_card_text(c["job_id"], c["text"]) for c in SEMANTIC["cards"]}
+    infused = by_id["4469742675"]
+    assert (infused.company, infused.location) == ("Infused Solutions", "London (Hybrid)")
+    assert infused.salary == "65K GBP/yr - 75K GBP/yr" and infused.easy_apply is True
+    avenga = by_id["4471680406"]  # "1 connection works here", "Saved"
+    assert (avenga.company, avenga.location) == ("Avenga", "Bratislava (Remote)")
+
+
+def test_semantic_page_import_with_detail_from_page_title(session):
+    stats = import_capture(session, payload(SEMANTIC["cards"], SEMANTIC["detail"]))
+    assert (stats.cards, stats.new, stats.skipped, stats.descriptions) == (25, 25, 0, 1)
+    empat = session.scalar(select(Opportunity).where(Opportunity.title == "Python Developer"))
+    assert "conversational AI agents" in empat.source_records[0].snapshots[0].raw_text
+
+
+def test_detail_title_and_company_from_page_title(session):
+    stats = import_capture(
+        session,
+        payload(
+            [],
+            {
+                "job_id": "99",
+                "page_title": "Senior Backend Engineer (Python) | ev.energy | LinkedIn",
+                "description": "Text",
+            },
+        ),
+    )
+    assert stats.new == 1
+    o = session.scalar(select(Opportunity))
+    assert (o.title, o.company.name) == ("Senior Backend Engineer (Python)", "ev.energy")
