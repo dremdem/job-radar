@@ -110,3 +110,13 @@ def test_reasons_and_notes_in_company_history(session):
     assert ("ignored", "only India · residents only") in texts
     assert ("note", "recruiter was nice") in texts
     assert all(e.note_id for e in events)
+
+
+def test_language_reason(session):
+    from job_radar.notes import describe
+
+    o = opp(session, title="Desarrollador Python")
+    note = ignore_with_reason(session, o, NoteKind.LANGUAGE, "Spanish", "not for me")
+    assert note.detail == "Spanish"
+    assert describe(note) == "language: Spanish · not for me"
+    assert location_penalty(session, opp(session)) is None  # not a location reason

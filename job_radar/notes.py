@@ -15,6 +15,7 @@ OTHER_COUNTRY_PENALTY = -1.5
 SAME_COUNTRY_PENALTY = -3.0
 REASON_LABELS = {
     NoteKind.ONLY_LOCATION: "only",
+    NoteKind.LANGUAGE: "language",
     NoteKind.STACK: "stack",
     NoteKind.SENIORITY: "seniority",
     NoteKind.SALARY: "salary",
@@ -49,7 +50,7 @@ def add_note(
         opportunity_id=opportunity.id,
         company_id=opportunity.company_id,
         kind=kind,
-        detail=detail if kind is NoteKind.ONLY_LOCATION else None,
+        detail=detail if kind in (NoteKind.ONLY_LOCATION, NoteKind.LANGUAGE) else None,
         comment=comment,
     )
     session.add(note)
@@ -86,6 +87,8 @@ def describe(note: OpportunityNote) -> str:
     head = REASON_LABELS[note.kind]
     if note.kind is NoteKind.ONLY_LOCATION:
         head = f"only {note.detail}"
+    elif note.kind is NoteKind.LANGUAGE and note.detail:
+        head = f"language: {note.detail}"
     return " · ".join(part for part in (head, note.comment) if part)
 
 

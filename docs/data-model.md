@@ -143,7 +143,7 @@ A reason to ignore a vacancy, or a free note (`opportunity_notes`). See [applica
 | Column | Notes |
 |---|---|
 | `opportunity_id`, `company_id` | The vacancy and its company (company kept for history and score) |
-| `kind` | `only_location`, `stack`, `seniority`, `salary`, `contract`, `other`, `note` |
-| `detail` | For `only_location`: the country or region |
+| `kind` | `only_location`, `language`, `stack`, `seniority`, `salary`, `contract`, `other`, `note` |
+| `detail` | For `only_location`: the country or region; for `language`: the language |
 | `comment` | Optional free text |
 | `created_at` | UTC |

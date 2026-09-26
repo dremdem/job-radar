@@ -80,7 +80,7 @@ uv run job-radar sync gmail        # runs it last
 
 `ignore` is about the vacancy, `rejected` is about the company (it said no). When a vacancy does not fit, say why:
 
-- **Ignore with a reason** (the row's *reason / note* form): `only <country>` (the country is prefilled from the location and can be edited), `stack`, `seniority`, `salary`, `contract`, `other`, plus an optional comment. The vacancy becomes `ignore`. A plain `ignore` button still works without a reason.
+- **Ignore with a reason** (the row's *reason / note* form): `only <country>` (the country is prefilled from the location and can be edited), `language` (type the language in the same field, e.g. `Spanish`), `stack`, `seniority`, `salary`, `contract`, `other`, plus an optional comment. The vacancy becomes `ignore`. A plain `ignore` button still works without a reason.
 - **Note**: the same form without ignoring, for any vacancy ("ask about EOR").
 
 Both are stored in `opportunity_notes` and appear in the company history as `ignored` / `note` events (date, reason, comment), with a delete button.
@@ -93,3 +93,13 @@ When a company had a vacancy ignored as `only <country>`, its **other** vacancie
 - **−3** when the new vacancy is in the same country again.
 
 Only the latest such reason counts. Like the rejection penalty it is applied when the queue is shown, so it also affects vacancies already in the queue, and deleting the reason removes it. The company is never blocked. Other reasons (`stack`, `salary`, …) are shown in the history but do not change the score yet.
+
+## Vacancy language
+
+A title written in another language usually means the job needs that language. The title is checked without any external service (`job_radar/language.py`):
+
+- non-Latin scripts: Chinese, Japanese, Korean, Arabic, Hebrew, Thai, Greek; **Cyrillic is treated as Russian and accepted**;
+- Latin-script languages (Spanish, Portuguese, French, German, Italian, Polish, Dutch) by typical words ("Desarrollador", "Entwickler", "Développeur", "Schwerpunkt", "remoto", "h/f", …) and letters (`ñ`, `ç`, `ß`, `ã`, `ł`, …); a single weak hint is not enough;
+- English and Russian are fine. Emoji, dashes and gender markers such as `(m/w/d)` in an otherwise English title do not count.
+
+A detected language adds `− Title in <Language>: the job likely needs <Language>` (**−3**) when the queue is shown, like the other penalties. It is a hint: the title may be localized while the team works in English.

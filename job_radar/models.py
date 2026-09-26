@@ -60,6 +60,7 @@ class ApplicationReview(enum.StrEnum):
 
 class NoteKind(enum.StrEnum):
     ONLY_LOCATION = "only_location"
+    LANGUAGE = "language"
     STACK = "stack"
     SENIORITY = "seniority"
     SALARY = "salary"

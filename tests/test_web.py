@@ -234,3 +234,13 @@ def test_empty_note_is_rejected(client, session):
         f"/opportunities/{o.id}/notes", data={"action": "note", "kind": "note", "comment": ""}
     )
     assert response.status_code == 422
+
+
+def test_queue_shows_language_risk(client, session):
+    o = add_opportunity(session, title="Desarrollador Python Senior")
+    o.score = 8.0
+    session.commit()
+    text = client.get("/").text
+    assert "Title in Spanish: the job likely needs Spanish" in text
+    assert ">5.0<" in text
+    assert '<option value="language">' in text

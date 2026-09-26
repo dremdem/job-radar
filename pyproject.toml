@@ -47,3 +47,7 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.16.8",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Real vacancy titles with full-width and typographic characters, on purpose.
+"tests/test_language.py" = ["RUF001"]

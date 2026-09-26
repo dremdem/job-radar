@@ -43,7 +43,7 @@
         <select name="kind">
           {% for k in reason_kinds %}<option value="{{ k.value }}">{{ "only (location)" if k.value == "only_location" else k.value }}</option>{% endfor %}
         </select>
-        <input name="detail" value="{{ country }}" placeholder="country" size="10">
+        <input name="detail" value="{{ country }}" placeholder="country / language" size="12">
         <input name="comment" placeholder="comment" size="16">
         <button name="action" value="ignore">ignore with reason</button>
         <button name="action" value="note">add note</button>

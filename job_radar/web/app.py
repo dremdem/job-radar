@@ -15,6 +15,7 @@ from .. import applications as apps
 from ..config import Settings, get_settings
 from ..contacts import company_history
 from ..db import make_engine, make_session_factory
+from ..language import language_risk
 from ..models import (
     Application,
     ApplicationReview,
@@ -277,7 +278,9 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
     history = company_history(session, opportunity.company_id)
     eff_score = effective_score(opportunity.score, rejected=rejected_at is not None)
     extra_reasons = []
-    if penalty := location_penalty(session, opportunity):
+    for penalty in (location_penalty(session, opportunity), language_risk(opportunity.title)):
+        if penalty is None:
+            continue
         points, reason = penalty
         extra_reasons.append(reason)
         if eff_score is not None:
