@@ -3,6 +3,7 @@ from typing import Annotated
 
 import typer
 
+from . import pipeline
 from .config import Settings
 from .db import make_engine, make_session_factory, upgrade_database
 from .demo import remove_demo, seed_demo
@@ -82,13 +83,6 @@ def import_linkedin() -> None:
         engine.dispose()
 
 
-def _import_linkedin(session) -> None:
-    from .linkedin.alerts import import_alerts
-
-    stats = import_alerts(session)
-    typer.echo(f"linkedin: {stats.emails} alert emails, {stats.jobs} jobs, {stats.new} new")
-
-
 @import_app.command("linkedin-search")
 def import_linkedin_search() -> None:
     """Opt-in: first page of LinkedIn's public search for each new alert (no login)."""
@@ -100,29 +94,6 @@ def import_linkedin_search() -> None:
             _import_linkedin_search(session, settings)
     finally:
         engine.dispose()
-
-
-def _import_linkedin_search(session, settings: Settings) -> None:
-    from .linkedin.public import PublicSearchClient, import_public_search
-
-    if not settings.linkedin_public_search:
-        typer.echo(
-            "linkedin-search: disabled; set JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true to enable "
-            "(see docs/linkedin-public-search.md)."
-        )
-        return
-    stats = import_public_search(
-        session,
-        PublicSearchClient(delay=settings.linkedin_public_delay_seconds),
-        max_searches=settings.linkedin_public_max_searches_per_day,
-        max_jobs=settings.linkedin_public_max_jobs,
-    )
-    typer.echo(
-        f"linkedin-search: {stats.searches} searches, {stats.requests} requests, "
-        f"{stats.jobs} jobs, {stats.new} new" + (f", {stats.errors} errors" if stats.errors else "")
-    )
-    if stats.blocked:
-        typer.echo("linkedin-search: LinkedIn is blocking guest requests; stopped until tomorrow.")
 
 
 @import_app.command("rejections")
@@ -142,28 +113,6 @@ def import_rejections(
         engine.dispose()
 
 
-def _import_rejections(session, client=None, *, recheck: bool = False) -> None:
-    from .gmail.auth import GmailAuthError, load_credentials
-    from .gmail.client import ApiGmailClient, body_fetcher
-    from .linkedin.rejections import import_rejections as run
-
-    if client is None:
-        try:
-            client = ApiGmailClient(load_credentials(Settings().gmail_token))
-        except GmailAuthError:
-            client = None
-    stats = run(session, fetch_body=body_fetcher(client) if client else None, recheck=recheck)
-    typer.echo(
-        f"rejections: {stats.emails} emails, {stats.detected} rejections, {stats.new} new"
-        + (f", {stats.fetched} bodies checked in Gmail" if stats.fetched else "")
-    )
-    if stats.pending:
-        typer.echo(
-            f"rejections: {stats.pending} without body wait for Gmail access; "
-            "run `job-radar gmail auth`, then this command again."
-        )
-
-
 @import_app.command("applications")
 def import_applications() -> None:
     """Past applications from confirmation emails already in the database."""
@@ -177,34 +126,6 @@ def import_applications() -> None:
         engine.dispose()
 
 
-def _gmail_client_or_none():
-    from .gmail.auth import GmailAuthError, load_credentials
-    from .gmail.client import ApiGmailClient
-
-    try:
-        return ApiGmailClient(load_credentials(Settings().gmail_token))
-    except GmailAuthError:
-        return None
-
-
-def _import_applications(session, client=None) -> None:
-    from .applications import import_applications as run
-    from .gmail.client import body_fetcher
-
-    client = client or _gmail_client_or_none()
-    stats = run(session, fetch_body=body_fetcher(client) if client else None)
-    typer.echo(
-        f"applications: {stats.detected} found, {stats.new} new, "
-        f"{stats.linked} linked to an existing one"
-        + (f", {stats.fetched} bodies checked in Gmail" if stats.fetched else "")
-    )
-    if stats.pending:
-        typer.echo(
-            f"applications: role unknown for {stats.pending} LinkedIn confirmations until "
-            "Gmail access; run `job-radar gmail auth`, then this command again."
-        )
-
-
 @import_app.command("contacts")
 def import_contacts() -> None:
     """Link mail to companies and label it, for company history in the queue."""
@@ -216,18 +137,6 @@ def import_contacts() -> None:
             _import_contacts(session)
     finally:
         engine.dispose()
-
-
-def _import_contacts(session) -> None:
-    from .contacts import link_and_label
-
-    stats = link_and_label(session)
-    linked = stats.by_thread + stats.by_domain
-    typer.echo(
-        f"contacts: {linked} linked ({stats.by_thread} by thread, {stats.by_domain} by domain), "
-        f"{stats.probable} probable by name, {stats.labeled} labeled, "
-        f"{stats.rejections} rejections from other mail"
-    )
 
 
 @app.command()
@@ -247,16 +156,30 @@ def sync(
     _sync_gmail(query, since)
 
 
-def _report_progress(name: str, stats) -> None:
-    if stats.threads % 50 == 0:
-        typer.echo(f"{name}: {stats.threads} threads, {stats.new} new...", err=True)
+# Thin wrappers: the pipeline lives in job_radar/pipeline.py, shared with the web UI.
+def _import_linkedin(session) -> None:
+    pipeline.import_linkedin(session, typer.echo)
+
+
+def _import_linkedin_search(session, settings: Settings) -> None:
+    pipeline.import_linkedin_search(session, settings, typer.echo)
+
+
+def _import_rejections(session, client=None, *, recheck: bool = False) -> None:
+    pipeline.import_rejections(session, Settings(), typer.echo, client, recheck=recheck)
+
+
+def _import_applications(session, client=None) -> None:
+    pipeline.import_applications(session, Settings(), typer.echo, client)
+
+
+def _import_contacts(session) -> None:
+    pipeline.import_contacts(session, typer.echo)
 
 
 def _sync_gmail(names: list[str] | None, since: datetime | None) -> None:
-    from .gmail.auth import GmailAuthError, load_credentials
-    from .gmail.client import ApiGmailClient
+    from .gmail.auth import GmailAuthError
     from .gmail.queries import QUERIES
-    from .gmail.sync import sync_gmail
 
     unknown = set(names or []) - QUERIES.keys()
     if unknown:
@@ -264,31 +187,14 @@ def _sync_gmail(names: list[str] | None, since: datetime | None) -> None:
             f"Unknown query {', '.join(sorted(unknown))}. Known: {', '.join(QUERIES)}",
             param_hint="--query",
         )
-    settings = Settings()
     try:
-        client = ApiGmailClient(load_credentials(settings.gmail_token))
+        pipeline.run_sync(
+            Settings(),
+            typer.echo,
+            names=names,
+            since=since.date() if since else None,
+            progress_echo=lambda line: typer.echo(line, err=True),
+        )
     except GmailAuthError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e
-
-    upgrade_database(settings.database_url)
-    engine = make_engine(settings.database_url)
-    try:
-        with make_session_factory(engine)() as session:
-            results = sync_gmail(
-                session,
-                client,
-                names=names,
-                since=since.date() if since else None,
-                progress=_report_progress,
-            )
-            _import_linkedin(session)
-            if settings.linkedin_public_search:
-                _import_linkedin_search(session, settings)
-            _import_rejections(session, client)
-            _import_applications(session, client)
-            _import_contacts(session)
-    finally:
-        engine.dispose()
-    for name, stats in results.items():
-        typer.echo(f"{name}: {stats.threads} threads, {stats.new} new, {stats.seen} already stored")

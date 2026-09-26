@@ -26,3 +26,7 @@ The rows update while you type; the field keeps focus, and the header with the f
 - There is no "back to new": find the vacancy in **Ignored** or **All** and pick another state.
 
 Company history, reasons and notes: [applications.md](applications.md).
+
+## Sync mail
+
+**Sync mail** in the header runs the same pipeline as `uv run job-radar sync gmail`: Gmail → LinkedIn alerts → public search (if enabled) → rejections → applications → contacts. It runs in the background of the server; the status next to the button shows the latest lines while it works and the summary when it is done, with a link to reload the page. Only one sync runs at a time; clicking again shows the one in progress. If Gmail access is missing or expired, the status says so: run `uv run job-radar gmail auth` once in a terminal.

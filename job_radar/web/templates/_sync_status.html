@@ -1,0 +1,15 @@
+<span id="sync-status" class="small"{% if job.state == "running" %} hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  {% if job.state == "running" %}
+    <b>Sync running…</b>
+  {% elif job.state == "done" %}
+    <b>Sync done</b> {{ job.finished_at.strftime("%H:%M") if job.finished_at else "" }} · <a href="/">reload</a>
+  {% elif job.state == "failed" %}
+    <b>Sync failed:</b> {{ job.error }}
+  {% endif %}
+  {% if job.lines and job.state != "idle" %}
+  <details class="sync-log"{% if job.state != "done" %} open{% endif %}><summary>details</summary>
+    <pre>{% for line in job.lines[-15:] %}{{ line }}
+{% endfor %}</pre>
+  </details>
+  {% endif %}
+</span>

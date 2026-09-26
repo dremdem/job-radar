@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .. import applications as apps
+from .. import pipeline
 from ..config import Settings, get_settings
 from ..contacts import company_history
 from ..db import make_engine, make_session_factory
@@ -38,6 +39,7 @@ from ..notes import (
     location_penalty,
 )
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
+from .sync_job import Runner, SyncJob
 
 HISTORY_SHOWN = 8
 BOOKMARKLETS = {
@@ -106,8 +108,11 @@ def get_session(request: Request) -> Iterator[Session]:
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, sync_runner: Runner | None = None) -> FastAPI:
     settings = settings or get_settings()
+    sync_job = SyncJob()
+    # The Sync button runs the same pipeline as `job-radar sync gmail`; tests pass a fake.
+    sync_runner = sync_runner or (lambda echo: pipeline.run_sync(settings, echo))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -220,6 +225,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return templates.TemplateResponse(
             request, "_queue.html", _queue_context(session, _tab(tab), filters)
         )
+
+    @app.post("/sync", response_class=HTMLResponse)
+    def start_sync(request: Request) -> HTMLResponse:
+        sync_job.start(sync_runner)  # a second click just shows the running one
+        return templates.TemplateResponse(request, "_sync_status.html", {"job": sync_job})
+
+    @app.get("/sync/status", response_class=HTMLResponse)
+    def sync_status(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(request, "_sync_status.html", {"job": sync_job})
 
     @app.get("/capture", response_class=HTMLResponse)
     def capture_page(request: Request) -> HTMLResponse:
