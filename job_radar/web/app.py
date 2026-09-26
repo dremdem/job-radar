@@ -262,21 +262,27 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         return {"file": str(path), "size": len(html)}
 
     @app.get("/applications", response_class=HTMLResponse)
-    def applications_page(request: Request, session: SessionDep) -> HTMLResponse:
+    def applications_page(request: Request, session: SessionDep, company: str = "") -> HTMLResponse:
         return templates.TemplateResponse(
-            request, "applications.html", _applications_context(session)
+            request, "applications.html", _applications_context(session, company)
         )
 
     @app.post("/applications/confirm-all", response_class=HTMLResponse)
-    def applications_confirm_all(request: Request, session: SessionDep) -> HTMLResponse:
-        apps.confirm_all(session)
+    def applications_confirm_all(
+        request: Request, session: SessionDep, company: Annotated[str, Form()] = ""
+    ) -> HTMLResponse:
+        apps.confirm_all(session, company)  # with a filter: only the suggestions shown
         return templates.TemplateResponse(
-            request, "_applications.html", _applications_context(session)
+            request, "_applications.html", _applications_context(session, company)
         )
 
     @app.post("/applications/{app_id}/{action}", response_class=HTMLResponse)
     def applications_review(
-        request: Request, app_id: int, action: str, session: SessionDep
+        request: Request,
+        app_id: int,
+        action: str,
+        session: SessionDep,
+        company: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
         handlers = {"confirm": apps.confirm, "dismiss": apps.dismiss}
         if action not in handlers:
@@ -284,7 +290,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         if handlers[action](session, app_id) is None:
             raise HTTPException(status_code=404, detail="Application not found")
         return templates.TemplateResponse(
-            request, "_applications.html", _applications_context(session)
+            request, "_applications.html", _applications_context(session, company)
         )
 
     return app
@@ -300,7 +306,7 @@ def _gmail_link(thread_id: str | None) -> str | None:
     return f"https://mail.google.com/mail/u/0/#all/{thread_id}" if thread_id else None
 
 
-def _applications_context(session: Session) -> dict:
+def _applications_context(session: Session, company: str = "") -> dict:
     rows = session.execute(
         select(Application, EmailMessage.gmail_thread_id)
         .outerjoin(EmailMessage, Application.email_message_id == EmailMessage.id)
@@ -308,13 +314,21 @@ def _applications_context(session: Session) -> dict:
         .where(Application.review != ApplicationReview.DISMISSED)
         .order_by(Application.applied_at.desc())
     ).all()
+    needle = company.strip().casefold()
     items = [
         {"a": a, "status": apps.application_status(session, a), "gmail": _gmail_link(thread)}
         for a, thread in rows
+        if needle in a.company.name.casefold()
     ]
     suggested = [i for i in items if i["a"].review is ApplicationReview.SUGGESTED]
     confirmed = [i for i in items if i["a"].review is ApplicationReview.CONFIRMED]
-    return {"suggested": suggested, "confirmed": confirmed, "has_any": bool(items)}
+    return {
+        "suggested": suggested,
+        "confirmed": confirmed,
+        "has_any": bool(items),
+        "has_rows": bool(rows),
+        "company": company,
+    }
 
 
 def _load_opportunities(session: Session, states: list[OpportunityState] | None = None):

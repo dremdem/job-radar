@@ -31,6 +31,7 @@ LinkedIn confirmations are generated mail. For the ones stored without a body (t
 
 - **To review**: suggested applications with *Confirm* / *Dismiss*, and *Confirm all*.
 - **History**: confirmed applications, newest first: date, company, role, status, link to the Gmail thread.
+- **Company** filter above both lists: any part of the name, ignoring case, while you type; kept in the URL (`/applications?company=value`). Counts follow the filter, and *Confirm all* then confirms only the suggestions you see.
 
 ## Commands
 

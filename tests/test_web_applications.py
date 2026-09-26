@@ -91,3 +91,46 @@ def test_unknown_application_is_404(client):
 
 def test_queue_links_to_applications(client):
     assert 'href="/applications"' in client.get("/").text
+
+
+def seed_named(session):
+    add_app(session, "Value Innovation Labs", ApplicationReview.CONFIRMED, thread="t-v")
+    add_app(session, "Caixa Mágica Software", ApplicationReview.CONFIRMED, thread="t-c")
+    add_app(session, "Lingaro", ApplicationReview.SUGGESTED, thread="t-l")
+    add_app(session, "Valtech", ApplicationReview.SUGGESTED, thread="t-vt")
+
+
+def test_filter_by_company_is_partial_and_case_insensitive(client, session):
+    seed_named(session)
+    text = client.get("/applications?company=VAL").text
+    assert "Value Innovation Labs" in text and "Valtech" in text
+    assert "Lingaro" not in text and "Caixa" not in text
+    assert "To review (1)" in text and "History (1)" in text
+    assert "Caixa Mágica Software" in client.get("/applications?company=mÁgica").text
+
+
+def test_filter_field_keeps_value_and_nothing_found(client, session):
+    seed_named(session)
+    text = client.get("/applications?company=nobody").text
+    assert 'name="company" value="nobody"' in text
+    assert "No applications match" in text
+
+
+def test_confirm_all_only_confirms_the_filtered(client, session):
+    seed_named(session)
+    client.post("/applications/confirm-all", data={"company": "val"})
+    reviews = {a.company.name: a.review for a in session.scalars(select(Application))}
+    for a in session.scalars(select(Application)):
+        session.refresh(a)
+    reviews = {a.company.name: a.review for a in session.scalars(select(Application))}
+    assert reviews["Valtech"] is ApplicationReview.CONFIRMED
+    assert reviews["Lingaro"] is ApplicationReview.SUGGESTED
+
+
+def test_review_buttons_keep_the_filter(client, session):
+    seed_named(session)
+    text = client.get("/applications?company=val").text
+    assert 'hx-include="#applications-filter"' in text
+    lingaro = next(a for a in session.scalars(select(Application)) if a.company.name == "Lingaro")
+    response = client.post(f"/applications/{lingaro.id}/dismiss", data={"company": "val"})
+    assert "Lingaro" not in response.text and "Valtech" in response.text

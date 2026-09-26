@@ -1,5 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Applications · Job Radar{% endblock %}
 {% block content %}
+<p class="small">
+  <label>Company
+    <input id="applications-filter" type="search" name="company" value="{{ company }}" placeholder="filter" autocomplete="off"
+           hx-get="/applications" hx-trigger="input changed delay:250ms, search" hx-target="#applications"
+           hx-select="#applications" hx-swap="outerHTML" hx-push-url="true">
+  </label>
+  {% if company %}<a href="/applications">clear</a>{% endif %}
+</p>
 {% include "_applications.html" %}
 {% endblock %}

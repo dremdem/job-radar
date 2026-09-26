@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from email.utils import parseaddr
 
 from bs4 import BeautifulSoup
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .dedup import get_or_create_company
@@ -318,11 +318,14 @@ def dismiss(session: Session, app_id: int) -> Application | None:
     return _set_review(session, app_id, ApplicationReview.DISMISSED)
 
 
-def confirm_all(session: Session) -> int:
-    result = session.execute(
-        update(Application)
-        .where(Application.review == ApplicationReview.SUGGESTED)
-        .values(review=ApplicationReview.CONFIRMED)
-    )
+def confirm_all(session: Session, company: str = "") -> int:
+    """Confirm every suggestion, or only those whose company contains ``company``."""
+    needle = company.strip().casefold()
+    suggested = session.scalars(
+        select(Application).where(Application.review == ApplicationReview.SUGGESTED)
+    ).all()
+    chosen = [a for a in suggested if needle in a.company.name.casefold()]
+    for a in chosen:
+        a.review = ApplicationReview.CONFIRMED
     session.commit()
-    return result.rowcount
+    return len(chosen)
