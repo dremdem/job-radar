@@ -86,3 +86,60 @@ def test_country_has_its_own_column(client, session):
     assert "<th>Country</th>" in text
     assert '<td class="country">India</td>' in text
     assert '<td class="country">—</td>' in text
+
+
+def seed_places(session):
+    rows = {
+        "tricon": add(session, "Backend India", company="Tricon Solutions"),
+        "epam": add(session, "Python Poland", company="EPAM Anywhere"),
+        "muller": add(session, "Engineer Munich", company="Müller GmbH"),
+        "tricon_uk": add(
+            session, "Backend London", OpportunityState.INTERESTED, company="Tricon Solutions"
+        ),
+    }
+    rows["tricon"].location = "Lucknow, Uttar Pradesh, India"
+    rows["epam"].location = "Poland (Remote)"
+    rows["muller"].location = "München, Germany"
+    rows["tricon_uk"].location = "London, United Kingdom"
+    session.commit()
+    return rows
+
+
+def test_filter_by_company_is_partial_and_case_insensitive(client, session):
+    seed_places(session)
+    text = client.get("/?company=TRIC").text
+    assert "Backend India" in text
+    assert "Python Poland" not in text and "Engineer Munich" not in text
+
+
+def test_filter_by_country_searches_the_location(client, session):
+    seed_places(session)
+    text = client.get("/?country=ind").text
+    assert "Backend India" in text and "Python Poland" not in text
+    assert "Engineer Munich" in client.get("/?country=MÜNCH").text  # non-ASCII case folding
+
+
+def test_filters_combine_and_counts_follow(client, session):
+    seed_places(session)
+    text = client.get("/?tab=all&company=tricon&country=united").text
+    assert "Backend London" in text and "Backend India" not in text
+    assert "To review (0)" in text and "Interested (1)" in text and "All (1)" in text
+
+
+def test_tab_links_keep_filters(client, session):
+    seed_places(session)
+    text = client.get("/?company=tricon&country=india").text
+    assert 'href="/?tab=interested&amp;country=india&amp;company=tricon"' in text
+    assert 'name="company" value="tricon"' in text and 'name="country" value="india"' in text
+
+
+def test_buttons_keep_filters(client, session):
+    rows = seed_places(session)
+    text = client.get("/?company=tricon").text
+    assert 'hx-include="#filters"' in text
+    response = client.post(
+        f"/opportunities/{rows['tricon'].id}/state",
+        data={"state": "ignore", "tab": "review", "company": "tricon", "country": ""},
+    )
+    assert "Python Poland" not in response.text  # still filtered
+    assert "To review (0)" in response.text

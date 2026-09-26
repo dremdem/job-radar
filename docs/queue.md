@@ -14,6 +14,12 @@ Columns: title (with the full location, salary and badges below it), **Country**
 
 Each tab label carries its count. Inside a tab the order is: score (after penalties), highest first; vacancies of companies that rejected you at the bottom.
 
+## Filters
+
+Above the tabs: **Country** and **Company**. Both match any part of the text, ignoring case (`ind` finds India, `EPAM` finds "EPAM Anywhere"); with both filled, a vacancy must match both. Country is searched in the whole location (city, region, country), so `london` works too.
+
+The list updates while you type. Filters are kept in the URL (`/?tab=review&country=india&company=tri`), survive switching tabs and clicking the row buttons, and the tab counts show how many vacancies match the filters.
+
 ## Buttons
 
 - `interested` / `ignore` / `applied`, *ignore with reason* and `rejected` act at once. In a filtered tab a vacancy that no longer belongs there **disappears immediately** and the counts update, no reload needed. In **All** the row stays in place and only its state changes.

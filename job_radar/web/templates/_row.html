@@ -15,7 +15,7 @@
       <summary><span class="badge">contacted · {{ history_count }}</span>{% if applied_before %} <span class="badge warn">already applied {{ applied_before.strftime("%Y-%m-%d") }}</span>{% endif %}</summary>
       <ul>
         {% for e in history %}
-        <li>{{ e.at.strftime("%Y-%m-%d") }} · <b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}{% if e.note_id %} <button class="link" hx-post="/notes/{{ e.note_id }}/delete" hx-vals='{"tab": "{{ tab }}"}' hx-target="#queue" hx-swap="outerHTML" title="delete">×</button>{% endif %}</li>
+        <li>{{ e.at.strftime("%Y-%m-%d") }} · <b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}{% if e.note_id %} <button class="link" hx-post="/notes/{{ e.note_id }}/delete" hx-include="#filters" hx-vals='{"tab": "{{ tab }}"}' hx-target="#queue" hx-swap="outerHTML" title="delete">×</button>{% endif %}</li>
         {% endfor %}
         {% if history_count > history | length %}<li class="muted">… {{ history_count - history | length }} more</li>{% endif %}
       </ul>
@@ -38,7 +38,7 @@
   <td class="actions">
     <details class="note-form small">
       <summary>reason / note</summary>
-      <form hx-post="/opportunities/{{ o.id }}/notes" hx-target="#queue" hx-swap="outerHTML">
+      <form hx-post="/opportunities/{{ o.id }}/notes" hx-include="#filters" hx-target="#queue" hx-swap="outerHTML">
         <input type="hidden" name="tab" value="{{ tab }}">
         <select name="kind">
           {% for k in reason_kinds %}<option value="{{ k.value }}">{{ "only (location)" if k.value == "only_location" else k.value }}</option>{% endfor %}
@@ -50,11 +50,11 @@
       </form>
     </details>
     {% for s in states %}
-    <button hx-post="/opportunities/{{ o.id }}/state" hx-vals='{"state": "{{ s.value }}", "tab": "{{ tab }}"}'
+    <button hx-post="/opportunities/{{ o.id }}/state" hx-include="#filters" hx-vals='{"state": "{{ s.value }}", "tab": "{{ tab }}"}'
             hx-target="{{ '#opportunity-%d' % o.id if tab == 'all' else '#queue' }}" hx-swap="outerHTML"
             {% if o.state == s %}disabled{% endif %}>{{ s.value }}</button>
     {% endfor %}
-    <button hx-post="/opportunities/{{ o.id }}/rejected" hx-vals='{"tab": "{{ tab }}"}'
+    <button hx-post="/opportunities/{{ o.id }}/rejected" hx-include="#filters" hx-vals='{"tab": "{{ tab }}"}'
             hx-target="#queue" hx-swap="outerHTML">{{ "un-reject" if rejected_at else "rejected" }}</button>
   </td>
 </tr>
