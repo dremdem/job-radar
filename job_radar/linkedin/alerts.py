@@ -125,6 +125,9 @@ def add_linkedin_job(
         )
     )
     session.flush()
+    from ..auto_ignore import apply_rules  # the rules read the queue built by this module
+
+    apply_rules(session, opportunity)
     return True
 
 

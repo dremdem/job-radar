@@ -35,6 +35,7 @@ class OpportunityState(enum.StrEnum):
     INTERESTED = "interested"
     IGNORE = "ignore"
     APPLIED = "applied"
+    AUTO_IGNORE = "auto_ignore"  # set only by the rules in docs/settings.md
 
 
 class EmailDirection(enum.StrEnum):
@@ -98,6 +99,7 @@ class Opportunity(Base):
     location: Mapped[str | None] = mapped_column(String(255))
     salary: Mapped[str | None] = mapped_column(String(64))
     easy_apply: Mapped[bool | None]
+    auto_ignore_reason: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
@@ -241,3 +243,12 @@ class OpportunityNote(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     company: Mapped[Company] = relationship()
+
+
+class AppSetting(Base):
+    """Settings edited on the Settings page, as JSON values. See docs/settings.md."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict | list | str | int | bool | None] = mapped_column(JSON)

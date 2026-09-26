@@ -28,7 +28,8 @@ One vacancy, independent of where it was seen.
 | Column | Notes |
 |---|---|
 | `title`, `company_id` | |
-| `state` | `new` → `interested` / `ignore` / `applied`. Changed only by the user |
+| `state` | `new` → `interested` / `ignore` / `applied`, changed by the user; `auto_ignore` set only by the rules in [settings.md](settings.md) |
+| `auto_ignore_reason` | Why a rule auto-ignored it; cleared when you change the state |
 | `score` | Nullable float, 0–10; rule-based for now (#13). Intrinsic (title/location) score; the rejection penalty is applied at display time, see [Rejection](#rejection) |
 | `score_reasons` | JSON list of `{"sign": "+" or "-", "text": ...}` explaining the score |
 | `location`, `salary` | As shown by the source, free text |
@@ -147,3 +148,7 @@ A reason to ignore a vacancy, or a free note (`opportunity_notes`). See [applica
 | `detail` | For `only_location`: the country or region; for `language`: the language |
 | `comment` | Optional free text |
 | `created_at` | UTC |
+
+## AppSetting
+
+Key/value settings edited on the Settings page (`app_settings`): `key` (primary key), `value` (JSON). See [settings.md](settings.md).

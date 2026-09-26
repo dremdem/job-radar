@@ -39,7 +39,7 @@
 </head>
 <body>
   <h1><a href="/" style="color: inherit; text-decoration: none">Job Radar</a></h1>
-  <nav class="small"><a href="/">Queue</a> · <a href="/applications">Applications</a> · <a href="/capture">Capture</a>
+  <nav class="small"><a href="/">Queue</a> · <a href="/applications">Applications</a> · <a href="/capture">Capture</a> · <a href="/settings">Settings</a>
     · <button type="button" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML">Sync mail</button>
     <span id="sync-status" class="small" hx-get="/sync/status" hx-trigger="load" hx-swap="outerHTML"></span></nav>
   {% block content %}{% endblock %}

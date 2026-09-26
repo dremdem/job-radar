@@ -17,7 +17,7 @@ uv run job-radar db upgrade  # create / migrate the SQLite database
 uv run job-radar serve       # http://127.0.0.1:8000 — review queue
 ```
 
-How the queue works (tabs, buttons, **Sync mail** button): [docs/queue.md](docs/queue.md). Send LinkedIn pages you open to the queue with the bookmarklet: [docs/linkedin-capture.md](docs/linkedin-capture.md).
+How the queue works (tabs, buttons, **Sync mail** button): [docs/queue.md](docs/queue.md). Auto-ignore rules (hybrid, already applied, …): [docs/settings.md](docs/settings.md). Send LinkedIn pages you open to the queue with the bookmarklet: [docs/linkedin-capture.md](docs/linkedin-capture.md).
 
 The queue is empty until a source is imported. To look around first: `uv run job-radar demo`.
 

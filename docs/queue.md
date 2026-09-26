@@ -8,6 +8,7 @@ The main page (`/`) lists opportunities in tabs:
 | **Interested** | `interested`: the ones you plan to apply to | `/?tab=interested` |
 | **Applied** | `applied` | `/?tab=applied` |
 | **Ignored** | `ignore` | `/?tab=ignored` |
+| **Auto-ignored** | `auto_ignore`: set by the rules in [settings.md](settings.md), with the reason | `/?tab=auto` |
 | **All** | everything | `/?tab=all` |
 
 Columns: title (with the full location, salary and badges below it), **Country**, company, score, state. The country is the last part of the location ("Lucknow, Uttar Pradesh, India" → India, "Germany (Remote)" → Germany); when the source gives only a city ("Lucknow (Remote)"), that is what is shown, and `—` when there is no location.

@@ -16,9 +16,10 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .. import applications as apps
 from .. import pipeline
+from ..auto_ignore import Rules, apply_to_review, load_rules, save_rules
 from ..config import Settings, get_settings
 from ..contacts import company_history
-from ..db import make_engine, make_session_factory
+from ..db import make_engine, make_session_factory, upgrade_database
 from ..language import language_risk
 from ..linkedin.capture import import_capture
 from ..models import (
@@ -63,6 +64,7 @@ _STATE_ORDER = [
     OpportunityState.INTERESTED,
     OpportunityState.APPLIED,
     OpportunityState.IGNORE,
+    OpportunityState.AUTO_IGNORE,
 ]
 
 
@@ -72,6 +74,7 @@ TABS: dict[str, tuple[str, list[OpportunityState] | None]] = {
     "interested": ("Interested", [OpportunityState.INTERESTED]),
     "applied": ("Applied", [OpportunityState.APPLIED]),
     "ignored": ("Ignored", [OpportunityState.IGNORE]),
+    "auto": ("Auto-ignored", [OpportunityState.AUTO_IGNORE]),
     "all": ("All", None),
 }
 DEFAULT_TAB = "review"
@@ -116,6 +119,8 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # New code may bring new tables; the server must not wait for a CLI command.
+        upgrade_database(settings.database_url)
         engine = make_engine(settings.database_url)
         app.state.session_factory = make_session_factory(engine)
         yield
@@ -154,6 +159,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         tab = _tab(tab)
         opportunity = _get_opportunity(session, opportunity_id)
         opportunity.state = state
+        opportunity.auto_ignore_reason = None  # your choice replaces the rule's
         session.commit()
         if tab == "all":
             # Keep the row in place; refresh the tab counts out of band.
@@ -225,6 +231,43 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         return templates.TemplateResponse(
             request, "_queue.html", _queue_context(session, _tab(tab), filters)
         )
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request, session: SessionDep) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request, "settings.html", {"rules": load_rules(session), "message": None}
+        )
+
+    @app.post("/settings", response_class=HTMLResponse)
+    def save_settings(
+        request: Request,
+        session: SessionDep,
+        hybrid: Annotated[str | None, Form()] = None,
+        applied: Annotated[str | None, Form()] = None,
+        ignored: Annotated[str | None, Form()] = None,
+        rejected: Annotated[str | None, Form()] = None,
+        days: Annotated[int, Form(ge=1, le=3650)] = 90,
+    ) -> HTMLResponse:
+        rules = Rules(
+            hybrid=hybrid is not None,
+            applied=applied is not None,
+            ignored=ignored is not None,
+            rejected=rejected is not None,
+            days=days,
+        )
+        save_rules(session, rules)
+        context = {"rules": rules, "message": "Saved. New vacancies follow these rules."}
+        return templates.TemplateResponse(request, "settings.html", context)
+
+    @app.post("/settings/apply", response_class=HTMLResponse)
+    def apply_settings(request: Request, session: SessionDep) -> HTMLResponse:
+        moved = apply_to_review(session)
+        word = "vacancy" if moved == 1 else "vacancies"
+        context = {
+            "rules": load_rules(session),
+            "message": f"{moved} {word} auto-ignored from To review.",
+        }
+        return templates.TemplateResponse(request, "settings.html", context)
 
     @app.post("/sync", response_class=HTMLResponse)
     def start_sync(request: Request) -> HTMLResponse:
@@ -428,4 +471,5 @@ def _queue_order(row: dict) -> tuple:
 
 
 def _manual_states() -> list[OpportunityState]:
-    return [s for s in OpportunityState if s is not OpportunityState.NEW]
+    automatic = (OpportunityState.NEW, OpportunityState.AUTO_IGNORE)
+    return [s for s in OpportunityState if s not in automatic]

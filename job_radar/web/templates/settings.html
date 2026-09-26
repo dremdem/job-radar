@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Settings · Job Radar{% endblock %}
+{% block content %}
+<h2>Auto-ignore</h2>
+{% if message %}<p><b>{{ message }}</b> <a href="/">Open the queue</a></p>{% endif %}
+<p class="small muted">A matching new vacancy goes to the <a href="/?tab=auto">Auto-ignored</a> tab with the reason, not to To review. Your own states are never changed. Details: docs/settings.md.</p>
+<form method="post" action="/settings" class="small">
+  <p><label><input type="checkbox" name="rejected" {% if rules.rejected %}checked{% endif %}> The company rejected you</label></p>
+  <p><label><input type="checkbox" name="applied" {% if rules.applied %}checked{% endif %}> You already applied to the company</label></p>
+  <p><label><input type="checkbox" name="ignored" {% if rules.ignored %}checked{% endif %}> You already ignored another vacancy of the company</label></p>
+  <p><label><input type="checkbox" name="hybrid" {% if rules.hybrid %}checked{% endif %}> “Hybrid” or “on-site” in the title or location</label></p>
+  <p><label>Look back <input type="number" name="days" value="{{ rules.days }}" min="1" max="3650" style="width: 5em"> days</label>
+    <span class="muted">(rejections, applications and ignores older than this do not count)</span></p>
+  <p><button type="submit">Save</button></p>
+</form>
+<form method="post" action="/settings/apply" class="small">
+  <p><button type="submit">Apply to To review now</button> <span class="muted">runs the saved rules over the vacancies currently in To review</span></p>
+</form>
+{% endblock %}

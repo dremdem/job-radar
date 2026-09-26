@@ -244,3 +244,15 @@ def test_queue_shows_language_risk(client, session):
     assert "Title in Spanish: the job likely needs Spanish" in text
     assert ">5.0<" in text
     assert '<option value="language">' in text
+
+
+def test_server_migrates_the_database_on_startup(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from job_radar.config import Settings
+    from job_radar.web.app import create_app
+
+    url = f"sqlite:///{tmp_path / 'fresh.db'}"  # never migrated
+    with TestClient(create_app(Settings(database_url=url))) as fresh:
+        assert fresh.get("/settings").status_code == 200
+        assert fresh.get("/").status_code == 200
