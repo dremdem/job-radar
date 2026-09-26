@@ -7,6 +7,27 @@
   <button id="collapse-all" type="button" onclick="toggleHistory(false)">Collapse all</button>
 </p>
 <script>
+  // The row you last clicked stays highlighted, so you find it after reading the vacancy
+  // in another tab. Remembered in this browser only; see docs/queue.md#current-row.
+  (function () {
+    var KEY = "jr-current-row";
+    function remembered() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
+    function show(id) {
+      document.querySelectorAll("tr.current").forEach(function (r) { r.classList.remove("current"); });
+      var row = id && document.getElementById(id);
+      if (row) row.classList.add("current");
+    }
+    function pick(event) {
+      var row = event.target.closest && event.target.closest('tr[id^="opportunity-"]');
+      if (!row) return;
+      try { localStorage.setItem(KEY, row.id); } catch (e) {}
+      show(row.id);
+    }
+    document.addEventListener("click", pick);
+    document.addEventListener("auxclick", pick);  // middle click opens the link in a new tab
+    document.addEventListener("htmx:afterSwap", function () { show(remembered()); });
+    document.addEventListener("DOMContentLoaded", function () { show(remembered()); });
+  })();
   // Works on rows re-rendered by HTMX too: it looks the lists up on every click.
   function toggleHistory(open) {
     document.querySelectorAll("details.history").forEach((d) => { d.open = open; });

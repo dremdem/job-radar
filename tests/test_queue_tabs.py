@@ -159,3 +159,11 @@ def test_header_stays_when_nothing_matches(client, session):
     text = client.get("/?company=nobody-at-all").text
     assert "<thead>" in text and 'name="company" value="nobody-at-all"' in text
     assert "Nothing here" in text
+
+
+def test_queue_highlights_the_row_you_opened(client, session):
+    add(session, "Fresh role")
+    text = client.get("/").text
+    assert "tr.current" in text  # style for the highlighted row
+    assert "jr-current-row" in text  # remembered in localStorage
+    assert "htmx:afterSwap" in text and "auxclick" in text
