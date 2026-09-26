@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Capture debug · Job Radar{% endblock %}
+{% block content %}
+<h2>Capture debug</h2>
+<p id="result" class="small">Waiting for the LinkedIn page…</p>
+<div id="paste" hidden>
+  <p class="small">Nothing arrived from the LinkedIn tab. The page was also copied to the clipboard: paste it here (Ctrl+V) and press Save.</p>
+  <textarea id="pasted" rows="6" style="width: 100%"></textarea>
+  <button id="save" type="button">Save</button>
+</div>
+<script>
+  (function () {
+    var out = document.getElementById("result");
+    var done = false;
+    function save(data) {
+      done = true;
+      fetch("/api/capture/debug", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)})
+        .then(function (r) { return r.json(); })
+        .then(function (s) { out.textContent = "Saved " + s.size + " characters to " + s.file + ". Tell Claude it is there."; document.getElementById("paste").hidden = true; })
+        .catch(function () { out.textContent = "Could not save the page."; });
+    }
+    window.addEventListener("message", function (ev) {
+      // Only the LinkedIn tab that opened this one may send its page.
+      if (!/^https:\/\/([a-z0-9-]+\.)*linkedin\.com$/.test(ev.origin) || !ev.data || !ev.data.html) return;
+      save(ev.data);
+    });
+    setTimeout(function () { if (!done) document.getElementById("paste").hidden = false; }, 5000);
+    document.getElementById("save").addEventListener("click", function () {
+      try { save(JSON.parse(document.getElementById("pasted").value)); }
+      catch (e) { out.textContent = "That is not what the debug bookmark copied."; }
+    });
+    if (window.opener) window.opener.postMessage("job-radar-ready", "*");
+  })();
+</script>
+{% endblock %}

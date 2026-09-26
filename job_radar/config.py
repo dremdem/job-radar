@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     linkedin_public_max_searches_per_day: int = 5
     linkedin_public_max_jobs: int = 25
     linkedin_public_delay_seconds: float = 3.0
+    # Local-only diagnostics of bookmarklet captures (git-ignored), see docs/linkedin-capture.md.
+    capture_debug_dir: Path = Path("data/capture_debug")
 
 
 @lru_cache

@@ -24,3 +24,7 @@ A new tab opens on `/capture` and shows what was received: jobs on the page, new
 4. The server parses the card text (title, company, location, salary, Easy Apply; noise such as "Promoted", "Be an early applicant", "3 connections work here" is dropped), creates opportunities with `source_type = linkedin_capture` (dedup by LinkedIn job id across alert, search and capture), scores them like alert jobs and stores a description as a `JobSnapshot`.
 
 LinkedIn changes its page layout from time to time. If cards come back empty or wrong, the capture page says so; send a screenshot and the parser gets a new rule and test.
+
+## When a page comes back unreadable
+
+The capture page offers a second bookmarklet, **→ Job Radar (debug)**. Clicked on the LinkedIn page, it opens `/capture/debug` and hands over the page's HTML (scripts, styles and images removed) with `postMessage`; the app saves it to `data/capture_debug/<time>.html`. The last payload of the normal bookmarklet is kept as `data/capture_debug/last_payload.json`. Both stay on this machine (`data/` is git-ignored) and are used to write parser rules and sanitized test fixtures.

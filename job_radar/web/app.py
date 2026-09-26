@@ -1,7 +1,9 @@
+import json
 import re
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlencode
@@ -38,12 +40,15 @@ from ..notes import (
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
 
 HISTORY_SHOWN = 8
-BOOKMARKLET_JS = (Path(__file__).parent / "bookmarklet.js").read_text()
+BOOKMARKLETS = {
+    name: (Path(__file__).parent / f"{name}.js").read_text()
+    for name in ("bookmarklet", "bookmarklet_debug")
+}
 
 
-def bookmarklet(base_url: str) -> str:
+def bookmarklet(base_url: str, name: str = "bookmarklet") -> str:
     """The bookmarklet as a javascript: URL; comments and indentation stripped."""
-    code = re.sub(r"/\*.*?\*/", "", BOOKMARKLET_JS, flags=re.S)
+    code = re.sub(r"/\*.*?\*/", "", BOOKMARKLETS[name], flags=re.S)
     code = " ".join(line.strip() for line in code.splitlines() if line.strip())
     return "javascript:" + code.replace("__BASE__", base_url.rstrip("/"))
 
@@ -218,13 +223,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/capture", response_class=HTMLResponse)
     def capture_page(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(
-            request, "capture.html", {"bookmarklet": bookmarklet(str(request.base_url))}
-        )
+        base = str(request.base_url)
+        context = {
+            "bookmarklet": bookmarklet(base),
+            "debug_bookmarklet": bookmarklet(base, "bookmarklet_debug"),
+        }
+        return templates.TemplateResponse(request, "capture.html", context)
+
+    @app.get("/capture/debug", response_class=HTMLResponse)
+    def capture_debug_page(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(request, "capture_debug.html", {})
 
     @app.post("/api/capture")
     def capture(session: SessionDep, payload: Annotated[dict, Body()]) -> dict[str, int]:
+        _save_debug(settings.capture_debug_dir / "last_payload.json", json.dumps(payload, indent=1))
         return import_capture(session, payload).as_dict()
+
+    @app.post("/api/capture/debug")
+    def capture_debug(payload: Annotated[dict, Body()]) -> dict[str, str | int]:
+        html = str(payload.get("html") or "")
+        name = f"{datetime.now(UTC):%Y%m%d-%H%M%S}.html"
+        path = settings.capture_debug_dir / name
+        _save_debug(path, f"<!-- {payload.get('source_url', '')} -->\n{html}")
+        return {"file": str(path), "size": len(html)}
 
     @app.get("/applications", response_class=HTMLResponse)
     def applications_page(request: Request, session: SessionDep) -> HTMLResponse:
@@ -253,6 +274,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     return app
+
+
+def _save_debug(path: Path, text: str) -> None:
+    # Local diagnostics only: data/ is git-ignored and may hold page content.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
 
 
 def _gmail_link(thread_id: str | None) -> str | None:
