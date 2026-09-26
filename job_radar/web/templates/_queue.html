@@ -2,7 +2,7 @@
 {% include "_tabs.html" %}
 {% if rows %}
 <table>
-  <thead><tr><th>Title</th><th>Company</th><th>Score</th><th>State</th><th></th></tr></thead>
+  <thead><tr><th>Title</th><th>Country</th><th>Company</th><th>Score</th><th>State</th><th></th></tr></thead>
   <tbody>
     {% for row in rows %}
     {% with o = row.o, rejected_at = row.rejected_at, eff_score = row.eff_score, history = row.history, history_count = row.history_count, applied_before = row.applied_before, extra_reasons = row.extra_reasons, country = row.country, reason_kinds = row.reason_kinds %}{% include "_row.html" %}{% endwith %}

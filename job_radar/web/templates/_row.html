@@ -31,6 +31,7 @@
     </ul>
     {% endif %}
   </td>
+  <td class="country">{{ country or "—" }}</td>
   <td>{{ o.company.name }}</td>
   <td>{{ "%.1f"|format(eff_score) if eff_score is not none else "—" }}</td>
   <td class="state">{{ o.state.value }}</td>

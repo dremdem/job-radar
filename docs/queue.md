@@ -10,6 +10,8 @@ The main page (`/`) lists opportunities in tabs:
 | **Ignored** | `ignore` | `/?tab=ignored` |
 | **All** | everything | `/?tab=all` |
 
+Columns: title (with the full location, salary and badges below it), **Country**, company, score, state. The country is the last part of the location ("Lucknow, Uttar Pradesh, India" → India, "Germany (Remote)" → Germany); when the source gives only a city ("Lucknow (Remote)"), that is what is shown, and `—` when there is no location.
+
 Each tab label carries its count. Inside a tab the order is: score (after penalties), highest first; vacancies of companies that rejected you at the bottom.
 
 ## Buttons

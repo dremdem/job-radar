@@ -75,3 +75,14 @@ def test_buttons_carry_the_current_tab(client, session):
 def test_empty_tab_message(client, session):
     add(session, "Fresh role")
     assert "Nothing here" in client.get("/?tab=applied").text
+
+
+def test_country_has_its_own_column(client, session):
+    o = add(session, "India role")
+    o.location = "Lucknow, Uttar Pradesh, India"
+    add(session, "No location role")
+    session.commit()
+    text = client.get("/").text
+    assert "<th>Country</th>" in text
+    assert '<td class="country">India</td>' in text
+    assert '<td class="country">—</td>' in text
