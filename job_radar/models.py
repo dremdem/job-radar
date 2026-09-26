@@ -24,6 +24,7 @@ def _enum(cls: type[enum.Enum]) -> Enum:
 class SourceType(enum.StrEnum):
     LINKEDIN_ALERT = "linkedin_alert"
     LINKEDIN_SEARCH = "linkedin_search"  # opt-in public guest search, see docs
+    LINKEDIN_CAPTURE = "linkedin_capture"  # page sent by the user's bookmarklet
     GMAIL = "gmail"
     HIMALAYAS = "himalayas"
     TELEGRAM = "telegram"

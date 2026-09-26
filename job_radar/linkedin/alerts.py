@@ -91,7 +91,11 @@ class ImportStats:
     new: int = 0
 
 
-LINKEDIN_SOURCES = (SourceType.LINKEDIN_ALERT, SourceType.LINKEDIN_SEARCH)
+LINKEDIN_SOURCES = (
+    SourceType.LINKEDIN_ALERT,
+    SourceType.LINKEDIN_SEARCH,
+    SourceType.LINKEDIN_CAPTURE,
+)
 
 
 def add_linkedin_job(

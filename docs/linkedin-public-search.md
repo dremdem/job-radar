@@ -1,5 +1,7 @@
 # LinkedIn public search (opt-in)
 
+> The guest search is keyword-based and cannot reproduce LinkedIn's personal ranking; for everything you see in your own browser use the [bookmarklet](linkedin-capture.md).
+
 An alert email lists about 6 jobs; the same search on LinkedIn shows ~25 on its first page. With this **opt-in** feature (#23) Job Radar reads that first page from LinkedIn's **public guest search**, without logging in. Off by default.
 
 What it never does: log in, send cookies, use a browser or a browser profile, click, apply. It is still automated reading of linkedin.com and against LinkedIn's terms; the account is not involved, the IP may get throttled. See the LinkedIn rule in [CLAUDE.md](../CLAUDE.md).

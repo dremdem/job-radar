@@ -9,6 +9,9 @@ from job_radar.config import Settings
 from job_radar.db import make_engine, make_session_factory, upgrade_database
 from job_radar.web.app import create_app
 
+# Tests must not depend on the developer's local .env (e.g. opt-in flags turned on).
+Settings.model_config["env_file"] = None
+
 
 @pytest.fixture
 def database_url(tmp_path) -> str:

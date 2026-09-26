@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Capture · Job Radar{% endblock %}
+{% block content %}
+<h2>Send a LinkedIn page to Job Radar</h2>
+<div id="result" class="small"></div>
+<p>Drag this link to your bookmarks bar: <a class="badge" href="{{ bookmarklet }}">→ Job Radar</a></p>
+<ol class="small">
+  <li>Open a LinkedIn job search (e.g. an alert's “See all jobs”) and <b>scroll the list to the end of the first page</b>, or open one vacancy.</li>
+  <li>Click <b>→ Job Radar</b> in the bookmarks bar. A tab opens here and shows what was received.</li>
+</ol>
+<p class="muted small">The bookmark only reads the page you opened; it never clicks, scrolls or sends requests to LinkedIn. Details: docs/linkedin-capture.md.</p>
+<script>
+  (function () {
+    var raw = location.hash.slice(1);
+    if (!raw) return;
+    history.replaceState(null, "", "/capture");  // drop the data from the address bar
+    var out = document.getElementById("result");
+    out.textContent = "Saving…";
+    fetch("/api/capture", {method: "POST", headers: {"Content-Type": "application/json"}, body: decodeURIComponent(raw)})
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        out.innerHTML = "<p><b>Received " + s.cards + " jobs</b>: " + s.new + " new, " + s.known +
+          " already in Job Radar" + (s.skipped ? ", " + s.skipped + " unreadable" : "") +
+          (s.descriptions ? "; " + s.descriptions + " description saved" : "") +
+          ". <a href='/'>Open the queue</a></p>" +
+          (s.cards && s.skipped === s.cards ? "<p>No card could be read: LinkedIn may have changed its layout. Please send a screenshot.</p>" : "");
+      })
+      .catch(function () { out.textContent = "Could not save the page."; });
+  })();
+</script>
+{% endblock %}

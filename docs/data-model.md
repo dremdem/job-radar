@@ -41,7 +41,7 @@ One sighting of an opportunity in a source. Unique on `(source_type, external_id
 
 | Column | Notes |
 |---|---|
-| `source_type` | `linkedin_alert`, `linkedin_search` (public guest search, [linkedin-public-search.md](linkedin-public-search.md)), `gmail`, `himalayas`, `telegram`. A LinkedIn job id is one opportunity whichever LinkedIn source saw it |
+| `source_type` | `linkedin_alert`, `linkedin_search` (public guest search, [linkedin-public-search.md](linkedin-public-search.md)), `linkedin_capture` (pages sent by the bookmarklet, [linkedin-capture.md](linkedin-capture.md)), `gmail`, `himalayas`, `telegram`. A LinkedIn job id is one opportunity whichever LinkedIn source saw it |
 | `external_id` | Stable id inside the source (e.g. LinkedIn job id) |
 | `url` | Canonical URL, tracking parameters stripped |
 | `opportunity_id` | |

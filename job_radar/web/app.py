@@ -1,3 +1,4 @@
+import re
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -5,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Body, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from ..config import Settings, get_settings
 from ..contacts import company_history
 from ..db import make_engine, make_session_factory
 from ..language import language_risk
+from ..linkedin.capture import import_capture
 from ..models import (
     Application,
     ApplicationReview,
@@ -36,6 +38,16 @@ from ..notes import (
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
 
 HISTORY_SHOWN = 8
+BOOKMARKLET_JS = (Path(__file__).parent / "bookmarklet.js").read_text()
+
+
+def bookmarklet(base_url: str) -> str:
+    """The bookmarklet as a javascript: URL; comments and indentation stripped."""
+    code = re.sub(r"/\*.*?\*/", "", BOOKMARKLET_JS, flags=re.S)
+    code = " ".join(line.strip() for line in code.splitlines() if line.strip())
+    return "javascript:" + code.replace("__BASE__", base_url.rstrip("/"))
+
+
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 # Queue order: undecided first, then the ones worth a look.
@@ -203,6 +215,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return templates.TemplateResponse(
             request, "_queue.html", _queue_context(session, _tab(tab), filters)
         )
+
+    @app.get("/capture", response_class=HTMLResponse)
+    def capture_page(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request, "capture.html", {"bookmarklet": bookmarklet(str(request.base_url))}
+        )
+
+    @app.post("/api/capture")
+    def capture(session: SessionDep, payload: Annotated[dict, Body()]) -> dict[str, int]:
+        return import_capture(session, payload).as_dict()
 
     @app.get("/applications", response_class=HTMLResponse)
     def applications_page(request: Request, session: SessionDep) -> HTMLResponse:
