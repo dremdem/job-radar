@@ -16,9 +16,9 @@ Each tab label carries its count. Inside a tab the order is: score (after penalt
 
 ## Filters
 
-Above the tabs: **Country** and **Company**. Both match any part of the text, ignoring case (`ind` finds India, `EPAM` finds "EPAM Anywhere"); with both filled, a vacancy must match both. Country is searched in the whole location (city, region, country), so `london` works too.
+In the table header, right under the column titles (like a spreadsheet's column filters): **Country** and **Company**. Both match any part of the text, ignoring case (`ind` finds India, `EPAM` finds "EPAM Anywhere"); with both filled, a vacancy must match both. Country is searched in the whole location (city, region, country), so `london` works too.
 
-The list updates while you type. Filters are kept in the URL (`/?tab=review&country=india&company=tri`), survive switching tabs and clicking the row buttons, and the tab counts show how many vacancies match the filters.
+The rows update while you type; the field keeps focus, and the header with the filters stays even when nothing matches. Filters are kept in the URL (`/?tab=review&country=india&company=tri`), survive switching tabs and clicking the row buttons, and the tab counts show how many vacancies match the filters.
 
 ## Buttons
 

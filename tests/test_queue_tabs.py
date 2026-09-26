@@ -136,10 +136,26 @@ def test_tab_links_keep_filters(client, session):
 def test_buttons_keep_filters(client, session):
     rows = seed_places(session)
     text = client.get("/?company=tricon").text
-    assert 'hx-include="#filters"' in text
+    assert 'hx-include=".col-filter"' in text
     response = client.post(
         f"/opportunities/{rows['tricon'].id}/state",
         data={"state": "ignore", "tab": "review", "company": "tricon", "country": ""},
     )
     assert "Python Poland" not in response.text  # still filtered
     assert "To review (0)" in response.text
+
+
+def test_filters_sit_in_the_table_header(client, session):
+    seed_places(session)
+    text = client.get("/?company=tricon").text
+    thead = text[text.index("<thead>") : text.index("</thead>")]
+    assert 'name="country"' in thead and 'name="company" value="tricon"' in thead
+    assert 'hx-target="#queue-body"' in thead and 'hx-select-oob="#tabs"' in thead
+    assert 'id="filters"' not in text  # the old form above the tabs is gone
+
+
+def test_header_stays_when_nothing_matches(client, session):
+    seed_places(session)
+    text = client.get("/?company=nobody-at-all").text
+    assert "<thead>" in text and 'name="company" value="nobody-at-all"' in text
+    assert "Nothing here" in text

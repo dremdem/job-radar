@@ -1,15 +1,23 @@
 <div id="queue">
 {% include "_tabs.html" %}
-{% if rows %}
+{% set filter_attrs = 'hx-get="/" hx-trigger="input changed delay:250ms, search" hx-include=".col-filter" hx-target="#queue-body" hx-select="#queue-body" hx-select-oob="#tabs" hx-swap="outerHTML" hx-push-url="true"' %}
 <table>
-  <thead><tr><th>Title</th><th>Country</th><th>Company</th><th>Score</th><th>State</th><th></th></tr></thead>
-  <tbody>
+  <thead>
+    <tr><th>Title</th><th>Country</th><th>Company</th><th>Score</th><th>State</th><th></th></tr>
+    <tr class="filter-row">
+      <th><input type="hidden" class="col-filter" name="tab" value="{{ tab }}">
+        {% if filters.country or filters.company %}<a class="small" href="/?tab={{ tab }}">clear filters</a>{% endif %}</th>
+      <th><input type="search" class="col-filter" name="country" value="{{ filters.country }}" placeholder="filter" autocomplete="off" aria-label="Filter by country" {{ filter_attrs | safe }}></th>
+      <th><input type="search" class="col-filter" name="company" value="{{ filters.company }}" placeholder="filter" autocomplete="off" aria-label="Filter by company" {{ filter_attrs | safe }}></th>
+      <th></th><th></th><th></th>
+    </tr>
+  </thead>
+  <tbody id="queue-body">
     {% for row in rows %}
     {% with o = row.o, rejected_at = row.rejected_at, eff_score = row.eff_score, history = row.history, history_count = row.history_count, applied_before = row.applied_before, extra_reasons = row.extra_reasons, country = row.country, reason_kinds = row.reason_kinds %}{% include "_row.html" %}{% endwith %}
+    {% else %}
+    <tr><td colspan="6" class="muted">Nothing here.</td></tr>
     {% endfor %}
   </tbody>
 </table>
-{% else %}
-<p class="muted">Nothing here.</p>
-{% endif %}
 </div>

@@ -12,13 +12,6 @@
     document.querySelectorAll("details.history").forEach((d) => { d.open = open; });
   }
 </script>
-<form id="filters" class="filters small" hx-get="/" hx-trigger="input delay:250ms, submit"
-      hx-target="#queue" hx-select="#queue" hx-swap="outerHTML" hx-push-url="true">
-  <input type="hidden" name="tab" value="{{ tab }}">
-  <label>Country <input type="search" name="country" value="{{ filters.country }}" placeholder="e.g. india" autocomplete="off"></label>
-  <label>Company <input type="search" name="company" value="{{ filters.company }}" placeholder="e.g. epam" autocomplete="off"></label>
-  {% if filters.country or filters.company %}<a href="/?tab={{ tab }}">clear</a>{% endif %}
-</form>
 {% include "_queue.html" %}
 {% else %}
 <p class="muted">No opportunities yet. Import some with <code>job-radar sync &lt;source&gt;</code>.</p>
