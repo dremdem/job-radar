@@ -23,7 +23,7 @@ The rows update while you type; the field keeps focus, and the header with the f
 
 ## Current row
 
-Clicking a row — the vacancy link (also with the middle mouse button) or anywhere in the row — highlights it until you click another one. Open a vacancy in a new tab, study it, come back: the row you left from is marked. The choice is remembered in this browser (localStorage), so it survives a reload and the queue re-rendering after buttons and filters.
+Clicking a row — the vacancy link (also with the middle mouse button) or anywhere in the row — highlights it until you click another one. Open a vacancy in a new tab, study it, come back: the row you left from is marked. The choice is remembered in this browser (localStorage), so it survives a reload and the queue re-rendering after buttons and filters. After a reload the page **scrolls to the highlighted row**: a saved description changes the score, so the row may have moved in the list.
 
 ## Description checks
 

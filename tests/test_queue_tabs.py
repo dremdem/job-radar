@@ -191,6 +191,7 @@ def test_queue_highlights_the_row_you_opened(client, session):
     assert "tr.current" in text  # style for the highlighted row
     assert "jr-current-row" in text  # remembered in localStorage
     assert "htmx:afterSwap" in text and "auxclick" in text
+    assert "scrollIntoView" in text  # after a reload the row may have moved: bring it into view
 
 
 def test_filter_by_title(client, session):

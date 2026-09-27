@@ -16,6 +16,7 @@
       document.querySelectorAll("tr.current").forEach(function (r) { r.classList.remove("current"); });
       var row = id && document.getElementById(id);
       if (row) row.classList.add("current");
+      return row;
     }
     function pick(event) {
       var row = event.target.closest && event.target.closest('tr[id^="opportunity-"]');
@@ -27,6 +28,13 @@
     document.addEventListener("auxclick", pick);  // middle click opens the link in a new tab
     document.addEventListener("htmx:afterSwap", function () { show(remembered()); });
     document.addEventListener("DOMContentLoaded", function () { show(remembered()); });
+    // A saved description changes the score, so after a reload the row may sit elsewhere in the
+    // list: bring it into view. The browser's own scroll restoration would undo this (#76).
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+    window.addEventListener("load", function () {
+      var row = show(remembered());
+      if (row) row.scrollIntoView({block: "center"});
+    });
   })();
   // jr-keep-scroll: actions that re-render the whole queue (rejected, reasons, notes) must not
   // move the page; state buttons replace only their row (#70).
