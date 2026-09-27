@@ -86,17 +86,17 @@ class Filters:
 
     country: str = ""
     company: str = ""
+    title: str = ""
 
-    def matches(self, location: str | None, company: str) -> bool:
-        return self.country.strip().casefold() in (location or "").casefold() and (
-            self.company.strip().casefold() in company.casefold()
-        )
+    def matches(self, location: str | None, company: str, title: str = "") -> bool:
+        def has(needle: str, text: str | None) -> bool:
+            return needle.strip().casefold() in (text or "").casefold()
+
+        return has(self.country, location) and has(self.company, company) and has(self.title, title)
 
     def href(self, tab: str) -> str:
-        params = {"tab": tab} | {
-            k: v for k, v in (("country", self.country), ("company", self.company)) if v
-        }
-        return "/?" + urlencode(params)
+        pairs = (("title", self.title), ("country", self.country), ("company", self.company))
+        return "/?" + urlencode({"tab": tab} | {k: v for k, v in pairs if v})
 
 
 def _tab(value: str | None) -> str:
@@ -139,8 +139,9 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         tab: str = DEFAULT_TAB,
         country: str = "",
         company: str = "",
+        title: str = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company)
+        filters = Filters(country, company, title)
         return templates.TemplateResponse(
             request, "queue.html", _queue_context(session, _tab(tab), filters)
         )
@@ -154,8 +155,9 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         tab: Annotated[str, Form()] = DEFAULT_TAB,
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
+        title: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company)
+        filters = Filters(country, company, title)
         tab = _tab(tab)
         opportunity = _get_opportunity(session, opportunity_id)
         opportunity.state = state
@@ -177,8 +179,9 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         tab: Annotated[str, Form()] = DEFAULT_TAB,
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
+        title: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company)
+        filters = Filters(country, company, title)
         # Rejection is per company, so a toggle can move several rows: re-render the queue.
         opportunity = _get_opportunity(session, opportunity_id)
         toggle_manual_rejection(session, opportunity)
@@ -199,8 +202,9 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         tab: Annotated[str, Form()] = DEFAULT_TAB,
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
+        title: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company)
+        filters = Filters(country, company, title)
         # Penalties and history are per company, so the whole queue is re-rendered.
         opportunity = _get_opportunity(session, opportunity_id)
         try:
@@ -224,8 +228,9 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         tab: Annotated[str, Form()] = DEFAULT_TAB,
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
+        title: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company)
+        filters = Filters(country, company, title)
         if not delete_note(session, note_id):
             raise HTTPException(status_code=404, detail="Note not found")
         return templates.TemplateResponse(
@@ -424,10 +429,12 @@ def _tabs_context(session: Session, tab: str, filters: Filters | None = None) ->
     filters = filters or Filters()
     counts: dict[OpportunityState, int] = {}
     rows = session.execute(
-        select(Opportunity.state, Opportunity.location, Company.name).join(Opportunity.company)
+        select(Opportunity.state, Opportunity.location, Company.name, Opportunity.title).join(
+            Opportunity.company
+        )
     ).all()
-    for state, location, company in rows:
-        if filters.matches(location, company):
+    for state, location, company, title in rows:
+        if filters.matches(location, company, title):
             counts[state] = counts.get(state, 0) + 1
     tabs = [
         (
@@ -449,7 +456,7 @@ def _queue_context(
     opportunities = [
         o
         for o in _load_opportunities(session, TABS[tab][1])
-        if filters.matches(o.location, o.company.name)
+        if filters.matches(o.location, o.company.name, o.title)
     ]
     rows = [_row_context(session, o, rejected) for o in opportunities]
     rows.sort(key=_queue_order)

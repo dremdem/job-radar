@@ -167,3 +167,19 @@ def test_queue_highlights_the_row_you_opened(client, session):
     assert "tr.current" in text  # style for the highlighted row
     assert "jr-current-row" in text  # remembered in localStorage
     assert "htmx:afterSwap" in text and "auxclick" in text
+
+
+def test_filter_by_title(client, session):
+    seed_places(session)
+    text = client.get("/?tab=all&title=BACKEND").text
+    assert "Backend India" in text and "Backend London" in text
+    assert "Python Poland" not in text and "Engineer Munich" not in text
+    assert "All (2)" in text
+
+
+def test_title_combines_with_other_filters_and_is_kept(client, session):
+    seed_places(session)
+    text = client.get("/?tab=all&title=backend&country=india").text
+    assert "Backend India" in text and "Backend London" not in text
+    assert 'name="title" value="backend"' in text
+    assert 'href="/?tab=review&amp;title=backend&amp;country=india"' in text
