@@ -8,6 +8,7 @@
   <p><label><input type="checkbox" name="rejected" {% if rules.rejected %}checked{% endif %}> The company rejected you</label></p>
   <p><label><input type="checkbox" name="applied" {% if rules.applied %}checked{% endif %}> You already applied to the company</label></p>
   <p><label><input type="checkbox" name="ignored" {% if rules.ignored %}checked{% endif %}> You already ignored another vacancy of the company</label></p>
+  <p><label><input type="checkbox" name="no_python" {% if rules.no_python %}checked{% endif %}> The description has no Python (only vacancies with a saved description)</label></p>
   <p><label><input type="checkbox" name="hybrid" {% if rules.hybrid %}checked{% endif %}> “Hybrid” or “on-site” in the title or location</label></p>
   <p><label>Look back <input type="number" name="days" value="{{ rules.days }}" min="1" max="3650" style="width: 5em"> days</label>
     <span class="muted">(rejections, applications and ignores older than this do not count)</span></p>

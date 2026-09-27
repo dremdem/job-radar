@@ -256,3 +256,30 @@ def test_server_migrates_the_database_on_startup(tmp_path):
     with TestClient(create_app(Settings(database_url=url))) as fresh:
         assert fresh.get("/settings").status_code == 200
         assert fresh.get("/").status_code == 200
+
+
+def test_queue_shows_python_check_from_description(client, session):
+    from job_radar.dedup import add_snapshot, upsert_source_record
+    from job_radar.models import SourceType
+
+    good = add_opportunity(session, title="Backend Engineer A")
+    bad = add_opportunity(session, title="Backend Engineer B")
+    bad.score = 8.0
+    for o, text in ((good, "Strong Python 3.10+ and FastAPI."), (bad, "Go and Rust only.")):
+        record = upsert_source_record(
+            session,
+            source_type=SourceType.LINKEDIN_CAPTURE,
+            external_id=str(o.id),
+            url=None,
+            opportunity=o,
+        )
+        add_snapshot(session, record, text)
+    session.commit()
+    text = client.get("/").text
+    assert "Python in description (x1; also FastAPI)" in text
+    assert "Strong Python 3.10+" in text  # the quote
+    assert "No Python in description" in text and ">5.0<" in text
+
+
+def test_settings_offers_no_python_rule(client):
+    assert 'name="no_python"' in client.get("/settings").text

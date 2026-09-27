@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .description import lacks_python, latest_description
 from .models import (
     Application,
     ApplicationReview,
@@ -26,11 +27,12 @@ class Rules:
     applied: bool = False
     ignored: bool = False
     rejected: bool = False
+    no_python: bool = False
     days: int = 90
 
     @property
     def any(self) -> bool:
-        return self.hybrid or self.applied or self.ignored or self.rejected
+        return self.hybrid or self.applied or self.ignored or self.rejected or self.no_python
 
 
 def load_rules(session: Session) -> Rules:
@@ -103,6 +105,8 @@ def reason_for(
         )
         if latest and latest >= since:
             return f"ignored another {company} vacancy on {latest:%Y-%m-%d}"
+    if rules.no_python and lacks_python(opportunity.title, latest_description(opportunity)):
+        return "no Python in the description"
     if rules.hybrid and _HYBRID.search(f"{opportunity.title} {opportunity.location or ''}"):
         return "hybrid / on-site"
     return None

@@ -26,7 +26,8 @@
     {% endif %}
     {% if rejected_at or o.score_reasons or extra_reasons %}
     <ul class="reasons">
-      {% for r in extra_reasons %}<li class="neg">− {{ r.text }}</li>{% endfor %}
+      {% for r in extra_reasons %}<li class="{{ 'pos' if r.sign == '+' else 'neg' }}">{{ '+' if r.sign == '+' else '−' }} {{ r.text }}</li>{% endfor %}
+      {% if python_quote %}<li class="muted quote">“{{ python_quote }}”</li>{% endif %}
       {% if rejected_at %}<li class="neg">− Rejected by {{ o.company.name }} on {{ rejected_at.strftime("%Y-%m-%d") }}</li>{% endif %}
       {% for r in o.score_reasons %}<li class="{{ 'pos' if r.sign == '+' else 'neg' }}">{{ '+' if r.sign == '+' else '−' }} {{ r.text }}</li>{% endfor %}
     </ul>

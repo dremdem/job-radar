@@ -135,3 +135,46 @@ def test_apply_to_review_touches_only_new(session):
         session.refresh(o)
     assert hybrid_new.state is OpportunityState.AUTO_IGNORE
     assert hybrid_liked.state is OpportunityState.INTERESTED
+
+
+def with_description(session, text, title="Backend Engineer"):
+    from job_radar.dedup import add_snapshot, upsert_source_record
+
+    o = opp(session, title=title)
+    record = upsert_source_record(
+        session,
+        source_type=SourceType.LINKEDIN_CAPTURE,
+        external_id=str(o.id),
+        url=None,
+        opportunity=o,
+    )
+    add_snapshot(session, record, text)
+    session.commit()
+    return o
+
+
+def test_no_python_rule(session):
+    rules = Rules(no_python=True)
+    assert reason_for(session, with_description(session, "Go and Rust only."), rules, NOW) == (
+        "no Python in the description"
+    )
+    assert reason_for(session, with_description(session, "Python and FastAPI."), rules, NOW) is None
+    assert reason_for(session, opp(session), rules, NOW) is None  # no description yet
+    python_title = with_description(session, "Go only.", title="Python Developer")
+    assert reason_for(session, python_title, rules, NOW) is None
+
+
+def test_description_from_the_bookmarklet_triggers_the_rule(session):
+    from job_radar.linkedin.capture import import_capture
+
+    save_rules(session, Rules(no_python=True))
+    card = {"job_id": "501", "text": "Backend Engineer\nAcme\nGermany (Remote)"}
+    import_capture(session, {"cards": [card]})
+    o = session.scalar(select(Opportunity))
+    assert o.state is OpportunityState.NEW  # no description yet
+    import_capture(session, {"cards": [], "detail": {"job_id": "501", "description": "We use Go."}})
+    session.refresh(o)
+    assert (o.state, o.auto_ignore_reason) == (
+        OpportunityState.AUTO_IGNORE,
+        "no Python in the description",
+    )

@@ -20,6 +20,7 @@ from ..auto_ignore import Rules, apply_to_review, load_rules, save_rules
 from ..config import Settings, get_settings
 from ..contacts import company_history
 from ..db import make_engine, make_session_factory, upgrade_database
+from ..description import check_python, latest_description, python_risk
 from ..language import language_risk
 from ..linkedin.capture import import_capture
 from ..models import (
@@ -250,6 +251,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         applied: Annotated[str | None, Form()] = None,
         ignored: Annotated[str | None, Form()] = None,
         rejected: Annotated[str | None, Form()] = None,
+        no_python: Annotated[str | None, Form()] = None,
         days: Annotated[int, Form(ge=1, le=3650)] = 90,
     ) -> HTMLResponse:
         rules = Rules(
@@ -257,6 +259,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
             applied=applied is not None,
             ignored=ignored is not None,
             rejected=rejected is not None,
+            no_python=no_python is not None,
             days=days,
         )
         save_rules(session, rules)
@@ -402,7 +405,14 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
     history = company_history(session, opportunity.company_id)
     eff_score = effective_score(opportunity.score, rejected=rejected_at is not None)
     extra_reasons = []
-    for penalty in (location_penalty(session, opportunity), language_risk(opportunity.title)):
+    description = latest_description(opportunity)
+    python_check = check_python(description) if description else None
+    effects = (
+        location_penalty(session, opportunity),
+        language_risk(opportunity.title),
+        python_risk(opportunity.title, description),
+    )
+    for penalty in effects:
         if penalty is None:
             continue
         points, reason = penalty
@@ -419,6 +429,7 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         "rejected_at": rejected_at,
         "eff_score": eff_score,
         "extra_reasons": extra_reasons,
+        "python_quote": python_check.quote if python_check else "",
         "country": country_from_location(opportunity.location) or "",
         "reason_kinds": [k for k in NoteKind if k is not NoteKind.NOTE],
     }

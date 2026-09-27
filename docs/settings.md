@@ -10,12 +10,13 @@
 | Already applied | you have a confirmed application to the company within the window | `applied to Capitole on 2026-06-28` |
 | Already ignored | you ignored another vacancy of the company (your own `ignore`, not auto) within the window | `ignored another Capitole vacancy on 2026-09-25` |
 | Hybrid / on-site | "hybrid" or "on-site" appears in the title or location | `hybrid / on-site` |
+| No Python in the description | the vacancy has a description, Python is not in it, and not in the title either | `no Python in the description` |
 
 Checked in this order; the first match gives the reason. **Window**: 90 days by default (setting), so a company comes back to To review three months later. All rules are **off** until switched on.
 
 ## When they run
 
-- On every new vacancy entering the queue: alert emails, public search, bookmarklet.
+- On every new vacancy entering the queue: alert emails, public search, bookmarklet; the Python rule also when the bookmarklet brings the description of a vacancy already in To review.
 - **Apply to To review now** on the Settings page runs them over the vacancies currently `new`.
 - Your own states are never changed: only `new` vacancies are auto-ignored.
 

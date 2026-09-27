@@ -120,5 +120,10 @@ def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
         if record is not None and description:
             _, created = add_snapshot(session, record, description)
             stats.descriptions += int(created)
+            if created:
+                from ..auto_ignore import apply_rules  # rules that read the description
+
+                session.refresh(record.opportunity)
+                apply_rules(session, record.opportunity)
     session.commit()
     return stats

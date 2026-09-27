@@ -25,6 +25,16 @@ The rows update while you type; the field keeps focus, and the header with the f
 
 Clicking a row — the vacancy link (also with the middle mouse button) or anywhere in the row — highlights it until you click another one. Open a vacancy in a new tab, study it, come back: the row you left from is marked. The choice is remembered in this browser (localStorage), so it survives a reload and the queue re-rendering after buttons and filters.
 
+## Description checks
+
+When a vacancy has its description (sent by the [bookmarklet](linkedin-capture.md) from the vacancy page), the queue checks it for **Python**:
+
+- `+ Python in description (x7)` and a quote around the first mention, e.g. *"…strong Python 3.10+ with production experience in asyncio…"*; related tools (Django, FastAPI, Flask, asyncio, Pydantic, pandas, …) are listed too;
+- `− No Python in description` and **−3** to the score when the word never appears — unless the title already says Python;
+- nothing without a description (the row keeps *verify manually*).
+
+The quote shows the context: Python in "nice to have" counts the same as in the requirements, so read it. Also available as an auto-ignore rule in [settings.md](settings.md).
+
 ## Buttons
 
 - `interested` / `ignore` / `applied`, *ignore with reason* and `rejected` act at once. In a filtered tab a vacancy that no longer belongs there **disappears immediately** and the counts update, no reload needed. In **All** the row stays in place and only its state changes.
