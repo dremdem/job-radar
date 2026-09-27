@@ -21,6 +21,24 @@ How the queue works (tabs, buttons, **Sync mail** button): [docs/queue.md](docs/
 
 The queue is empty until a source is imported. To look around first: `uv run job-radar demo`.
 
+## Everyday commands: `./jr`
+
+A small wrapper so you do not have to remember the commands below:
+
+| Command | What it does |
+|---|---|
+| `./jr start` | Start the web UI in the background (log `data/server.log`) and open http://127.0.0.1:8000 |
+| `./jr stop` / `./jr restart` | Stop / restart it |
+| `./jr status` | Is it running, on which address |
+| `./jr logs` | Follow the server log |
+| `./jr sync` | Sync Gmail and run all imports (same as the **Sync mail** button) |
+| `./jr auth` | One-time Gmail consent (read-only) |
+| `./jr update` | `git pull`, install dependencies, restart the server |
+| `./jr check` | `ruff` + `pytest` |
+| `./jr help` | This list |
+
+A second `./jr start` does not start a second server.
+
 ## CLI
 
 | Command | What it does |

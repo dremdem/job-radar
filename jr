@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Everyday Job Radar commands, so you do not have to remember them. See README "Everyday commands".
+set -euo pipefail
+
+cd "$(dirname "$0")"
+HOST=127.0.0.1
+PORT=8000
+URL="http://$HOST:$PORT"
+PID_FILE=data/server.pid
+LOG_FILE=data/server.log
+
+server_pid() {
+  # From the pid file, else any `job-radar serve` started from this folder.
+  if [[ -f $PID_FILE ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    cat "$PID_FILE"
+  else
+    pgrep -f "job-radar serve" | head -n1 || true
+  fi
+}
+
+wait_up() {
+  for _ in $(seq 1 40); do
+    curl -sf "$URL/healthz" >/dev/null 2>&1 && return 0
+    sleep 0.25
+  done
+  return 1
+}
+
+start() {
+  if [[ -n $(server_pid) ]]; then
+    echo "Already running: $URL"
+    return 0
+  fi
+  mkdir -p data
+  nohup uv run job-radar serve --host "$HOST" --port "$PORT" >>"$LOG_FILE" 2>&1 &
+  echo $! >"$PID_FILE"
+  if wait_up; then
+    echo "Job Radar is running: $URL (log: $LOG_FILE)"
+    command -v xdg-open >/dev/null && xdg-open "$URL" >/dev/null 2>&1 || true
+  else
+    echo "The server did not start; last lines of $LOG_FILE:" >&2
+    tail -n 20 "$LOG_FILE" >&2
+    return 1
+  fi
+}
+
+stop() {
+  local pid
+  pid=$(server_pid)
+  if [[ -z $pid ]]; then
+    echo "Not running."
+  else
+    pkill -f "job-radar serve" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    for _ in $(seq 1 20); do
+      [[ -z $(server_pid) ]] && break
+      sleep 0.25
+    done
+    echo "Stopped."
+  fi
+  rm -f "$PID_FILE"
+}
+
+status() {
+  if [[ -n $(server_pid) ]]; then
+    echo "Running: $URL (pid $(server_pid))"
+  else
+    echo "Not running. Start it with: ./jr start"
+  fi
+}
+
+usage() {
+  cat <<'EOF'
+Usage: ./jr <command>
+
+  start     Start the web UI in the background and open it in the browser
+  stop      Stop the web UI
+  restart   Restart the web UI (after pulling new code)
+  status    Is the web UI running
+  logs      Follow the server log
+  sync      Sync Gmail and run all imports (same as the Sync mail button)
+  auth      One-time Gmail consent (read-only)
+  update    git pull, install dependencies, restart the web UI
+  check     ruff + pytest
+  help      This list
+EOF
+}
+
+case "${1:-help}" in
+  start) start ;;
+  stop) stop ;;
+  restart) stop && start ;;
+  status) status ;;
+  logs) touch "$LOG_FILE" && tail -f "$LOG_FILE" ;;
+  sync) uv run job-radar sync gmail ;;
+  auth) uv run job-radar gmail auth ;;
+  update)
+    git pull --ff-only
+    uv sync
+    if [[ -n $(server_pid) ]]; then stop && start; else echo "Updated. Start with: ./jr start"; fi
+    ;;
+  check) uv run ruff check . && uv run ruff format --check . && uv run pytest -q ;;
+  help | -h | --help) usage ;;
+  *)
+    echo "Unknown command: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
