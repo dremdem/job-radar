@@ -163,13 +163,12 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         opportunity.state = state
         opportunity.auto_ignore_reason = None  # your choice replaces the rule's
         session.commit()
-        if tab == "all":
-            # Keep the row in place; refresh the tab counts out of band.
-            context = _row_context(session, opportunity) | _tabs_context(session, tab, filters)
-            return templates.TemplateResponse(request, "_row_and_tabs.html", context)
-        return templates.TemplateResponse(
-            request, "_queue.html", _queue_context(session, tab, filters)
-        )
+        # Replace only this row (or remove it when it leaves the tab) and refresh the tab counts
+        # out of band: re-rendering the whole queue made the page jump to the end (#70).
+        states = TABS[tab][1]
+        context = _row_context(session, opportunity) | _tabs_context(session, tab, filters)
+        context["show_row"] = states is None or opportunity.state in states
+        return templates.TemplateResponse(request, "_row_and_tabs.html", context)
 
     @app.post("/opportunities/{opportunity_id}/rejected", response_class=HTMLResponse)
     def set_rejected(

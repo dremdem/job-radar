@@ -52,7 +52,7 @@
     </details>
     {% for s in states %}
     <button hx-post="/opportunities/{{ o.id }}/state" hx-include=".col-filter" hx-vals='{"state": "{{ s.value }}", "tab": "{{ tab }}"}'
-            hx-target="{{ '#opportunity-%d' % o.id if tab == 'all' else '#queue' }}" hx-swap="outerHTML"
+            hx-target="#opportunity-{{ o.id }}" hx-swap="outerHTML"
             {% if o.state == s %}disabled{% endif %}>{{ s.value }}</button>
     {% endfor %}
     <button hx-post="/opportunities/{{ o.id }}/rejected" hx-include=".col-filter" hx-vals='{"tab": "{{ tab }}"}'

@@ -51,6 +51,30 @@ def test_processed_row_leaves_the_tab_at_once(client, session):
     assert response.status_code == 200
     assert "Fresh role" not in response.text
     assert "To review (0)" in response.text and "Applied (2)" in response.text
+    # Only the row is replaced (by nothing), not the whole queue: the page keeps its scroll.
+    assert "<table" not in response.text and 'hx-swap-oob="true"' in response.text
+
+
+def test_state_buttons_target_their_own_row(client, session):
+    rows = seed(session)
+    text = client.get("/").text
+    assert f'hx-target="#opportunity-{rows["new"].id}"' in text
+
+
+def test_row_staying_in_the_tab_comes_back_alone(client, session):
+    rows = seed(session)
+    response = client.post(
+        f"/opportunities/{rows['interested'].id}/state",
+        data={"state": "interested", "tab": "interested"},
+    )
+    assert f'id="opportunity-{rows["interested"].id}"' in response.text
+    assert "<table" not in response.text
+
+
+def test_full_rerenders_keep_the_scroll_position(client, session):
+    seed(session)
+    text = client.get("/").text
+    assert "jr-keep-scroll" in text
 
 
 def test_all_tab_keeps_the_row_and_updates_counts(client, session):

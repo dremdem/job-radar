@@ -1,2 +1,2 @@
-{% include "_row.html" %}
+{% if show_row %}{% include "_row.html" %}{% endif %}
 {% with oob = true %}{% include "_tabs.html" %}{% endwith %}

@@ -28,6 +28,17 @@
     document.addEventListener("htmx:afterSwap", function () { show(remembered()); });
     document.addEventListener("DOMContentLoaded", function () { show(remembered()); });
   })();
+  // jr-keep-scroll: actions that re-render the whole queue (rejected, reasons, notes) must not
+  // move the page; state buttons replace only their row (#70).
+  (function () {
+    var kept = null;
+    document.addEventListener("htmx:beforeSwap", function (e) {
+      if (e.detail.target && e.detail.target.id === "queue") kept = window.scrollY;
+    });
+    document.addEventListener("htmx:afterSettle", function () {
+      if (kept !== null) { window.scrollTo(0, kept); kept = null; }
+    });
+  })();
   // Works on rows re-rendered by HTMX too: it looks the lists up on every click.
   function toggleHistory(open) {
     document.querySelectorAll("details.history").forEach((d) => { d.open = open; });
