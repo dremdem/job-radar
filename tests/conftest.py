@@ -33,7 +33,8 @@ def session(engine: Engine) -> Iterator[Session]:
 
 
 @pytest.fixture
-def client(engine: Engine, database_url: str) -> Iterator[TestClient]:
-    app = create_app(Settings(database_url=database_url))
+def client(engine: Engine, database_url: str, tmp_path) -> Iterator[TestClient]:
+    # Diagnostics go to a temp folder, never to the developer's data/.
+    app = create_app(Settings(database_url=database_url, capture_debug_dir=tmp_path / "debug"))
     with TestClient(app) as client:
         yield client

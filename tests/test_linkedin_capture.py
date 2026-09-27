@@ -187,9 +187,12 @@ def test_semantic_page_salary_easy_apply_and_badges():
 
 def test_semantic_page_import_with_detail_from_page_title(session):
     stats = import_capture(session, payload(SEMANTIC["cards"], SEMANTIC["detail"]))
-    assert (stats.cards, stats.new, stats.skipped, stats.descriptions) == (25, 25, 0, 1)
-    empat = session.scalar(select(Opportunity).where(Opportunity.title == "Python Developer"))
-    assert "conversational AI agents" in empat.source_records[0].snapshots[0].raw_text
+    # The open vacancy's own card is covered by the detail, not counted twice.
+    assert (stats.cards, stats.new, stats.skipped, stats.descriptions) == (24, 25, 0, 1)
+    assert stats.vacancy == "Empat — Python Developer: new, description saved"
+    record = session.scalar(select(SourceRecord).where(SourceRecord.external_id == "4471482895"))
+    assert record.opportunity.location == "Ukraine (Remote)"  # from its own card
+    assert "conversational AI agents" in record.snapshots[0].raw_text
 
 
 def test_detail_title_and_company_from_page_title(session):
@@ -207,3 +210,31 @@ def test_detail_title_and_company_from_page_title(session):
     assert stats.new == 1
     o = session.scalar(select(Opportunity))
     assert (o.title, o.company.name) == ("Senior Backend Engineer (Python)", "ev.energy")
+
+
+VACANCY_PAGE = {
+    # What the bookmarklet sent from https://www.linkedin.com/jobs/view/4329057092/ (shortened).
+    "source_url": "https://www.linkedin.com/jobs/view/4329057092/",
+    "cards": [{"job_id": "4329057092", "text": "75K EUR/yr - 105K EUR/yr"}],
+    "detail": {
+        "job_id": "4329057092",
+        "page_title": "Senior Back-end Engineer | ScorePlay | LinkedIn",
+        "title": "",
+        "company": "",
+        "description": "About the job\n\nScorePlay is the AI media infrastructure for sports.",
+    },
+}
+
+
+def test_vacancy_page_is_not_reported_unreadable(session):
+    stats = import_capture(session, VACANCY_PAGE)
+    assert (stats.cards, stats.skipped, stats.new, stats.descriptions) == (0, 0, 1, 1)
+    assert stats.vacancy == "ScorePlay — Senior Back-end Engineer: new, description saved"
+    again = import_capture(session, VACANCY_PAGE)
+    assert (again.cards, again.skipped, again.new) == (0, 0, 0)
+    assert again.vacancy == "ScorePlay — Senior Back-end Engineer: description already saved"
+
+
+def test_vacancy_page_without_description(session):
+    page = {**VACANCY_PAGE, "detail": {**VACANCY_PAGE["detail"], "description": ""}}
+    assert import_capture(session, page).vacancy.endswith("no description found on the page")

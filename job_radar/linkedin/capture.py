@@ -69,8 +69,11 @@ class CaptureStats:
     known: int = 0
     skipped: int = 0
     descriptions: int = 0
+    vacancy: str = (
+        ""  # what happened to the open vacancy, e.g. "Acme — Engineer: description saved"
+    )
 
-    def as_dict(self) -> dict[str, int]:
+    def as_dict(self) -> dict[str, int | str]:
         return self.__dict__.copy()
 
 
@@ -89,9 +92,17 @@ def _job_id(value: Any) -> str | None:
 
 def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
     stats = CaptureStats()
+    detail = payload.get("detail") or {}
+    detail_id = _job_id(detail.get("job_id"))
+    own_card: AlertJob | None = None
     for card in payload.get("cards") or []:
-        stats.cards += 1
         job_id = _job_id(card.get("job_id"))
+        if job_id and job_id == detail_id:
+            # The open vacancy is reported on its own line, not as a card (on a vacancy page
+            # this "card" is just a link to itself, e.g. its salary); its text may still help.
+            own_card = own_card or parse_card_text(job_id, str(card.get("text") or "")[:_MAX_TEXT])
+            continue
+        stats.cards += 1
         job = parse_card_text(job_id, str(card.get("text") or "")[:_MAX_TEXT]) if job_id else None
         if job is None:
             stats.skipped += 1
@@ -100,30 +111,47 @@ def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
         else:
             stats.known += 1
 
-    detail = payload.get("detail") or {}
-    if job_id := _job_id(detail.get("job_id")):
+    if job_id := detail_id:
         record = _record(session, job_id)
+        created = False
         title, company = (detail.get("title") or "").strip(), (detail.get("company") or "").strip()
         if not (title and company):
             # The tab title of a job page: "<title> | <company> | LinkedIn".
             parts = [p.strip() for p in str(detail.get("page_title") or "").split(" | ")]
             if len(parts) >= 3 and parts[-1] == "LinkedIn":
                 title, company = title or parts[0], company or parts[1]
-        if record is None and title and company:
-            job = AlertJob(
-                job_id, title, company, (detail.get("location") or "").strip() or None, None, None
-            )
+        location = (detail.get("location") or "").strip() or None
+        # Prefer the vacancy's own card (it has the location and Easy Apply), else the tab title.
+        from_title = (
+            AlertJob(job_id, title, company, location, None, None) if title and company else None
+        )
+        job = own_card or from_title
+        if record is None and job is not None:
             add_linkedin_job(session, job, SourceType.LINKEDIN_CAPTURE)
             stats.new += 1
+            created = True
             record = _record(session, job_id)
         description = str(detail.get("description") or "").strip()[:_MAX_TEXT]
-        if record is not None and description:
-            _, created = add_snapshot(session, record, description)
-            stats.descriptions += int(created)
-            if created:
+        outcome = []
+        if created:
+            outcome.append("new")
+        if record is None:
+            outcome.append("not recognised (no title or company on the page)")
+        elif not description:
+            outcome.append("no description found on the page")
+        else:
+            _, saved = add_snapshot(session, record, description)
+            stats.descriptions += int(saved)
+            outcome.append("description saved" if saved else "description already saved")
+            if saved:
                 from ..auto_ignore import apply_rules  # rules that read the description
 
                 session.refresh(record.opportunity)
                 apply_rules(session, record.opportunity)
+        if record is not None:
+            o = record.opportunity
+            title, company = o.title, o.company.name
+        label = f"{company} — {title}" if title and company else f"job {job_id}"
+        stats.vacancy = f"{label}: {', '.join(outcome)}"
     session.commit()
     return stats

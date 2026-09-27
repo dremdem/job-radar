@@ -299,7 +299,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         return templates.TemplateResponse(request, "capture_debug.html", {})
 
     @app.post("/api/capture")
-    def capture(session: SessionDep, payload: Annotated[dict, Body()]) -> dict[str, int]:
+    def capture(session: SessionDep, payload: Annotated[dict, Body()]) -> dict[str, int | str]:
         _save_debug(settings.capture_debug_dir / "last_payload.json", json.dumps(payload, indent=1))
         return import_capture(session, payload).as_dict()
 

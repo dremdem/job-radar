@@ -22,7 +22,14 @@ def test_api_capture(client, session):
         },
     )
     assert response.status_code == 200
-    assert response.json() == {"cards": 1, "new": 1, "known": 0, "skipped": 0, "descriptions": 0}
+    assert response.json() == {
+        "cards": 1,
+        "new": 1,
+        "known": 0,
+        "skipped": 0,
+        "descriptions": 0,
+        "vacancy": "",
+    }
     assert (
         session.scalar(select(Opportunity.title)) == "Staff Software Engineer (AI Backend Services)"
     )
@@ -75,3 +82,8 @@ def test_capture_page_offers_debug_bookmarklet(client):
     assert "/capture/debug" in text
     debug_page = client.get("/capture/debug").text
     assert "postMessage" in debug_page and r"linkedin\.com" in debug_page
+
+
+def test_capture_page_shows_the_vacancy_result(client):
+    text = client.get("/capture").text
+    assert "s.vacancy" in text  # the vacancy line is rendered from the API answer
