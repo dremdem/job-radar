@@ -12,10 +12,12 @@
       {% if rejected_at %}<span class="badge reject">rejected · {{ rejected_at.strftime("%Y-%m-%d") }}</span>{% endif %}
     </div>
     {% if description %}
-    <details class="description small">
-      <summary>Description ({{ description | length }} characters)</summary>
-      <div class="desc-text">{{ description }}</div>
-    </details>
+    <button type="button" class="small" data-description="description-{{ o.id }}">Description</button>
+    <template id="description-{{ o.id }}">
+      <h3>{{ o.title }}</h3>
+      <p class="muted">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if link %} · <a href="{{ link }}" target="_blank" rel="noopener noreferrer">open on LinkedIn</a>{% endif %}</p>
+      <div class="desc-text">{{ description | highlight_python }}</div>
+    </template>
     {% endif %}
     {% if history_count %}
     <details class="history small" open>

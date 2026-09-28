@@ -3,6 +3,8 @@
 import re
 from dataclasses import dataclass
 
+from markupsafe import Markup, escape
+
 from .models import Opportunity
 from .scoring import Reason
 
@@ -69,3 +71,9 @@ def python_risk(title: str, description: str | None) -> tuple[float, Reason] | N
         return NO_PYTHON_PENALTY, Reason("-", "No Python in description")
     also = f"; also {', '.join(check.related)}" if check.related else ""
     return PYTHON_BONUS, Reason("+", f"Python in description (x{check.mentions}{also})")
+
+
+def highlight_python(text: str) -> Markup:
+    """Escaped description with every Python mention wrapped in <mark> (only markup added)."""
+    escaped = str(escape(text))
+    return Markup(_PYTHON.sub(lambda m: f"<mark>{m.group(0)}</mark>", escaped))

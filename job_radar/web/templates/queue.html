@@ -57,6 +57,31 @@
 <p class="muted">No opportunities yet. Import some with <code>job-radar sync &lt;source&gt;</code>.</p>
 {% endif %}
 <p id="arrivals" class="small" hidden></p>
+<dialog id="description-dialog" aria-label="Vacancy description">
+  <button type="button" class="dialog-close" aria-label="Close">×</button>
+  <div class="dialog-body"></div>
+</dialog>
+<script>
+  // Read a description in a large window: the row's button copies its <template> in.
+  (function () {
+    var dialog = document.getElementById("description-dialog");
+    var body = dialog.querySelector(".dialog-body");
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest && event.target.closest("button[data-description]");
+      if (button) {
+        var source = document.getElementById(button.dataset.description);
+        if (!source) return;
+        body.replaceChildren(source.content.cloneNode(true));
+        dialog.showModal();
+        body.scrollTop = 0;
+        return;
+      }
+      // A click on the dark backdrop (outside the window) closes it.
+      if (event.target === dialog) dialog.close();
+    });
+    dialog.querySelector(".dialog-close").addEventListener("click", function () { dialog.close(); });
+  })();
+</script>
 <script>
   // Live updates from the Capture tab (bookmarklet): redraw the rows it changed, and say
   // when new vacancies arrived. Same local app, so a BroadcastChannel reaches this tab.

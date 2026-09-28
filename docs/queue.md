@@ -33,7 +33,7 @@ When a vacancy has its description (sent by the [bookmarklet](linkedin-capture.m
 - `− No Python in description` and **−3** to the score when the word never appears — unless the title already says Python;
 - nothing without a description (the row keeps *verify manually*).
 
-The full text is in the row's **Description** block (collapsed), so you can read it without opening LinkedIn again. The quote shows the context: Python in "nice to have" counts the same as in the requirements, so read it. Also available as an auto-ignore rule in [settings.md](settings.md).
+The full text opens with the row's **Description** button in a large reading window (bigger font, paragraphs kept, title/company/location on top, every *Python* highlighted); close it with Esc, the × button or a click outside. No need to open LinkedIn again just to read. The quote shows the context: Python in "nice to have" counts the same as in the requirements, so read it. Also available as an auto-ignore rule in [settings.md](settings.md).
 
 ## Buttons
 

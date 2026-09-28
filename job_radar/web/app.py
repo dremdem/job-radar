@@ -20,7 +20,7 @@ from ..auto_ignore import Rules, apply_to_review, load_rules, save_rules
 from ..config import Settings, get_settings
 from ..contacts import company_history
 from ..db import make_engine, make_session_factory, upgrade_database
-from ..description import check_python, latest_description, python_risk
+from ..description import check_python, highlight_python, latest_description, python_risk
 from ..language import language_risk
 from ..linkedin.capture import import_capture
 from ..models import (
@@ -58,6 +58,7 @@ def bookmarklet(base_url: str, name: str = "bookmarklet") -> str:
 
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
+templates.env.filters["highlight_python"] = highlight_python
 
 # Queue order: undecided first, then the ones worth a look.
 _STATE_ORDER = [
