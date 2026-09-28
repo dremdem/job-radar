@@ -17,10 +17,18 @@ from bs4 import BeautifulSoup
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import EmailMessage, LinkedInFetch, SourceType
+from ..models import (
+    EmailMessage,
+    LinkedInFetch,
+    Opportunity,
+    OpportunityState,
+    SourceRecord,
+    SourceType,
+)
 from .alerts import ALERT_SENDER, AlertJob, add_linkedin_job
 
 GUEST_SEARCH = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+GUEST_POSTING = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
 PAGE_SIZE = 10
 ALERT_MAX_AGE = timedelta(days=3)
 MIN_RANGE, MAX_RANGE = 3600, 7 * 24 * 3600
@@ -130,21 +138,53 @@ class PublicSearchClient:
         self._get, self._sleep, self._delay = http_get, sleep, delay
         self._requested = False
 
-    def fetch(self, search: Search, start: int) -> tuple[int, str]:
+    def _request(self, url: str, has_content: Callable[[str], bool]) -> tuple[int, str]:
         """(http status, body); raises Blocked on any sign of blocking."""
         if self._requested:
             self._sleep(self._delay)
         self._requested = True
-        status, final_url, body = self._get(search.url(start))
+        status, final_url, body = self._get(url)
         if status in (429, 999):
             raise Blocked(status, f"HTTP {status}")
         if _BLOCK_URL.search(urlparse(final_url).path or "") or _BLOCK_URL.search(final_url):
             raise Blocked(status, "redirected to login")
         if status != 200:
             raise FetchError(status)
-        if not parse_search_page(body) and _CHALLENGE.search(body):
+        if not has_content(body) and _CHALLENGE.search(body):
             raise Blocked(status, "challenge page")
         return status, body
+
+    def fetch(self, search: Search, start: int) -> tuple[int, str]:
+        return self._request(search.url(start), lambda body: bool(parse_search_page(body)))
+
+    def fetch_posting(self, job_id: str) -> tuple[int, str]:
+        url = GUEST_POSTING.format(job_id=job_id)
+        return self._request(url, lambda body: parse_job_posting(body) is not None)
+
+
+@dataclass(frozen=True)
+class JobPosting:
+    title: str
+    company: str
+    location: str | None
+    description: str
+
+
+def parse_job_posting(html: str) -> JobPosting | None:
+    """A vacancy's public page: title, company, location and the full description."""
+    soup = BeautifulSoup(html, "html.parser")
+    markup = soup.select_one(".show-more-less-html__markup")
+    if markup is None:
+        return None
+    description = markup.get_text("\n", strip=True)
+    if not description:
+        return None
+    return JobPosting(
+        title=_text(soup, ".top-card-layout__title") or "",
+        company=_text(soup, ".topcard__org-name-link") or "",
+        location=_text(soup, ".topcard__flavor--bullet"),
+        description=description,
+    )
 
 
 @dataclass
@@ -179,10 +219,15 @@ def import_public_search(
     done_today = session.scalar(
         select(func.count())
         .select_from(LinkedInFetch)
-        .where(LinkedInFetch.at >= today, LinkedInFetch.start == 0, LinkedInFetch.status == "ok")
+        .where(
+            LinkedInFetch.kind == "search",
+            LinkedInFetch.at >= today,
+            LinkedInFetch.start == 0,
+            LinkedInFetch.status == "ok",
+        )
     )
     searched = select(LinkedInFetch.email_message_id).where(
-        LinkedInFetch.start == 0, LinkedInFetch.status == "ok"
+        LinkedInFetch.kind == "search", LinkedInFetch.start == 0, LinkedInFetch.status == "ok"
     )
     alerts = session.scalars(
         select(EmailMessage)
@@ -237,4 +282,85 @@ def import_public_search(
                 break
             start += PAGE_SIZE
     session.commit()
+    return stats
+
+
+@dataclass
+class DescriptionStats:
+    requests: int = 0
+    saved: int = 0
+    errors: int = 0
+    blocked: bool = False
+
+
+def _without_description(session: Session) -> list[tuple[Opportunity, SourceRecord]]:
+    """To review vacancies seen on LinkedIn that have no description yet, best score first."""
+    from .alerts import LINKEDIN_SOURCES
+
+    rows = session.scalars(
+        select(Opportunity).where(Opportunity.state == OpportunityState.NEW)
+    ).all()
+    out = []
+    for o in rows:
+        if any(r.snapshots for r in o.source_records):
+            continue
+        record = next((r for r in o.source_records if r.source_type in LINKEDIN_SOURCES), None)
+        if record is not None and record.external_id.isdigit():
+            out.append((o, record))
+    return sorted(out, key=lambda pair: -(pair[0].score if pair[0].score is not None else -1))
+
+
+def import_public_descriptions(
+    session: Session,
+    client: PublicSearchClient,
+    *,
+    now: datetime | None = None,
+    max_per_day: int = 100,
+) -> DescriptionStats:
+    """Description from the public job page for To review vacancies without one. Opt-in; see
+    docs/linkedin-public-search.md#descriptions-public-job-page."""
+    from ..auto_ignore import apply_rules
+    from ..dedup import add_snapshot
+
+    now = now or datetime.now(UTC)
+    stats = DescriptionStats()
+    today = _day_start(now)
+    blocked_today = select(LinkedInFetch).where(
+        LinkedInFetch.at >= today, LinkedInFetch.status == "blocked"
+    )
+    if session.scalar(blocked_today.limit(1)):
+        stats.blocked = True
+        return stats
+    done = session.scalar(
+        select(func.count())
+        .select_from(LinkedInFetch)
+        .where(LinkedInFetch.kind == "description", LinkedInFetch.at >= today)
+    )
+    for opportunity, record in _without_description(session)[: max(0, max_per_day - done)]:
+        log = LinkedInFetch(at=now, kind="description", job_id=record.external_id, start=0)
+        session.add(log)
+        stats.requests += 1
+        try:
+            log.http_status, body = client.fetch_posting(record.external_id)
+        except Blocked as e:
+            log.status, log.http_status = "blocked", e.http_status
+            stats.blocked = True
+            session.commit()
+            return stats
+        except FetchError as e:
+            log.status, log.http_status = "error", e.http_status
+            stats.errors += 1
+            session.commit()
+            continue
+        posting = parse_job_posting(body)
+        if posting is None:
+            log.status = "error"
+            stats.errors += 1
+        else:
+            log.status, log.jobs = "ok", 1
+            add_snapshot(session, record, posting.description)
+            stats.saved += 1
+            session.refresh(opportunity)
+            apply_rules(session, opportunity)
+        session.commit()
     return stats

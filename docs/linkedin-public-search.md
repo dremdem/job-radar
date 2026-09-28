@@ -34,3 +34,13 @@ Every request is written to `linkedin_fetches` (time, search, `start`, HTTP stat
 JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true uv run job-radar sync gmail   # or put it in .env
 uv run job-radar import linkedin-search                               # only this step
 ```
+
+## Descriptions (public job page)
+
+With the same switch on, vacancies in **To review** that have no description yet get it from their public job page, `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/<id>` — one guest request per vacancy, highest score first. The text (`.show-more-less-html__markup`) is stored like a description sent by the bookmarklet, so the Python check and the auto-ignore rules apply right away, and the row shows the Description block.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `JOB_RADAR_LINKEDIN_PUBLIC_MAX_DESCRIPTIONS_PER_DAY` | `100` | Job pages per UTC day |
+
+Same pause between requests and the same stop: any sign of blocking stops **both** searches and descriptions until the next day. Each request is logged in `linkedin_fetches` with `kind = description`. Runs after every sync (**Sync mail**, `./jr sync`) and with `uv run job-radar import descriptions`.

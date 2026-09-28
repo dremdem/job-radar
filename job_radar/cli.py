@@ -96,6 +96,19 @@ def import_linkedin_search() -> None:
         engine.dispose()
 
 
+@import_app.command("descriptions")
+def import_descriptions() -> None:
+    """Opt-in: descriptions for To review from LinkedIn's public job pages (no login)."""
+    settings = Settings()
+    upgrade_database(settings.database_url)
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            pipeline.import_descriptions(session, settings, typer.echo)
+    finally:
+        engine.dispose()
+
+
 @import_app.command("rejections")
 def import_rejections(
     recheck: Annotated[

@@ -45,6 +45,28 @@ def import_linkedin_search(session: Session, settings: Settings, echo: Echo) -> 
         echo("linkedin-search: LinkedIn is blocking guest requests; stopped until tomorrow.")
 
 
+def import_descriptions(session: Session, settings: Settings, echo: Echo) -> None:
+    from .linkedin.public import PublicSearchClient, import_public_descriptions
+
+    if not settings.linkedin_public_search:
+        echo(
+            "descriptions: disabled; set JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true to enable "
+            "(see docs/linkedin-public-search.md)."
+        )
+        return
+    stats = import_public_descriptions(
+        session,
+        PublicSearchClient(delay=settings.linkedin_public_delay_seconds),
+        max_per_day=settings.linkedin_public_max_descriptions_per_day,
+    )
+    echo(
+        f"descriptions: {stats.requests} requests, {stats.saved} saved"
+        + (f", {stats.errors} errors" if stats.errors else "")
+    )
+    if stats.blocked:
+        echo("descriptions: LinkedIn is blocking guest requests; stopped until tomorrow.")
+
+
 def gmail_client_or_none(settings: Settings):
     from .gmail.auth import GmailAuthError, load_credentials
     from .gmail.client import ApiGmailClient
@@ -135,6 +157,9 @@ def run_sync(
             import_rejections(session, settings, echo, client)
             import_applications(session, settings, echo, client)
             import_contacts(session, echo)
+            # Last: the rules for fetched descriptions see applications/rejections above.
+            if settings.linkedin_public_search:
+                import_descriptions(session, settings, echo)
     finally:
         engine.dispose()
     for name, stats in results.items():

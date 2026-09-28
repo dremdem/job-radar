@@ -132,7 +132,9 @@ Audit log of requests to LinkedIn's public guest search (`linkedin_fetches`).
 |---|---|
 | `at` | UTC |
 | `email_message_id` | The alert whose search was run |
-| `keywords`, `geo_id`, `start` | What was requested |
+| `kind` | `search` (guest search page) or `description` (a job's public page) |
+| `keywords`, `geo_id`, `start` | What was requested (search) |
+| `job_id` | LinkedIn job id (description) |
 | `http_status` | Nullable |
 | `status` | `ok`, `blocked`, `error` |
 | `jobs` | Cards on the page |

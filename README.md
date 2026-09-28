@@ -52,6 +52,7 @@ A second `./jr start` does not start a second server.
 | `job-radar import applications` | Past applications from mail, see [docs/applications.md](docs/applications.md) |
 | `job-radar import contacts` | Link mail to companies and label it, for company history in the queue |
 | `job-radar import linkedin-search` | Opt-in: first 25 jobs of each new alert search from LinkedIn's public guest search, see [docs/linkedin-public-search.md](docs/linkedin-public-search.md) |
+| `job-radar import descriptions` | Opt-in: descriptions for To review from public job pages, see [docs/linkedin-public-search.md](docs/linkedin-public-search.md#descriptions-public-job-page) |
 | `job-radar sync <other source>` | Placeholder until the source lands |
 
 ## Configuration

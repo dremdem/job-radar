@@ -100,3 +100,10 @@ def test_import_linkedin_search_enabled_without_alerts(tmp_path, monkeypatch):
     result = runner.invoke(app, ["import", "linkedin-search"])
     assert result.exit_code == 0, result.output
     assert "linkedin-search: 0 searches, 0 requests" in result.output
+
+
+def test_import_descriptions_is_off_by_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
+    monkeypatch.delenv("JOB_RADAR_LINKEDIN_PUBLIC_SEARCH", raising=False)
+    result = runner.invoke(app, ["import", "descriptions"])
+    assert result.exit_code == 0 and "disabled" in result.output

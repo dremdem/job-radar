@@ -221,8 +221,10 @@ class LinkedInFetch(Base):
     email_message_id: Mapped[int | None] = mapped_column(
         ForeignKey("email_messages.id"), index=True
     )
-    keywords: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(16), default="search")  # search / description
+    keywords: Mapped[str] = mapped_column(String(255), default="")
     geo_id: Mapped[str | None] = mapped_column(String(32))
+    job_id: Mapped[str | None] = mapped_column(String(32))
     start: Mapped[int]
     http_status: Mapped[int | None]
     status: Mapped[str] = mapped_column(String(16))  # ok / blocked / error
