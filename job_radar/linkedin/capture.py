@@ -5,7 +5,7 @@ See docs/linkedin-capture.md.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import select
@@ -69,12 +69,17 @@ class CaptureStats:
     known: int = 0
     skipped: int = 0
     descriptions: int = 0
-    vacancy: str = (
-        ""  # what happened to the open vacancy, e.g. "Acme — Engineer: description saved"
-    )
+    # What happened to the open vacancy, e.g. "Acme — Engineer: description saved".
+    vacancy: str = ""
+    # New or changed opportunities, so an open queue tab can redraw them.
+    opportunity_ids: list[int] = field(default_factory=list)
 
-    def as_dict(self) -> dict[str, int | str]:
-        return self.__dict__.copy()
+    def touch(self, opportunity_id: int | None) -> None:
+        if opportunity_id is not None and opportunity_id not in self.opportunity_ids:
+            self.opportunity_ids.append(opportunity_id)
+
+    def as_dict(self) -> dict[str, int | str | list[int]]:
+        return {**self.__dict__, "opportunity_ids": list(self.opportunity_ids)}
 
 
 def _record(session: Session, job_id: str) -> SourceRecord | None:
@@ -108,6 +113,7 @@ def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
             stats.skipped += 1
         elif add_linkedin_job(session, job, SourceType.LINKEDIN_CAPTURE):
             stats.new += 1
+            stats.touch(_record(session, job.job_id).opportunity_id)
         else:
             stats.known += 1
 
@@ -151,6 +157,7 @@ def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
         if record is not None:
             o = record.opportunity
             title, company = o.title, o.company.name
+            stats.touch(o.id)
         label = f"{company} — {title}" if title and company else f"job {job_id}"
         stats.vacancy = f"{label}: {', '.join(outcome)}"
     session.commit()

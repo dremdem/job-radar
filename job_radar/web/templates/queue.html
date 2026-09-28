@@ -56,4 +56,34 @@
 {% else %}
 <p class="muted">No opportunities yet. Import some with <code>job-radar sync &lt;source&gt;</code>.</p>
 {% endif %}
+<p id="arrivals" class="small" hidden></p>
+<script>
+  // Live updates from the Capture tab (bookmarklet): redraw the rows it changed, and say
+  // when new vacancies arrived. Same local app, so a BroadcastChannel reaches this tab.
+  (function () {
+    if (!("BroadcastChannel" in window)) return;
+    var channel = new BroadcastChannel("job-radar");
+    var arrived = 0;
+    channel.onmessage = function (event) {
+      var data = event.data || {};
+      if (data.type !== "captured") return;
+      var query = new URLSearchParams(location.search).toString();
+      (data.opportunity_ids || []).forEach(function (id) {
+        var row = document.getElementById("opportunity-" + id);
+        if (row && window.htmx) {
+          htmx.ajax("GET", "/opportunities/" + id + "/row?" + query, {target: "#opportunity-" + id, swap: "outerHTML"});
+        } else {
+          arrived += 1;
+        }
+      });
+      var note = document.getElementById("arrivals");
+      if (arrived && note) {
+        note.hidden = false;
+        note.textContent = arrived + (arrived === 1 ? " new vacancy" : " new vacancies") + " arrived · ";
+        var link = document.createElement("a"); link.href = location.href; link.textContent = "reload";
+        note.appendChild(link);
+      }
+    };
+  })();
+</script>
 {% endblock %}

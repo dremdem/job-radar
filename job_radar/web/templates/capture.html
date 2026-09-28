@@ -30,6 +30,14 @@
           out.appendChild(p("No card could be read: LinkedIn may have changed its layout. Please send a screenshot."));
         var link = document.createElement("a"); link.href = "/"; link.textContent = "Open the queue";
         out.appendChild(link);
+        // Tell an open queue tab which rows changed, then get out of the way.
+        if ("BroadcastChannel" in window)
+          new BroadcastChannel("job-radar").postMessage({type: "captured", opportunity_ids: s.opportunity_ids || []});
+        var fine = s.vacancy ? !/not recognised|no description/.test(s.vacancy) : (s.cards && s.skipped < s.cards);
+        if (fine && window.opener !== undefined) {
+          out.appendChild(p("Closing this tab…"));
+          setTimeout(function () { window.close(); }, 1500);
+        }
       })
       .catch(function () { out.textContent = "Could not save the page."; });
   })();

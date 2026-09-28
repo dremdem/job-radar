@@ -29,6 +29,7 @@ def test_api_capture(client, session):
         "skipped": 0,
         "descriptions": 0,
         "vacancy": "",
+        "opportunity_ids": [session.scalar(select(Opportunity.id))],
     }
     assert (
         session.scalar(select(Opportunity.title)) == "Staff Software Engineer (AI Backend Services)"

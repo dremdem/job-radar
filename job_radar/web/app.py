@@ -171,6 +171,27 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         context["show_row"] = states is None or opportunity.state in states
         return templates.TemplateResponse(request, "_row_and_tabs.html", context)
 
+    @app.get("/opportunities/{opportunity_id}/row", response_class=HTMLResponse)
+    def opportunity_row(
+        request: Request,
+        opportunity_id: int,
+        session: SessionDep,
+        tab: str = DEFAULT_TAB,
+        country: str = "",
+        company: str = "",
+        title: str = "",
+    ) -> HTMLResponse:
+        # One row for live updates (e.g. a description saved by the bookmarklet in another tab).
+        tab, filters = _tab(tab), Filters(country, company, title)
+        opportunity = _get_opportunity(session, opportunity_id)
+        states = TABS[tab][1]
+        context = _row_context(session, opportunity) | _tabs_context(session, tab, filters)
+        in_tab = states is None or opportunity.state in states
+        context["show_row"] = in_tab and filters.matches(
+            opportunity.location, opportunity.company.name, opportunity.title
+        )
+        return templates.TemplateResponse(request, "_row_and_tabs.html", context)
+
     @app.post("/opportunities/{opportunity_id}/rejected", response_class=HTMLResponse)
     def set_rejected(
         request: Request,
@@ -299,7 +320,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         return templates.TemplateResponse(request, "capture_debug.html", {})
 
     @app.post("/api/capture")
-    def capture(session: SessionDep, payload: Annotated[dict, Body()]) -> dict[str, int | str]:
+    def capture(session: SessionDep, payload: Annotated[dict, Body()]) -> dict:
         _save_debug(settings.capture_debug_dir / "last_payload.json", json.dumps(payload, indent=1))
         return import_capture(session, payload).as_dict()
 
@@ -430,6 +451,7 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         "eff_score": eff_score,
         "extra_reasons": extra_reasons,
         "python_quote": python_check.quote if python_check else "",
+        "description": description or "",
         "country": country_from_location(opportunity.location) or "",
         "reason_kinds": [k for k in NoteKind if k is not NoteKind.NOTE],
     }

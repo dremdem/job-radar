@@ -15,7 +15,7 @@
   </thead>
   <tbody id="queue-body">
     {% for row in rows %}
-    {% with o = row.o, rejected_at = row.rejected_at, eff_score = row.eff_score, history = row.history, history_count = row.history_count, applied_before = row.applied_before, extra_reasons = row.extra_reasons, country = row.country, reason_kinds = row.reason_kinds, python_quote = row.python_quote %}{% include "_row.html" %}{% endwith %}
+    {% with o = row.o, rejected_at = row.rejected_at, eff_score = row.eff_score, history = row.history, history_count = row.history_count, applied_before = row.applied_before, extra_reasons = row.extra_reasons, country = row.country, reason_kinds = row.reason_kinds, python_quote = row.python_quote, description = row.description %}{% include "_row.html" %}{% endwith %}
     {% else %}
     <tr><td colspan="6" class="muted">Nothing here.</td></tr>
     {% endfor %}
