@@ -44,8 +44,6 @@ def plan_reads(
 ) -> list[ReadPlan]:
     plans = []
     for source in sources:
-        if source.parse != "post":
-            continue  # digests (graph_org_digest) are read by a later step, issue #86
         for topic in source.topics or [None]:
             query = select(func.max(TelegramPost.message_id)).where(
                 TelegramPost.chat == chat_key(source.chat)

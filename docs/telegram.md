@@ -23,7 +23,8 @@ Job Radar reads vacancies from Telegram channels chosen in the audit (#84). It d
 | `keywords` | Regex the post text must match. Default: Python, Django, FastAPI, Flask |
 | `title_keywords` | Regex the vacancy title must match (the role). Default: engineer, developer, разработчик, programmer, architect, DevOps/SRE, ML/AI, (tech/team) lead, CTO, backend, Python |
 | `exclude_title` | Regex that rejects a title. Default: analyst, manager, QA/test, recruiter, designer, sales, marketing, support, intern, digests ("дайджест", "подборка") |
-| `parse` | `post` (default): one post = one vacancy. `graph_org_digest`: Digital nomads digests (#86, not read yet) |
+| `parse` | `post` (default): one post = one vacancy. `graph_org_digest`: a daily digest whose categories link to job lists (Digital nomads) |
+| `categories` | For `graph_org_digest`: which digest categories to open, by name (`Back-end, Python`, …) |
 
 ## How a sync works
 
@@ -34,3 +35,15 @@ Job Radar reads vacancies from Telegram channels chosen in the audit (#84). It d
 - The vacancy links to the post (`https://t.me/<channel>/<id>`, or `t.me/c/<id>/<post>` for private channels) and has the source `telegram`.
 
 Runs as part of **Sync mail** / `./jr sync` when configured, or alone: `uv run job-radar sync telegram`.
+
+## Digests (Digital nomads)
+
+The channel posts one digest a day, *"100% remote jobs from the last 24 hours"*: a table of contents whose categories (`Back-end, Python - 4`, …) link to `graph.org` pages. Only the `categories` from the channel list are opened.
+
+1. A **category page** (read through the public Telegraph API, `api.telegra.ph/getPage/<path>`, no login) lists vacancies grouped by where they were found (HeadHunter, LinkedIn, …): *"Title at Company"*, each linking to its own page.
+2. A **vacancy page** has the channel's note on why it is 100 % remote, the description and the link to the original posting (hh.ru, LinkedIn, a company ATS).
+3. The vacancy gets title and company from the list, location `Remote` (the channel only publishes fully remote jobs; its remote note is kept in the description), and the page text as its description. The same `keywords` and title filters apply, checked against title + description.
+
+**Overlap with LinkedIn**: when the original link is a LinkedIn job (`linkedin.com/jobs/view/<id>`) already known from alerts, search or the bookmarklet, no second vacancy is created; the known one gets the digest's description if it had none. A new LinkedIn-linked vacancy also records the LinkedIn job id, so a later alert does not duplicate it.
+
+Each vacancy page is read once (dedup by its page); the digest post itself is stored with status `digest`. Telegraph requests are paced (0.3 s) and capped at 300 vacancy pages per sync.

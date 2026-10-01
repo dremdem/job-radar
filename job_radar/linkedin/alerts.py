@@ -95,6 +95,7 @@ LINKEDIN_SOURCES = (
     SourceType.LINKEDIN_ALERT,
     SourceType.LINKEDIN_SEARCH,
     SourceType.LINKEDIN_CAPTURE,
+    SourceType.LINKEDIN_LINK,
 )
 
 

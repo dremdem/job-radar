@@ -123,11 +123,6 @@ def test_plan_reads_resumes_after_the_last_stored_post(session):
     assert cyprus.since == NOW - timedelta(days=14)
 
 
-def test_digest_sources_are_not_read_yet(session):
-    digest = Source(name="digital_nomads", chat=1096230280, parse="graph_org_digest")
-    assert plan_reads(session, [digest], now=NOW) == []
-
-
 def fake(message_id, text):
     return {"id": message_id, "date": NOW.isoformat(), "text": text}
 

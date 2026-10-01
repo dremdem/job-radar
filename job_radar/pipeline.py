@@ -72,6 +72,7 @@ def import_telegram(session: Session, settings: Settings, echo: Echo) -> None:
     import asyncio
     from datetime import UTC, datetime
 
+    from .telegram.digest import TelegraphClient, import_digest
     from .telegram.mcp_reader import fetch_posts
     from .telegram.sources import load_sources
     from .telegram.sync import TelegramStats, import_posts, plan_reads
@@ -91,10 +92,20 @@ def import_telegram(session: Session, settings: Settings, echo: Echo) -> None:
         echo(f"telegram: could not read via telegram-mcp: {e}")
         return
     total = TelegramStats()
+    telegraph = TelegraphClient()
     for plan, result in results:
         where = plan.source.name + (f" #{plan.topic_id}" if plan.topic_id else "")
         if isinstance(result, Exception):
             echo(f"telegram: {where}: failed: {result}")
+            continue
+        if plan.source.parse == "graph_org_digest":
+            digest = import_digest(session, plan.source, result, telegraph, now=now)
+            total.add(TelegramStats(posts=digest.posts, vacancies=digest.vacancies))
+            echo(
+                f"telegram: {where}: {digest.posts} new digests, {digest.vacancies} vacancies, "
+                f"{digest.linked} matched LinkedIn vacancies"
+                + (f", {digest.errors} pages not read" if digest.errors else "")
+            )
             continue
         stats = import_posts(session, plan.source, plan.topic_id, result, now=now)
         total.add(stats)

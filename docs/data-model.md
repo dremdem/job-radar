@@ -42,7 +42,7 @@ One sighting of an opportunity in a source. Unique on `(source_type, external_id
 
 | Column | Notes |
 |---|---|
-| `source_type` | `linkedin_alert`, `linkedin_search` (public guest search, [linkedin-public-search.md](linkedin-public-search.md)), `linkedin_capture` (pages sent by the bookmarklet, [linkedin-capture.md](linkedin-capture.md)), `gmail`, `himalayas`, `telegram` (`external_id` = `<chat>:<message id>`). A LinkedIn job id is one opportunity whichever LinkedIn source saw it |
+| `source_type` | `linkedin_alert`, `linkedin_search` (public guest search, [linkedin-public-search.md](linkedin-public-search.md)), `linkedin_capture` (pages sent by the bookmarklet, [linkedin-capture.md](linkedin-capture.md)), `linkedin_link` (a LinkedIn job id seen as the original link of a vacancy from another source, e.g. a Telegram digest), `gmail`, `himalayas`, `telegram` (`external_id` = `<chat>:<message id>`, or `telegraph:<page>` for a digest vacancy). A LinkedIn job id is one opportunity whichever LinkedIn source saw it |
 | `external_id` | Stable id inside the source (e.g. LinkedIn job id) |
 | `url` | Canonical URL, tracking parameters stripped |
 | `opportunity_id` | |
@@ -164,5 +164,5 @@ Every post read from an allowlisted channel, once (`telegram_posts`). See [teleg
 | `source` | Channel `name` from `data/telegram.yaml` |
 | `chat`, `topic_id`, `message_id` | Unique on `chat + message_id` |
 | `posted_at`, `text`, `forwarded_from` | As read |
-| `status` | `vacancy` or `skipped` (ad, other profession, CV, …) |
+| `status` | `vacancy`, `skipped` (ad, other profession, CV, …) or `digest` (Digital nomads table of contents) |
 | `opportunity_id` | The vacancy it became |

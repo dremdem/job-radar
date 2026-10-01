@@ -25,6 +25,7 @@ class SourceType(enum.StrEnum):
     LINKEDIN_ALERT = "linkedin_alert"
     LINKEDIN_SEARCH = "linkedin_search"  # opt-in public guest search, see docs
     LINKEDIN_CAPTURE = "linkedin_capture"  # page sent by the user's bookmarklet
+    LINKEDIN_LINK = "linkedin_link"  # a LinkedIn job seen as the original link elsewhere
     GMAIL = "gmail"
     HIMALAYAS = "himalayas"
     TELEGRAM = "telegram"
