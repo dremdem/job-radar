@@ -67,6 +67,41 @@ def import_descriptions(session: Session, settings: Settings, echo: Echo) -> Non
         echo("descriptions: LinkedIn is blocking guest requests; stopped until tomorrow.")
 
 
+def import_telegram(session: Session, settings: Settings, echo: Echo) -> None:
+    """New posts from the allowlisted channels via telegram-mcp (docs/telegram.md)."""
+    import asyncio
+    from datetime import UTC, datetime
+
+    from .telegram.mcp_reader import fetch_posts
+    from .telegram.sources import load_sources
+    from .telegram.sync import TelegramStats, import_posts, plan_reads
+
+    if not settings.telegram_mcp_command:
+        echo("telegram: not configured; set JOB_RADAR_TELEGRAM_MCP_COMMAND (see docs/telegram.md).")
+        return
+    sources = load_sources(settings.telegram_sources)
+    if not sources:
+        echo(f"telegram: no channels in {settings.telegram_sources} (see telegram.example.yaml).")
+        return
+    now = datetime.now(UTC)
+    plans = plan_reads(session, sources, now=now, first_run_days=settings.telegram_first_run_days)
+    try:
+        results = asyncio.run(fetch_posts(settings.telegram_mcp_command, plans))
+    except Exception as e:  # server missing, login expired, ...: report, keep the rest of the sync
+        echo(f"telegram: could not read via telegram-mcp: {e}")
+        return
+    total = TelegramStats()
+    for plan, result in results:
+        where = plan.source.name + (f" #{plan.topic_id}" if plan.topic_id else "")
+        if isinstance(result, Exception):
+            echo(f"telegram: {where}: failed: {result}")
+            continue
+        stats = import_posts(session, plan.source, plan.topic_id, result, now=now)
+        total.add(stats)
+        echo(f"telegram: {where}: {stats.posts} new posts, {stats.vacancies} vacancies")
+    echo(f"telegram: {total.posts} new posts, {total.vacancies} vacancies")
+
+
 def gmail_client_or_none(settings: Settings):
     from .gmail.auth import GmailAuthError, load_credentials
     from .gmail.client import ApiGmailClient
@@ -154,6 +189,8 @@ def run_sync(
             import_linkedin(session, echo)
             if settings.linkedin_public_search:
                 import_linkedin_search(session, settings, echo)
+            if settings.telegram_mcp_command:
+                import_telegram(session, settings, echo)
             import_rejections(session, settings, echo, client)
             import_applications(session, settings, echo, client)
             import_contacts(session, echo)

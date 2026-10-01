@@ -1,0 +1,19 @@
+# Telegram channels Job Radar reads (copy to data/telegram.yaml). Audit: issue #84.
+# chat: @username or numeric id; topics: forum topic ids; require_tags: the post must have one;
+# keywords: regex, a post must match it to become a vacancy (default: Python / backend words);
+# parse: "post" (one post = one vacancy) or "graph_org_digest" (Digital nomads, issue #86).
+sources:
+  - name: digital_nomads
+    chat: 1096230280            # Digital nomads. Work from anywhere (private, no username)
+    parse: graph_org_digest
+    categories: ["Back-end, Python", "AI, AI Engineering", "Big Data, Data engineering"]
+  - name: zarubezhom_jobs
+    chat: zarubezhom_jobs       # Connectable Jobs
+  - name: youritjob
+    chat: youritjob             # LENKEP, Serbia & remote
+  - name: cyprusithr
+    chat: cyprusithr            # Cyprus IT HR (forum)
+    topics: [46685, 46679]      # vacancies; 46681 = CVs, skip
+    require_tags: ["#vacancy", "#вакансия"]
+  - name: twinslashjobs
+    chat: twinslashjobs

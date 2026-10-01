@@ -163,6 +163,16 @@ def sync(
     ] = None,
 ) -> None:
     """Import new items from a source."""
+    if source is SourceType.TELEGRAM:
+        settings = Settings()
+        upgrade_database(settings.database_url)
+        engine = make_engine(settings.database_url)
+        try:
+            with make_session_factory(engine)() as session:
+                pipeline.import_telegram(session, settings, typer.echo)
+        finally:
+            engine.dispose()
+        return
     if source is not SourceType.GMAIL:
         typer.echo(f"sync {source.value}: not implemented yet", err=True)
         raise typer.Exit(code=1)

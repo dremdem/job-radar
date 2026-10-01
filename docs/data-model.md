@@ -42,7 +42,7 @@ One sighting of an opportunity in a source. Unique on `(source_type, external_id
 
 | Column | Notes |
 |---|---|
-| `source_type` | `linkedin_alert`, `linkedin_search` (public guest search, [linkedin-public-search.md](linkedin-public-search.md)), `linkedin_capture` (pages sent by the bookmarklet, [linkedin-capture.md](linkedin-capture.md)), `gmail`, `himalayas`, `telegram`. A LinkedIn job id is one opportunity whichever LinkedIn source saw it |
+| `source_type` | `linkedin_alert`, `linkedin_search` (public guest search, [linkedin-public-search.md](linkedin-public-search.md)), `linkedin_capture` (pages sent by the bookmarklet, [linkedin-capture.md](linkedin-capture.md)), `gmail`, `himalayas`, `telegram` (`external_id` = `<chat>:<message id>`). A LinkedIn job id is one opportunity whichever LinkedIn source saw it |
 | `external_id` | Stable id inside the source (e.g. LinkedIn job id) |
 | `url` | Canonical URL, tracking parameters stripped |
 | `opportunity_id` | |
@@ -154,3 +154,15 @@ A reason to ignore a vacancy, or a free note (`opportunity_notes`). See [applica
 ## AppSetting
 
 Key/value settings edited on the Settings page (`app_settings`): `key` (primary key), `value` (JSON). See [settings.md](settings.md).
+
+## TelegramPost
+
+Every post read from an allowlisted channel, once (`telegram_posts`). See [telegram.md](telegram.md).
+
+| Column | Notes |
+|---|---|
+| `source` | Channel `name` from `data/telegram.yaml` |
+| `chat`, `topic_id`, `message_id` | Unique on `chat + message_id` |
+| `posted_at`, `text`, `forwarded_from` | As read |
+| `status` | `vacancy` or `skipped` (ad, other profession, CV, …) |
+| `opportunity_id` | The vacancy it became |

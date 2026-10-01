@@ -53,6 +53,7 @@ A second `./jr start` does not start a second server.
 | `job-radar import contacts` | Link mail to companies and label it, for company history in the queue |
 | `job-radar import linkedin-search` | Opt-in: first 25 jobs of each new alert search from LinkedIn's public guest search, see [docs/linkedin-public-search.md](docs/linkedin-public-search.md) |
 | `job-radar import descriptions` | Opt-in: descriptions for To review from public job pages, see [docs/linkedin-public-search.md](docs/linkedin-public-search.md#descriptions-public-job-page) |
+| `job-radar sync telegram` | Vacancies from allowlisted Telegram channels via telegram-mcp, see [docs/telegram.md](docs/telegram.md) |
 | `job-radar sync <other source>` | Placeholder until the source lands |
 
 ## Configuration
@@ -64,6 +65,7 @@ Settings come from environment variables with the `JOB_RADAR_` prefix, or from `
 | `JOB_RADAR_DATABASE_URL` | `sqlite:///data/job_radar.db` | SQLAlchemy URL of the database |
 | `JOB_RADAR_GMAIL_CLIENT_SECRET` | `secrets/gmail_client_secret.json` | OAuth Desktop client downloaded from Google Cloud |
 | `JOB_RADAR_GMAIL_TOKEN` | `secrets/gmail_token.json` | Where the OAuth token is stored |
+| `JOB_RADAR_TELEGRAM_MCP_COMMAND` | — | How to start the telegram-mcp server; Telegram is off without it ([docs/telegram.md](docs/telegram.md)) |
 | `JOB_RADAR_LINKEDIN_PUBLIC_SEARCH` | `false` | Opt-in public LinkedIn search, with limits in [docs/linkedin-public-search.md](docs/linkedin-public-search.md) |
 
 ## Layout

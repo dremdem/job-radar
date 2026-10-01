@@ -12,8 +12,10 @@ dependencies = [
     "google-auth>=2.58.0",
     "google-auth-oauthlib>=1.4.1",
     "jinja2>=3.1.6",
+    "mcp>=2.2.0",
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
+    "pyyaml>=6.0.3",
     "sqlalchemy>=2",
     "typer>=0.27.2",
     "uvicorn[standard]>=0.53.0",
@@ -51,3 +53,5 @@ dev = [
 [tool.ruff.lint.per-file-ignores]
 # Real vacancy titles with full-width and typographic characters, on purpose.
 "tests/test_language.py" = ["RUF001"]
+# Real Russian-language Telegram posts.
+"tests/test_telegram.py" = ["RUF001"]

@@ -254,3 +254,21 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict | list | str | int | bool | None] = mapped_column(JSON)
+
+
+class TelegramPost(Base):
+    """Every post read from an allowlisted Telegram channel, once. See docs/telegram.md."""
+
+    __tablename__ = "telegram_posts"
+    __table_args__ = (UniqueConstraint("chat", "message_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(64), index=True)
+    chat: Mapped[str] = mapped_column(String(64))
+    topic_id: Mapped[int | None]
+    message_id: Mapped[int]
+    posted_at: Mapped[datetime]
+    text: Mapped[str] = mapped_column(Text, default="")
+    forwarded_from: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(16))  # vacancy / skipped
+    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id"))

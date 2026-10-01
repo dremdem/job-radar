@@ -107,3 +107,10 @@ def test_import_descriptions_is_off_by_default(tmp_path, monkeypatch):
     monkeypatch.delenv("JOB_RADAR_LINKEDIN_PUBLIC_SEARCH", raising=False)
     result = runner.invoke(app, ["import", "descriptions"])
     assert result.exit_code == 0 and "disabled" in result.output
+
+
+def test_sync_telegram_needs_configuration(tmp_path, monkeypatch):
+    monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
+    monkeypatch.delenv("JOB_RADAR_TELEGRAM_MCP_COMMAND", raising=False)
+    result = runner.invoke(app, ["sync", "telegram"])
+    assert result.exit_code == 0 and "telegram: not configured" in result.output
