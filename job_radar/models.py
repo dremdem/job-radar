@@ -106,6 +106,9 @@ class Opportunity(Base):
 
     company: Mapped[Company] = relationship(back_populates="opportunities")
     source_records: Mapped[list["SourceRecord"]] = relationship(back_populates="opportunity")
+    analyses: Mapped[list["DescriptionAnalysis"]] = relationship(
+        back_populates="opportunity", order_by="DescriptionAnalysis.id"
+    )
 
 
 class SourceRecord(Base):
@@ -273,3 +276,24 @@ class TelegramPost(Base):
     forwarded_from: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(16))  # vacancy / skipped
     opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id"))
+
+
+class DescriptionAnalysis(Base):
+    """What a local model found in one description snapshot, quotes verified. See docs/ai.md."""
+
+    __tablename__ = "description_analyses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(ForeignKey("job_snapshots.id"), unique=True)
+    opportunity_id: Mapped[int] = mapped_column(ForeignKey("opportunities.id"), index=True)
+    model: Mapped[str] = mapped_column(String(64))
+    analyzed_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    # Only facts whose quote is literally in the description; the rest is "unknown" / empty.
+    work_mode: Mapped[str] = mapped_column(String(16), default="unknown")
+    work_mode_quote: Mapped[str] = mapped_column(Text, default="")
+    residence: Mapped[list[str]] = mapped_column(JSON, default=list)
+    residence_quote: Mapped[str] = mapped_column(Text, default="")
+    # The model's answer as is, to see what was dropped and why.
+    raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    opportunity: Mapped["Opportunity"] = relationship(back_populates="analyses")

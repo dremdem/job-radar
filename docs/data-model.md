@@ -166,3 +166,15 @@ Every post read from an allowlisted channel, once (`telegram_posts`). See [teleg
 | `posted_at`, `text`, `forwarded_from` | As read |
 | `status` | `vacancy`, `skipped` (ad, other profession, CV, …) or `digest` (Digital nomads table of contents) |
 | `opportunity_id` | The vacancy it became |
+
+## DescriptionAnalysis
+
+What the local model found in one description snapshot (`description_analyses`), once per snapshot. See [ai.md](ai.md).
+
+| Column | Notes |
+|---|---|
+| `snapshot_id` (unique), `opportunity_id` | The analyzed description and its vacancy |
+| `model`, `analyzed_at` | e.g. `gemma3:4b` |
+| `work_mode`, `work_mode_quote` | `remote` / `hybrid` / `onsite` / `unknown`; only with a quote found in the description |
+| `residence`, `residence_quote` | Places the employee must live in; empty when none or not supported by the text |
+| `raw` | The model's answer as is, to see what code dropped |

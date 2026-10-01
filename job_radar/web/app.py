@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .. import applications as apps
 from .. import pipeline
+from ..ai.analysis import latest_analysis
+from ..ai.analysis import risks as ai_risks
 from ..auto_ignore import Rules, apply_to_review, load_rules, save_rules
 from ..config import Settings, get_settings
 from ..contacts import company_history
@@ -274,6 +276,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         ignored: Annotated[str | None, Form()] = None,
         rejected: Annotated[str | None, Form()] = None,
         no_python: Annotated[str | None, Form()] = None,
+        ai_location: Annotated[str | None, Form()] = None,
         days: Annotated[int, Form(ge=1, le=3650)] = 90,
     ) -> HTMLResponse:
         rules = Rules(
@@ -282,6 +285,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
             ignored=ignored is not None,
             rejected=rejected is not None,
             no_python=no_python is not None,
+            ai_location=ai_location is not None,
             days=days,
         )
         save_rules(session, rules)
@@ -433,6 +437,7 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         location_penalty(session, opportunity),
         language_risk(opportunity.title),
         python_risk(opportunity.title, description),
+        *ai_risks(latest_analysis(opportunity)),
     )
     for penalty in effects:
         if penalty is None:

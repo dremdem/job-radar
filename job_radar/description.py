@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from markupsafe import Markup, escape
 
-from .models import Opportunity
+from .models import JobSnapshot, Opportunity
 from .scoring import Reason
 
 PYTHON_BONUS = 0.5
@@ -49,11 +49,16 @@ def check_python(description: str) -> PythonCheck:
     return PythonCheck(mentions=len(found), related=related, quote=quote)
 
 
-def latest_description(opportunity: Opportunity) -> str | None:
+def latest_snapshot(opportunity: Opportunity) -> JobSnapshot | None:
     snapshots = [s for r in opportunity.source_records for s in r.snapshots]
     if not snapshots:
         return None
-    return max(snapshots, key=lambda s: (s.retrieved_at, s.id)).raw_text
+    return max(snapshots, key=lambda s: (s.retrieved_at, s.id))
+
+
+def latest_description(opportunity: Opportunity) -> str | None:
+    snapshot = latest_snapshot(opportunity)
+    return snapshot.raw_text if snapshot else None
 
 
 def lacks_python(title: str, description: str | None) -> bool:

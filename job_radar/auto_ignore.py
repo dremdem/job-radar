@@ -28,11 +28,21 @@ class Rules:
     ignored: bool = False
     rejected: bool = False
     no_python: bool = False
+    ai_location: bool = False  # docs/ai.md
     days: int = 90
 
     @property
     def any(self) -> bool:
-        return self.hybrid or self.applied or self.ignored or self.rejected or self.no_python
+        return any(
+            (
+                self.hybrid,
+                self.applied,
+                self.ignored,
+                self.rejected,
+                self.no_python,
+                self.ai_location,
+            )
+        )
 
 
 def load_rules(session: Session) -> Rules:
@@ -109,6 +119,11 @@ def reason_for(
         return "no Python in the description"
     if rules.hybrid and _HYBRID.search(f"{opportunity.title} {opportunity.location or ''}"):
         return "hybrid / on-site"
+    if rules.ai_location:
+        from .ai.analysis import auto_ignore_reason
+
+        if reason := auto_ignore_reason(opportunity):
+            return reason
     return None
 
 

@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # Himalayas public API (docs/himalayas.md): official, no key; the first run looks back a day.
     himalayas: bool = True
     himalayas_first_run_days: float = 1
+    # Description analysis with a local model through Ollama (docs/ai.md).
+    ai_analysis: bool = True
+    ollama_url: str = "http://localhost:11434"
+    ai_model: str = "gemma3:4b"
+    ai_max_per_sync: int = 150
     # Local-only diagnostics of bookmarklet captures (git-ignored), see docs/linkedin-capture.md.
     capture_debug_dir: Path = Path("data/capture_debug")
 

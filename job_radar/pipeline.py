@@ -134,6 +134,29 @@ def import_himalayas(session: Session, settings: Settings, echo: Echo, client=No
         echo(f"himalayas: could not read the API: {stats.error}")
 
 
+def analyze_descriptions(session: Session, settings: Settings, echo: Echo, model=None) -> None:
+    """Work mode and residence from descriptions with a local model (docs/ai.md)."""
+    from .ai.analysis import analyze_pending
+    from .ai.ollama import OllamaClient, OllamaError
+
+    if not settings.ai_analysis:
+        echo("ai: disabled (JOB_RADAR_AI_ANALYSIS=false).")
+        return
+    if model is None:
+        model = OllamaClient(settings.ollama_url, settings.ai_model)
+        try:
+            model.check()
+        except OllamaError as e:
+            echo(f"ai: skipped: {e}")
+            return
+    stats = analyze_pending(session, model, limit=settings.ai_max_per_sync)
+    echo(
+        f"ai: {stats.analyzed} descriptions analyzed, {stats.flagged} flagged"
+        + (f", {stats.errors} failed ({stats.last_error})" if stats.errors else "")
+        + (f", {stats.pending} left for the next run" if stats.pending else "")
+    )
+
+
 def gmail_client_or_none(settings: Settings):
     from .gmail.auth import GmailAuthError, load_credentials
     from .gmail.client import ApiGmailClient
@@ -231,6 +254,8 @@ def run_sync(
             # Last: the rules for fetched descriptions see applications/rejections above.
             if settings.linkedin_public_search:
                 import_descriptions(session, settings, echo)
+            if settings.ai_analysis:
+                analyze_descriptions(session, settings, echo)
     finally:
         engine.dispose()
     for name, stats in results.items():

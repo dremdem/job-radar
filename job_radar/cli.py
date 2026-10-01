@@ -39,6 +39,19 @@ def serve(
 
 
 @app.command()
+def analyze() -> None:
+    """Analyze descriptions in To review with the local model (docs/ai.md)."""
+    settings = Settings()
+    upgrade_database(settings.database_url)
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            pipeline.analyze_descriptions(session, settings, typer.echo)
+    finally:
+        engine.dispose()
+
+
+@app.command()
 def demo(
     remove: Annotated[bool, typer.Option("--remove", help="Delete demo data instead.")] = False,
 ) -> None:

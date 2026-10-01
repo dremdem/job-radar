@@ -10,6 +10,7 @@
   <p><label><input type="checkbox" name="ignored" {% if rules.ignored %}checked{% endif %}> You already ignored another vacancy of the company</label></p>
   <p><label><input type="checkbox" name="no_python" {% if rules.no_python %}checked{% endif %}> The description has no Python (only vacancies with a saved description)</label></p>
   <p><label><input type="checkbox" name="hybrid" {% if rules.hybrid %}checked{% endif %}> “Hybrid” or “on-site” in the title or location</label></p>
+  <p><label><input type="checkbox" name="ai_location" {% if rules.ai_location %}checked{% endif %}> AI: the description says hybrid / on-site or only some countries (local model, see docs/ai.md)</label></p>
   <p><label>Look back <input type="number" name="days" value="{{ rules.days }}" min="1" max="3650" style="width: 5em"> days</label>
     <span class="muted">(rejections, applications and ignores older than this do not count)</span></p>
   <p><button type="submit">Save</button></p>

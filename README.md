@@ -55,6 +55,7 @@ A second `./jr start` does not start a second server.
 | `job-radar import descriptions` | Opt-in: descriptions for To review from public job pages, see [docs/linkedin-public-search.md](docs/linkedin-public-search.md#descriptions-public-job-page) |
 | `job-radar sync telegram` | Vacancies from allowlisted Telegram channels via telegram-mcp, see [docs/telegram.md](docs/telegram.md) |
 | `job-radar sync himalayas` | Fresh worldwide Python vacancies from the Himalayas public API, see [docs/himalayas.md](docs/himalayas.md) |
+| `job-radar analyze` | Work mode and residence from descriptions with a local model (Ollama), see [docs/ai.md](docs/ai.md) |
 | `job-radar sync <other source>` | Placeholder until the source lands |
 
 ## Configuration
@@ -68,6 +69,7 @@ Settings come from environment variables with the `JOB_RADAR_` prefix, or from `
 | `JOB_RADAR_GMAIL_TOKEN` | `secrets/gmail_token.json` | Where the OAuth token is stored |
 | `JOB_RADAR_TELEGRAM_MCP_COMMAND` | — | How to start the telegram-mcp server; Telegram is off without it ([docs/telegram.md](docs/telegram.md)) |
 | `JOB_RADAR_HIMALAYAS` | `true` | Read Himalayas on every sync ([docs/himalayas.md](docs/himalayas.md)) |
+| `JOB_RADAR_AI_ANALYSIS` | `true` | Analyze descriptions with the local model on every sync; skipped when Ollama is not running ([docs/ai.md](docs/ai.md)) |
 | `JOB_RADAR_LINKEDIN_PUBLIC_SEARCH` | `false` | Opt-in public LinkedIn search, with limits in [docs/linkedin-public-search.md](docs/linkedin-public-search.md) |
 
 ## Layout
