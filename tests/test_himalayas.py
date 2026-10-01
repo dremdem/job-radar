@@ -52,9 +52,10 @@ def test_parse_worldwide_job():
     assert "About DualEntry\n" in parsed.description
 
 
-def test_parse_timezone_restricted_job():
+def test_timezone_restrictions_do_not_limit_the_location():
+    # Restricted to UTC-1..+3 only: any timezone is fine for the user (#91).
     parsed = parse_job(job("Senior Data Scraping"))
-    assert parsed.location == "Remote, UTC-1..+3"
+    assert parsed.location == "Worldwide (Remote)"
     assert parsed.salary is None
 
 
@@ -140,3 +141,8 @@ def test_pipeline_step_reports(session):
     )
     assert lines[0].startswith("himalayas: 1 pages, 7 fresh jobs, 4 new")
     assert "rate limited" in lines[1]
+
+
+def test_country_restrictions_stay_in_the_location():
+    raw = job("Senior Data Scraping") | {"locationRestrictions": ["Poland", "Germany"]}
+    assert parse_job(raw).location == "Remote, Poland, Germany"

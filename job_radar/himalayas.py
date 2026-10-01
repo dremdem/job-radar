@@ -84,21 +84,10 @@ def _text(html: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-def _tz(hours: float) -> str:
-    return f"{hours:+g}" if hours else "0"
-
-
 def _location(raw: dict[str, Any]) -> str:
+    # Only where the candidate may live counts; any timezone is fine for the user (#91).
     countries = [str(c) for c in raw.get("locationRestrictions") or []]
-    zones = sorted(float(z) for z in raw.get("timezoneRestrictions") or [])
-    # The full list (UTC-11..+14) is how Himalayas says "any timezone".
-    restricted = bool(zones) and (zones[0] > -11 or zones[-1] < 14)
-    if not countries and not restricted:
-        return "Worldwide (Remote)"
-    parts = ["Remote", *countries]
-    if restricted:
-        parts.append(f"UTC{_tz(zones[0])}..{_tz(zones[-1])}")
-    return ", ".join(parts)
+    return ", ".join(["Remote", *countries]) if countries else "Worldwide (Remote)"
 
 
 def _salary(raw: dict[str, Any]) -> str | None:
