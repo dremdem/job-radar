@@ -293,7 +293,9 @@ class DescriptionAnalysis(Base):
     work_mode_quote: Mapped[str] = mapped_column(Text, default="")
     residence: Mapped[list[str]] = mapped_column(JSON, default=list)
     residence_quote: Mapped[str] = mapped_column(Text, default="")
-    # The model's answer as is, to see what was dropped and why.
+    # Unknown technologies: [{skill, status, quote}]; None = not checked yet (docs/ai.md).
+    stack: Mapped[list[dict[str, str]] | None] = mapped_column(JSON, default=None)
+    # The model's answers as is, to see what was dropped and why.
     raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     opportunity: Mapped["Opportunity"] = relationship(back_populates="analyses")

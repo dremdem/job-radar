@@ -58,3 +58,25 @@ The optional auto-ignore rule **"AI: hybrid / on-site or country-only"** in [Set
 - **`qwen3:8b`:** no better, 3× slower, and it loops under a strict JSON schema.
 
 Quality depends on the prompt, so treat the reasons as **marks to check, with the quote**, not as verdicts. That is why the auto-ignore rule is off by default.
+
+## Stack vs your CV
+
+Vacancies that **require** a technology you have never worked with get marked and lowered, not ignored (issue #95).
+
+1. **Your stack.** It is listed in `data/profile.yaml` (git-ignored). Copy `profile.example.yaml` and list the technologies from your CV under `known:`. Without the file the stack check is skipped.
+2. **Unknown technologies.** Job Radar has a catalogue of technologies common in backend vacancies: languages, data stores, queues, cloud, infrastructure, observability, data / ML tools, front-end frameworks. Each one has a match pattern; for example, `Go` matches only as a capitalised word or `Golang`. Everything in the catalogue that is not in your profile counts as unknown. Basics such as Git, SQL, REST and Linux are not in the catalogue.
+3. **The question.** For every unknown technology the description mentions (at most 8), the local model answers one question: is it **required**, **nice to have**, or **not needed** (only the company's stack or another team)? It also gives the sentence that shows it. This takes about 1 s per question.
+4. **What counts as a gap.** Code keeps a gap only when all of these hold:
+   - the answer is "required";
+   - the quote is in the description and names the technology;
+   - the quote does not offer an alternative you know. Choices are spotted by "or", "one of", "at least one", "any", "или", "не принципиален", or a slash next to a known name: "strong in at least one of Kotlin, Go **or TypeScript**" and "AWS/GCP/Azure" are not gaps when TypeScript or AWS is in your profile, while "CI/CD" is no choice at all;
+   - the quote does not call the technology a plus ("a plus", "bonus", "preferred", "будет плюсом", "желательно"). Then it counts as nice to have.
+5. **In the queue.** `Requires Go (not in your CV) — “<quote>”` with −1 per technology, −3 at most. There is no auto-ignore rule for this: you decide.
+
+**Measured** on 79 vacancies in To review: 2 min 37 s; 31 have at least one gap (most often Spark, PyTorch, ClickHouse, Redis, Databricks). The rules for alternatives and optional wording were added after reading every "required" answer.
+
+The result is stored in `description_analyses.stack`. A description analyzed before the profile existed is checked on the next run.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `JOB_RADAR_PROFILE` | `data/profile.yaml` | Your stack |

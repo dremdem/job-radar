@@ -181,14 +181,19 @@ def test_pipeline_skips_without_ollama(session):
     assert lines[0].startswith("ai: skipped: Ollama is not reachable")
 
 
-def test_pipeline_reports(session):
+def test_pipeline_reports(session, tmp_path):
     from job_radar import pipeline
     from job_radar.config import Settings
 
     add_vacancy(session)
     lines: list[str] = []
-    pipeline.analyze_descriptions(session, Settings(), lines.append, FakeModel([UK_ANSWER]))
-    assert lines == ["ai: 1 descriptions analyzed, 1 flagged"]
+    missing = tmp_path / "missing.yaml"
+    settings = Settings(profile=missing)
+    pipeline.analyze_descriptions(session, settings, lines.append, FakeModel([UK_ANSWER]))
+    assert lines == [
+        f"ai: no {missing}; the stack check is skipped (see profile.example.yaml).",
+        "ai: 1 descriptions analyzed, 1 flagged",
+    ]
 
 
 @pytest.mark.parametrize(

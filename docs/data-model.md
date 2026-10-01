@@ -177,4 +177,5 @@ What the local model found in one description snapshot (`description_analyses`),
 | `model`, `analyzed_at` | e.g. `gemma3:4b` |
 | `work_mode`, `work_mode_quote` | `remote` / `hybrid` / `onsite` / `unknown`; only with a quote found in the description |
 | `residence`, `residence_quote` | Places the employee must live in; empty when none or not supported by the text |
-| `raw` | The model's answer as is, to see what code dropped |
+| `stack` | Unknown technologies the description mentions: `[{skill, status, quote}]`, `status` = `required` / `nice_to_have` / `not_needed` / `alternative`; `null` = not checked yet ([ai.md](ai.md#stack-vs-your-cv)) |
+| `raw` | The model's answers as is, to see what code dropped |

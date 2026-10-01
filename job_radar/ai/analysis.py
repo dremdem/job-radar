@@ -14,11 +14,15 @@ from sqlalchemy.orm import Session
 from ..description import latest_snapshot
 from ..models import DescriptionAnalysis, Opportunity, OpportunityState
 from ..scoring import Reason
+from ..stack import known_alternative, says_optional, unknown_mentions
 
 HYBRID_PENALTY = -3.0
 RESIDENCE_PENALTY = -2.5
 MAX_TEXT = 10000
 QUOTE_SHOWN = 160
+STACK_PENALTY = -1.0  # per required unknown technology
+STACK_PENALTY_MAX = -3.0
+MAX_STACK_QUESTIONS = 8
 # Places the user can work from; anything else in `residence` is a restriction.
 _OPEN = re.compile(
     r"worldwide|anywhere|global|any (country|location|city)|thailand|asia|apac|любой|везде",
@@ -57,6 +61,24 @@ such sentence.
 
 Job description:
 {text}"""
+
+
+STACK_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "status": {"enum": ["required", "nice_to_have", "not_needed"]},
+        "quote": {"type": "string"},
+    },
+    "required": ["status", "quote"],
+}
+STACK_PROMPT = """Job description:
+{text}
+
+Question: does this job REQUIRE {skill} ({what})? "required" if the candidate must already know \
+it (listed in requirements / must-have / "you have"); "nice_to_have" if it is a plus, bonus, \
+preferred or optional; "not_needed" if it is only mentioned (company stack, product, other \
+teams) or not about {skill}.
+Copy the sentence that shows it exactly into quote."""
 
 
 class Model(Protocol):
@@ -125,6 +147,46 @@ def extract(text: str, model: Model) -> tuple[Facts, dict[str, Any]]:
     return verify(answer, text), answer
 
 
+def check_stack(
+    text: str, model: Model, known: set[str]
+) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    """Unknown technologies the text mentions, each judged by the model and checked by code."""
+    text = text[:MAX_TEXT]
+    stack: list[dict[str, str]] = []
+    raw: dict[str, Any] = {}
+    for tech in unknown_mentions(text, known)[:MAX_STACK_QUESTIONS]:
+        prompt = STACK_PROMPT.format(text=text, skill=tech.name, what=tech.what)
+        answer = model.generate_json(prompt, STACK_SCHEMA)
+        raw[tech.name] = answer
+        status = str(answer.get("status") or "not_needed")
+        quote = str(answer.get("quote") or "")
+        if status not in ("required", "nice_to_have"):
+            status = "not_needed"
+        elif not quote_in_text(quote, text) or not tech.search(quote):
+            status, quote = "not_needed", ""  # unsupported: don't invent a requirement
+        elif status == "required" and known_alternative(quote, known):
+            status = "alternative"
+        elif status == "required" and says_optional(quote):
+            status = "nice_to_have"
+        stack.append({"skill": tech.name, "status": status, "quote": quote})
+    return stack, raw
+
+
+def stack_risks(analysis: DescriptionAnalysis | None) -> list[tuple[float, Reason]]:
+    if analysis is None or not analysis.stack:
+        return []
+    out: list[tuple[float, Reason]] = []
+    left = STACK_PENALTY_MAX
+    for item in analysis.stack:
+        if item.get("status") != "required":
+            continue
+        points = max(STACK_PENALTY, left) if left < 0 else 0.0
+        left -= points
+        text = f"Requires {item['skill']} (not in your CV) — “{_shown(item.get('quote', ''))}”"
+        out.append((points, Reason("-", text)))
+    return out
+
+
 def _shown(quote: str) -> str:
     quote = re.sub(r"\s+", " ", quote).strip()
     return quote if len(quote) <= QUOTE_SHOWN else quote[: QUOTE_SHOWN - 1] + "…"
@@ -141,7 +203,7 @@ def risks(analysis: DescriptionAnalysis | None) -> list[tuple[float, Reason]]:
     if restriction := residence_restriction(analysis):
         text = f"AI: only for {restriction} — “{_shown(analysis.residence_quote)}”"
         out.append((RESIDENCE_PENALTY, Reason("-", text)))
-    return out
+    return out + stack_risks(analysis)
 
 
 def residence_restriction(analysis: DescriptionAnalysis) -> str | None:
@@ -175,9 +237,12 @@ class AnalysisStats:
     last_error: str = ""
 
 
-def pending(session: Session) -> list[Opportunity]:
-    """To review vacancies whose latest description has no analysis yet, newest first."""
-    done = set(session.scalars(select(DescriptionAnalysis.snapshot_id)))
+def pending(session: Session, *, with_stack: bool = False) -> list[Opportunity]:
+    """To review vacancies whose latest description lacks an analysis (or, with a profile, its
+    stack check), newest first."""
+    stack_done = dict(
+        session.execute(select(DescriptionAnalysis.snapshot_id, DescriptionAnalysis.stack)).all()
+    )
     out = []
     for o in session.scalars(
         select(Opportunity)
@@ -185,35 +250,49 @@ def pending(session: Session) -> list[Opportunity]:
         .order_by(Opportunity.id.desc())
     ):
         snapshot = latest_snapshot(o)
-        if snapshot is not None and snapshot.id not in done:
+        if snapshot is None:
+            continue
+        if snapshot.id not in stack_done or (with_stack and stack_done[snapshot.id] is None):
             out.append(o)
     return out
 
 
-def analyze_pending(session: Session, model: Model, *, limit: int = 150) -> AnalysisStats:
+def analyze_pending(
+    session: Session, model: Model, *, limit: int = 150, known: set[str] | None = None
+) -> AnalysisStats:
+    """Work mode and residence for new descriptions; the stack check when `known` is given."""
     from ..auto_ignore import apply_rules
 
     stats = AnalysisStats()
-    todo = pending(session)
+    todo = pending(session, with_stack=known is not None)
     stats.pending = max(0, len(todo) - limit)
     for opportunity in todo[:limit]:
         snapshot = latest_snapshot(opportunity)
+        analysis = session.scalar(
+            select(DescriptionAnalysis).where(DescriptionAnalysis.snapshot_id == snapshot.id)
+        )
         try:
-            facts, answer = extract(snapshot.raw_text, model)
+            if analysis is None:
+                facts, answer = extract(snapshot.raw_text, model)
+                analysis = DescriptionAnalysis(
+                    snapshot_id=snapshot.id,
+                    opportunity=opportunity,
+                    model=model.model,
+                    work_mode=facts.work_mode,
+                    work_mode_quote=facts.work_mode_quote,
+                    residence=facts.residence,
+                    residence_quote=facts.residence_quote,
+                    raw=answer,
+                )
+            if known is not None:
+                stack, raw = check_stack(snapshot.raw_text, model, known)
+                analysis.stack = stack
+                analysis.raw = {**(analysis.raw or {}), "stack": raw}
         except Exception as e:  # one bad answer must not stop the rest
+            session.rollback()
             stats.errors += 1
             stats.last_error = str(e)
             continue
-        analysis = DescriptionAnalysis(
-            snapshot_id=snapshot.id,
-            opportunity=opportunity,
-            model=model.model,
-            work_mode=facts.work_mode,
-            work_mode_quote=facts.work_mode_quote,
-            residence=facts.residence,
-            residence_quote=facts.residence_quote,
-            raw=answer,
-        )
         session.add(analysis)
         session.flush()
         stats.analyzed += 1

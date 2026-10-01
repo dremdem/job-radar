@@ -70,6 +70,7 @@ Settings come from environment variables with the `JOB_RADAR_` prefix, or from `
 | `JOB_RADAR_TELEGRAM_MCP_COMMAND` | — | How to start the telegram-mcp server; Telegram is off without it ([docs/telegram.md](docs/telegram.md)) |
 | `JOB_RADAR_HIMALAYAS` | `true` | Read Himalayas on every sync ([docs/himalayas.md](docs/himalayas.md)) |
 | `JOB_RADAR_AI_ANALYSIS` | `true` | Analyze descriptions with the local model on every sync; skipped when Ollama is not running ([docs/ai.md](docs/ai.md)) |
+| `JOB_RADAR_PROFILE` | `data/profile.yaml` | Your stack from the CV; vacancies requiring other technologies are marked ([docs/ai.md](docs/ai.md#stack-vs-your-cv), example: `profile.example.yaml`) |
 | `JOB_RADAR_LINKEDIN_PUBLIC_SEARCH` | `false` | Opt-in public LinkedIn search, with limits in [docs/linkedin-public-search.md](docs/linkedin-public-search.md) |
 
 ## Layout

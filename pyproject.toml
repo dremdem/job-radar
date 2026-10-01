@@ -57,3 +57,6 @@ dev = [
 "tests/test_telegram.py" = ["RUF001"]
 # Real Himalayas titles with typographic dashes.
 "tests/test_himalayas.py" = ["RUF001"]
+# Russian wording in vacancy texts.
+"job_radar/stack.py" = ["RUF001"]
+"tests/test_stack.py" = ["RUF001"]
