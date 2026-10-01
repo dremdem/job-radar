@@ -283,3 +283,19 @@ def test_queue_shows_python_check_from_description(client, session):
 
 def test_settings_offers_no_python_rule(client):
     assert 'name="no_python"' in client.get("/settings").text
+
+
+def test_himalayas_jobs_are_attributed(client, session):
+    from job_radar.dedup import add_snapshot, upsert_source_record
+    from job_radar.models import SourceType
+
+    o = add_opportunity(session, title="Python Developer")
+    url = "https://himalayas.app/companies/acme/jobs/python-developer"
+    record = upsert_source_record(
+        session, source_type=SourceType.HIMALAYAS, external_id=url, url=url, opportunity=o
+    )
+    add_snapshot(session, record, "Python and Django.")
+    session.commit()
+    text = client.get("/").text
+    assert '<span class="badge">via Himalayas</span>' in text
+    assert f'href="{url}"' in text and ">open on himalayas.app<" in text

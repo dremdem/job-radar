@@ -55,3 +55,5 @@ dev = [
 "tests/test_language.py" = ["RUF001"]
 # Real Russian-language Telegram posts.
 "tests/test_telegram.py" = ["RUF001"]
+# Real Himalayas titles with typographic dashes.
+"tests/test_himalayas.py" = ["RUF001"]

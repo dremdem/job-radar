@@ -163,13 +163,16 @@ def sync(
     ] = None,
 ) -> None:
     """Import new items from a source."""
-    if source is SourceType.TELEGRAM:
+    if source in (SourceType.TELEGRAM, SourceType.HIMALAYAS):
+        step = (
+            pipeline.import_telegram if source is SourceType.TELEGRAM else pipeline.import_himalayas
+        )
         settings = Settings()
         upgrade_database(settings.database_url)
         engine = make_engine(settings.database_url)
         try:
             with make_session_factory(engine)() as session:
-                pipeline.import_telegram(session, settings, typer.echo)
+                step(session, settings, typer.echo)
         finally:
             engine.dispose()
         return

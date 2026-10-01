@@ -114,3 +114,10 @@ def test_sync_telegram_needs_configuration(tmp_path, monkeypatch):
     monkeypatch.delenv("JOB_RADAR_TELEGRAM_MCP_COMMAND", raising=False)
     result = runner.invoke(app, ["sync", "telegram"])
     assert result.exit_code == 0 and "telegram: not configured" in result.output
+
+
+def test_sync_himalayas_can_be_disabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
+    monkeypatch.setenv("JOB_RADAR_HIMALAYAS", "false")
+    result = runner.invoke(app, ["sync", "himalayas"])
+    assert result.exit_code == 0 and "himalayas: disabled" in result.output

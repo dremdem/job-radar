@@ -113,6 +113,27 @@ def import_telegram(session: Session, settings: Settings, echo: Echo) -> None:
     echo(f"telegram: {total.posts} new posts, {total.vacancies} vacancies")
 
 
+def import_himalayas(session: Session, settings: Settings, echo: Echo, client=None) -> None:
+    """Fresh worldwide Python jobs from the Himalayas public API (docs/himalayas.md)."""
+    from .himalayas import HimalayasClient
+    from .himalayas import import_himalayas as run
+
+    if not settings.himalayas:
+        echo("himalayas: disabled (JOB_RADAR_HIMALAYAS=false).")
+        return
+    stats = run(
+        session, client or HimalayasClient(), first_run_days=settings.himalayas_first_run_days
+    )
+    echo(
+        f"himalayas: {stats.pages} pages, {stats.jobs} fresh jobs, {stats.new} new, "
+        f"{stats.known} already stored, {stats.skipped} skipped as noise"
+    )
+    if stats.blocked:
+        echo("himalayas: rate limited (429); the rest is read on the next sync.")
+    if stats.error:
+        echo(f"himalayas: could not read the API: {stats.error}")
+
+
 def gmail_client_or_none(settings: Settings):
     from .gmail.auth import GmailAuthError, load_credentials
     from .gmail.client import ApiGmailClient
@@ -202,6 +223,8 @@ def run_sync(
                 import_linkedin_search(session, settings, echo)
             if settings.telegram_mcp_command:
                 import_telegram(session, settings, echo)
+            if settings.himalayas:
+                import_himalayas(session, settings, echo)
             import_rejections(session, settings, echo, client)
             import_applications(session, settings, echo, client)
             import_contacts(session, echo)

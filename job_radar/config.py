@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     telegram_mcp_command: str | None = None
     telegram_sources: Path = Path("data/telegram.yaml")
     telegram_first_run_days: int = 14
+    # Himalayas public API (docs/himalayas.md): official, no key; the first run looks back a day.
+    himalayas: bool = True
+    himalayas_first_run_days: float = 1
     # Local-only diagnostics of bookmarklet captures (git-ignored), see docs/linkedin-capture.md.
     capture_debug_dir: Path = Path("data/capture_debug")
 
