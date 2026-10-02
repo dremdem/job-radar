@@ -60,3 +60,5 @@ dev = [
 # Russian wording in vacancy texts.
 "job_radar/stack.py" = ["RUF001"]
 "tests/test_stack.py" = ["RUF001"]
+"job_radar/hh/notifications.py" = ["RUF001"]
+"tests/test_hh_notifications.py" = ["RUF001"]

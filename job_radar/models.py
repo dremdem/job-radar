@@ -27,6 +27,7 @@ class SourceType(enum.StrEnum):
     LINKEDIN_CAPTURE = "linkedin_capture"  # page sent by the user's bookmarklet
     LINKEDIN_LINK = "linkedin_link"  # a LinkedIn job seen as the original link elsewhere
     GMAIL = "gmail"
+    HH = "hh"  # hh.ru vacancy, external_id = its id (docs/hh.md)
     HIMALAYAS = "himalayas"
     TELEGRAM = "telegram"
 
@@ -52,6 +53,7 @@ class RejectionSource(enum.StrEnum):
 class ApplicationSource(enum.StrEnum):
     LINKEDIN = "linkedin"
     ATS = "ats"
+    HH = "hh"  # inferred from an hh.ru rejection (docs/hh.md)
     MANUAL = "manual"
 
 

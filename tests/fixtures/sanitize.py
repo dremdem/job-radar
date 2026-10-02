@@ -9,7 +9,7 @@ import re
 
 from bs4 import BeautifulSoup, Comment
 
-NAMES = r"Vladimir|Владимир|Yakovenko|Яковенко"
+NAMES = r"Vladimir|Владимир|Yakovenko|Яковенко|Игоревич|Iakovenko|IAKOVENKO"
 
 
 def _common(text: str) -> str:
@@ -30,12 +30,14 @@ def sanitize_html(html: str) -> str:
                 del tag[attr]
         if tag.has_attr("href"):
             m = re.search(r"/(comm/)?jobs/view/(\d+)", tag["href"])
-            tag["href"] = (
-                f"https://www.linkedin.com/{m.group(1) or ''}jobs/view/{m.group(2)}/"
-                "?trackingId=REDACTED&otpToken=REDACTED"
-                if m
-                else "#"
-            )
+            hh = re.search(r"hh\.ru/vacancy/(\d+)", tag["href"])
+            if m:
+                tag["href"] = (
+                    f"https://www.linkedin.com/{m.group(1) or ''}jobs/view/{m.group(2)}/"
+                    "?trackingId=REDACTED&otpToken=REDACTED"
+                )
+            else:
+                tag["href"] = f"https://hh.ru/vacancy/{hh.group(1)}?from=REDACTED" if hh else "#"
         if tag.name == "img":
             tag["src"] = ""
     return re.sub(r"\n\s*\n+", "\n", _common(str(soup)))

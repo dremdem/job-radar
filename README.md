@@ -1,6 +1,6 @@
 # Job Radar
 
-Local-first assistant for reviewing job opportunities: collects vacancies (LinkedIn alert emails, Gmail history, Telegram channels, Himalayas), deduplicates them, scores with explanations and keeps application history per company.
+Local-first assistant for reviewing job opportunities: collects vacancies (LinkedIn alert emails, Gmail history, hh.ru notifications, Telegram channels, Himalayas), deduplicates them, scores with explanations and keeps application history per company.
 
 Human-in-the-loop only: no auto-apply, no LinkedIn scraping.
 

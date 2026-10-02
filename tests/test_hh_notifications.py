@@ -1,0 +1,149 @@
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+from sqlalchemy import select
+
+from job_radar.hh.notifications import import_hh_notifications, parse_notice
+from job_radar.models import (
+    Application,
+    ApplicationSource,
+    Company,
+    EmailDirection,
+    EmailMessage,
+    Opportunity,
+    OpportunityState,
+    Rejection,
+    SourceRecord,
+    SourceType,
+)
+
+FIXTURES = Path(__file__).parent / "fixtures" / "hh"
+
+
+def fixture(name: str) -> tuple[str, str]:
+    return (FIXTURES / f"{name}.subject").read_text(), (FIXTURES / f"{name}.html").read_text()
+
+
+@pytest.mark.parametrize(
+    ("name", "kind", "title", "company", "vacancy_id"),
+    [
+        (
+            "rejection_new",
+            "rejection",
+            "Backend Python Developer (Middle / Middle+)",
+            "ANCOR",
+            "137434460",
+        ),
+        ("rejection_old", "rejection", "Python Developer Lead", "Sapiens solutions", None),
+        ("closed", "closed", "Senior Python developer (E-commerce)", "GRI", "128490343"),
+        ("message", "message", "Python-разработчик", "LIAN", "130050272"),
+    ],
+)
+def test_parse_notice(name, kind, title, company, vacancy_id):
+    subject, html = fixture(name)
+    notice = parse_notice(subject, html)
+    assert (notice.kind, notice.title, notice.company) == (kind, title, company)
+    if vacancy_id:
+        assert notice.vacancy_id == vacancy_id
+    else:
+        assert notice.vacancy_id and notice.vacancy_id.isdigit()
+
+
+def test_digest_and_unknown_mail_are_not_notices():
+    subject, html = fixture("digest")
+    assert parse_notice(subject, html) is None
+    assert parse_notice("Спасибо за ваше резюме!", "<p>Ваш отклик зарегистрирован</p>") is None
+
+
+def add_mail(session, name: str, gmail_id: str, at: datetime) -> EmailMessage:
+    subject, _ = fixture(name)
+    email = EmailMessage(
+        gmail_message_id=gmail_id,
+        gmail_thread_id=gmail_id,
+        direction=EmailDirection.IN,
+        sent_at=at,
+        from_addr='"hh.ru" <noreply@hh.ru>',
+        to_addr="user@example.com",
+        subject=subject,
+        categories=["job_proposal"],
+    )
+    session.add(email)
+    session.commit()
+    return email
+
+
+BODIES = {f"g-{n}": fixture(n)[1] for n in ("rejection_new", "closed", "message", "digest")}
+
+
+def fetch(gmail_id: str):
+    return BODIES[gmail_id], None
+
+
+def test_import_rejection_creates_vacancy_application_and_rejection(session):
+    at = datetime(2026, 10, 2, 8, 9, tzinfo=UTC)
+    email = add_mail(session, "rejection_new", "g-rejection_new", at)
+    stats = import_hh_notifications(session, fetch)
+    assert (stats.notices, stats.rejections, stats.fetched) == (1, 1, 1)
+
+    record = session.scalars(select(SourceRecord)).one()
+    assert record.source_type is SourceType.HH and record.external_id == "137434460"
+    assert record.url == "https://hh.ru/vacancy/137434460"
+    o = record.opportunity
+    assert o.title == "Backend Python Developer (Middle / Middle+)"
+    assert o.company.name == "ANCOR" and o.state is OpportunityState.APPLIED
+
+    app = session.scalars(select(Application)).one()
+    assert app.source is ApplicationSource.HH and app.opportunity_id == o.id
+    assert app.applied_at.replace(tzinfo=UTC) == at and "date unknown" in app.notes
+    rejection = session.scalars(select(Rejection)).one()
+    assert rejection.email_message_id == email.id and rejection.opportunity_id == o.id
+
+    session.refresh(email)
+    assert email.company_id == o.company_id and email.detected_event == "rejection"
+    # No body is stored.
+    assert email.body_html is None and email.body_text is None
+
+
+def test_import_is_idempotent_and_reuses_the_vacancy(session):
+    add_mail(session, "rejection_new", "g-rejection_new", datetime(2026, 10, 2, tzinfo=UTC))
+    import_hh_notifications(session, fetch)
+    stats = import_hh_notifications(session, fetch)
+    assert stats.notices == 0 and stats.fetched == 0
+    assert session.query(Opportunity).count() == 1
+    assert session.query(Rejection).count() == 1
+
+
+def test_message_links_mail_without_rejection(session):
+    email = add_mail(session, "message", "g-message", datetime(2026, 1, 30, tzinfo=UTC))
+    import_hh_notifications(session, fetch)
+    session.refresh(email)
+    assert email.detected_event == "recruiter_outreach"
+    assert session.get(Company, email.company_id).name == "LIAN"
+    assert session.query(Rejection).count() == 0
+    assert session.query(Opportunity).count() == 0
+
+
+def test_digest_is_marked_and_skipped(session):
+    email = add_mail(session, "digest", "g-digest", datetime(2026, 10, 2, tzinfo=UTC))
+    stats = import_hh_notifications(session, fetch)
+    session.refresh(email)
+    assert stats.notices == 0 and email.detected_event == "hh_digest"
+
+
+def test_without_gmail_the_mail_waits(session):
+    email = add_mail(session, "rejection_new", "g-rejection_new", datetime(2026, 10, 2, tzinfo=UTC))
+    stats = import_hh_notifications(session, None)
+    session.refresh(email)
+    assert stats.pending == 1 and email.detected_event is None
+
+
+def test_earlier_rejection_mark_is_completed(session):
+    # Marked as a rejection by the generic detector before, without a company.
+    email = add_mail(session, "rejection_new", "g-rejection_new", datetime(2026, 10, 2, tzinfo=UTC))
+    email.detected_event = "rejection"
+    session.commit()
+    stats = import_hh_notifications(session, fetch)
+    assert stats.rejections == 1
+    session.refresh(email)
+    assert session.get(Company, email.company_id).name == "ANCOR"

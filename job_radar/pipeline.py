@@ -221,6 +221,23 @@ def import_applications(
         )
 
 
+def import_hh(
+    session: Session, settings: Settings, echo: Echo, client=None, *, use_gmail: bool = True
+) -> None:
+    """Rejections, applications and employer messages from hh.ru mail (docs/hh.md)."""
+    from .gmail.client import body_fetcher
+    from .hh.notifications import import_hh_notifications
+
+    if use_gmail:
+        client = client or gmail_client_or_none(settings)
+    stats = import_hh_notifications(session, body_fetcher(client) if client else None)
+    echo(
+        f"hh: {stats.notices} notices, {stats.rejections} rejections, "
+        f"{stats.vacancies} applied vacancies, {stats.messages} employer messages"
+        + (f", {stats.pending} wait for Gmail access" if stats.pending else "")
+    )
+
+
 def import_contacts(session: Session, echo: Echo) -> None:
     from .contacts import link_and_label
 
@@ -365,6 +382,7 @@ def run_sync(
                 use = client is not None
                 import_rejections(session, settings, step_echo, client, use_gmail=use)
                 import_applications(session, settings, step_echo, client, use_gmail=use)
+                import_hh(session, settings, step_echo, client, use_gmail=use)
                 import_contacts(session, step_echo)
 
             run("gmail", gmail)

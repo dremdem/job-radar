@@ -9,7 +9,9 @@ Past applications reconstructed from Gmail (#15), so the queue can say "you alre
 | LinkedIn | `jobs-noreply@linkedin.com`, subject `…your application was sent to <company>` | subject | body: first line after the heading; LinkedIn job id from the "View job" link | **confirmed** (LinkedIn states it as a fact) |
 | ATS confirmation | sender domain of an applicant tracking system (Workable, Ashby, Lever, Greenhouse, Teamtailor, SmartRecruiters, Workday, JazzHR/applytojob, Recruitee, BambooHR, Personio, Breezy, Jobvite, iCIMS) **and** subject/snippet saying the application was received ("Thank you for applying", "we received your application", …) | sender display name, else subject ("applying to X", "… at X"), else ATS subdomain (`northwind.teamtailor-mail.com`) | subject/snippet when present ("applying to the <role> position", "<role> - <company>", "… — <role> at <company>") | **suggested** (heuristic; confirm or dismiss) |
 
-Not covered yet: hh.ru (company only in the body), applications sent from your own mailbox, recruiter outreach. Those are part of company history (#14).
+| hh.ru | a rejection or "position closed" notice from `noreply@hh.ru` (hh.ru sends nothing when you apply) | body: `Компания: …` | body: `Вакансия: …` | **confirmed**; date = the notice's date, see [hh.md](hh.md) |
+
+Not covered yet: applications sent from your own mailbox, recruiter outreach. Those are part of company history (#14).
 
 ## Bodies
 
