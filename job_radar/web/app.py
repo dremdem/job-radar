@@ -118,8 +118,10 @@ SessionDep = Annotated[Session, Depends(get_session)]
 def create_app(settings: Settings | None = None, sync_runner: Runner | None = None) -> FastAPI:
     settings = settings or get_settings()
     sync_job = SyncJob()
-    # The Sync button runs the same pipeline as `job-radar sync gmail`; tests pass a fake.
-    sync_runner = sync_runner or (lambda echo: pipeline.run_sync(settings, echo))
+    # The Sync button runs the same pipeline as `./jr sync`; tests pass a fake.
+    sync_runner = sync_runner or (
+        lambda echo, on_steps: pipeline.run_sync(settings, echo, on_steps=on_steps)
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

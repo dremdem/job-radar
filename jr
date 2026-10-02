@@ -77,7 +77,7 @@ Usage: ./jr <command>
   restart   Restart the web UI (after pulling new code)
   status    Is the web UI running
   logs      Follow the server log
-  sync      Sync Gmail and run all imports (same as the Sync mail button)
+  sync      Sync every source, same as the Sync button
   auth      One-time Gmail consent (read-only)
   update    git pull, install dependencies, restart the web UI
   check     ruff + pytest

@@ -17,7 +17,7 @@ uv run job-radar db upgrade  # create / migrate the SQLite database
 uv run job-radar serve       # http://127.0.0.1:8000 — review queue
 ```
 
-How the queue works (tabs, buttons, **Sync mail** button): [docs/queue.md](docs/queue.md). Auto-ignore rules (hybrid, already applied, …): [docs/settings.md](docs/settings.md). Send LinkedIn pages you open to the queue with the bookmarklet: [docs/linkedin-capture.md](docs/linkedin-capture.md).
+How the queue works (tabs, buttons, **Sync** button): [docs/queue.md](docs/queue.md). Auto-ignore rules (hybrid, already applied, …): [docs/settings.md](docs/settings.md). Send LinkedIn pages you open to the queue with the bookmarklet: [docs/linkedin-capture.md](docs/linkedin-capture.md).
 
 The queue is empty until a source is imported. To look around first: `uv run job-radar demo`.
 
@@ -31,7 +31,7 @@ A small wrapper so you do not have to remember the commands below:
 | `./jr stop` / `./jr restart` | Stop / restart it |
 | `./jr status` | Is it running, on which address |
 | `./jr logs` | Follow the server log |
-| `./jr sync` | Sync Gmail and run all imports (same as the **Sync mail** button) |
+| `./jr sync` | Sync every source: Gmail, LinkedIn, Telegram, Himalayas, AI analysis (same as the **Sync** button) |
 | `./jr auth` | One-time Gmail consent (read-only) |
 | `./jr update` | `git pull`, install dependencies, restart the server |
 | `./jr check` | `ruff` + `pytest` |
@@ -47,7 +47,7 @@ A second `./jr start` does not start a second server.
 | `job-radar serve [--host] [--port] [--reload]` | Run the web UI (review queue) |
 | `job-radar demo [--remove]` | Add a few demo opportunities (companies marked `(demo)`) to try the queue; `--remove` deletes only them |
 | `job-radar gmail auth` | One-time Gmail OAuth consent (read-only), see [docs/gmail.md](docs/gmail.md) |
-| `job-radar sync gmail [--query NAME] [--since DATE]` | Incremental read-only import of job mail into the database |
+| `job-radar sync gmail [--query NAME] [--since DATE]` | The whole sync: read-only Gmail import, then every other source and analysis (see [docs/queue.md](docs/queue.md#sync)) |
 | `job-radar import linkedin` | Turn stored LinkedIn alert emails into opportunities, see [docs/linkedin-alerts.md](docs/linkedin-alerts.md) |
 | `job-radar import applications` | Past applications from mail, see [docs/applications.md](docs/applications.md) |
 | `job-radar import contacts` | Link mail to companies and label it, for company history in the queue |

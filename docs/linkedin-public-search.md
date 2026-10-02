@@ -43,4 +43,4 @@ With the same switch on, vacancies in **To review** that have no description yet
 |---|---|---|
 | `JOB_RADAR_LINKEDIN_PUBLIC_MAX_DESCRIPTIONS_PER_DAY` | `100` | Job pages per UTC day |
 
-Same pause between requests and the same stop: any sign of blocking stops **both** searches and descriptions until the next day. Each request is logged in `linkedin_fetches` with `kind = description`. Runs after every sync (**Sync mail**, `./jr sync`) and with `uv run job-radar import descriptions`.
+Same pause between requests and the same stop: any sign of blocking stops **both** searches and descriptions until the next day. Each request is logged in `linkedin_fetches` with `kind = description`. Runs after every sync (**Sync**, `./jr sync`) and with `uv run job-radar import descriptions`.

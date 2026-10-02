@@ -26,7 +26,7 @@ Timezones are not a restriction: the candidate can work in any timezone.
 
 ## When it runs
 
-- Last step of **Sync mail** / `./jr sync`, and alone: `uv run job-radar analyze`.
+- Last step of **Sync** / `./jr sync`, and alone: `uv run job-radar analyze`.
 - It covers vacancies in **To review** whose latest description has not been analyzed yet, at most 150 per run, newest first. Each description is analyzed once (`description_analyses`, one row per description snapshot).
 - If Ollama is not running or the model is missing, the step reports it and the rest of the sync goes on.
 
@@ -36,7 +36,7 @@ The optional auto-ignore rule **"AI: hybrid / on-site or country-only"** in [Set
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `JOB_RADAR_AI_ANALYSIS` | `true` | Run the step in Sync mail |
+| `JOB_RADAR_AI_ANALYSIS` | `true` | Run the step in Sync |
 | `JOB_RADAR_OLLAMA_URL` | `http://localhost:11434` | Ollama server |
 | `JOB_RADAR_AI_MODEL` | `gemma3:4b` | Model; install with `ollama pull gemma3:4b` |
 | `JOB_RADAR_AI_MAX_PER_SYNC` | `150` | Descriptions analyzed per run |

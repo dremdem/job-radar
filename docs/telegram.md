@@ -34,7 +34,7 @@ Job Radar reads vacancies from Telegram channels chosen in the audit (#84). It d
 - From the post: **title** (first line, or `Looking for:`), **company** ("Title **в** Company", "Title **at** Company" — only on a short title line with a name-like company, "Company:"; otherwise a per-post placeholder `Unknown (<channel> <id>)`, so unrelated posts never share a company history), **location** (the `📍` line or `Location:`), links. The whole post text is the vacancy's **description**, so the Python check, language check and auto-ignore rules work right away.
 - The vacancy links to the post (`https://t.me/<channel>/<id>`, or `t.me/c/<id>/<post>` for private channels) and has the source `telegram`.
 
-Runs as part of **Sync mail** / `./jr sync` when configured, or alone: `uv run job-radar sync telegram`.
+Runs as part of **Sync** / `./jr sync` when configured, or alone: `uv run job-radar sync telegram`.
 
 ## Digests (Digital nomads)
 

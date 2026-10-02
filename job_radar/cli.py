@@ -217,7 +217,6 @@ def _import_contacts(session) -> None:
 
 
 def _sync_gmail(names: list[str] | None, since: datetime | None) -> None:
-    from .gmail.auth import GmailAuthError
     from .gmail.queries import QUERIES
 
     unknown = set(names or []) - QUERIES.keys()
@@ -226,14 +225,15 @@ def _sync_gmail(names: list[str] | None, since: datetime | None) -> None:
             f"Unknown query {', '.join(sorted(unknown))}. Known: {', '.join(QUERIES)}",
             param_hint="--query",
         )
-    try:
-        pipeline.run_sync(
-            Settings(),
-            typer.echo,
-            names=names,
-            since=since.date() if since else None,
-            progress_echo=lambda line: typer.echo(line, err=True),
-        )
-    except GmailAuthError as e:
-        typer.echo(str(e), err=True)
-        raise typer.Exit(code=1) from e
+    steps = pipeline.run_sync(
+        Settings(),
+        typer.echo,
+        names=names,
+        since=since.date() if since else None,
+        progress_echo=lambda line: typer.echo(line, err=True),
+    )
+    failed = [s.key for s in steps if s.state == "failed"]
+    if failed:
+        word = "step" if len(failed) == 1 else "steps"
+        typer.echo(f"{len(failed)} {word} failed: {', '.join(failed)}", err=True)
+        raise typer.Exit(code=1)

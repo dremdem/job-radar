@@ -42,6 +42,32 @@ The full text opens with the row's **Description** button in a large reading win
 
 Company history, reasons and notes: [applications.md](applications.md).
 
-## Sync mail
+## Sync
 
-**Sync mail** in the header runs the same pipeline as `uv run job-radar sync gmail`: Gmail → LinkedIn alerts → public search (if enabled) → rejections → applications → contacts. It runs in the background of the server; the status next to the button shows the latest lines while it works and the summary when it is done, with a link to reload the page. Only one sync runs at a time; clicking again shows the one in progress. If Gmail access is missing or expired, the status says so: run `uv run job-radar gmail auth` once in a terminal.
+**Sync** in the header runs the same pipeline as `./jr sync` (`uv run job-radar sync gmail`) in the background of the server. Only one sync runs at a time; clicking again shows the one in progress.
+
+The status next to the button lists the steps, one line each, updated while it works:
+
+| Step | What it does |
+|---|---|
+| Gmail | New mail for the queries ([gmail.md](gmail.md)) |
+| LinkedIn alerts | Vacancies from the stored alert emails |
+| LinkedIn search | Public guest search, if enabled ([linkedin-public-search.md](linkedin-public-search.md)) |
+| Telegram | Allowlisted channels, if configured ([telegram.md](telegram.md)) |
+| Himalayas | Fresh worldwide Python jobs ([himalayas.md](himalayas.md)) |
+| Mail analysis | Rejections, applications, contacts from stored mail ([applications.md](applications.md)) |
+| LinkedIn descriptions | Public job pages for To review, if enabled |
+| AI analysis | Work mode, residence and stack with the local model ([ai.md](ai.md)) |
+
+Each line shows the state:
+- `·` waiting;
+- `…` running;
+- `✓` done, with the summary (e.g. "42 new");
+- `off` disabled in the settings;
+- `✗` failed, with the reason.
+
+The full log is under **details**, and a **reload** link appears at the end.
+
+**Steps are independent.** When one fails, the others still run. Without Gmail access the mail-based steps work on the mail already stored and do not fetch message bodies. The Gmail line then says what to do: *Gmail access expired or revoked: run `./jr auth`*.
+
+`./jr sync` prints the same lines and exits with code 1 when a step failed.

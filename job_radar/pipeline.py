@@ -5,6 +5,7 @@ terminal or the web status. See docs/queue.md#sync-mail.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy.orm import Session
@@ -162,22 +163,31 @@ def analyze_descriptions(session: Session, settings: Settings, echo: Echo, model
 
 
 def gmail_client_or_none(settings: Settings):
+    from google.auth.exceptions import RefreshError
+
     from .gmail.auth import GmailAuthError, load_credentials
     from .gmail.client import ApiGmailClient
 
     try:
         return ApiGmailClient(load_credentials(settings.gmail_token))
-    except GmailAuthError:
+    except (GmailAuthError, RefreshError):  # no token, or it expired: work without Gmail
         return None
 
 
 def import_rejections(
-    session: Session, settings: Settings, echo: Echo, client=None, *, recheck: bool = False
+    session: Session,
+    settings: Settings,
+    echo: Echo,
+    client=None,
+    *,
+    recheck: bool = False,
+    use_gmail: bool = True,
 ) -> None:
     from .gmail.client import body_fetcher
     from .linkedin.rejections import import_rejections as run
 
-    client = client or gmail_client_or_none(settings)
+    if use_gmail:
+        client = client or gmail_client_or_none(settings)
     stats = run(session, fetch_body=body_fetcher(client) if client else None, recheck=recheck)
     echo(
         f"rejections: {stats.emails} emails, {stats.detected} rejections, {stats.new} new"
@@ -190,11 +200,14 @@ def import_rejections(
         )
 
 
-def import_applications(session: Session, settings: Settings, echo: Echo, client=None) -> None:
+def import_applications(
+    session: Session, settings: Settings, echo: Echo, client=None, *, use_gmail: bool = True
+) -> None:
     from .applications import import_applications as run
     from .gmail.client import body_fetcher
 
-    client = client or gmail_client_or_none(settings)
+    if use_gmail:
+        client = client or gmail_client_or_none(settings)
     stats = run(session, fetch_body=body_fetcher(client) if client else None)
     echo(
         f"applications: {stats.detected} found, {stats.new} new, "
@@ -220,6 +233,56 @@ def import_contacts(session: Session, echo: Echo) -> None:
     )
 
 
+@dataclass
+class Step:
+    """One source or analysis of a sync, for the progress list (docs/queue.md#sync)."""
+
+    key: str
+    label: str
+    state: str = "waiting"  # waiting / running / done / off / failed
+    summary: str = ""
+
+
+StepsCallback = Callable[[list[Step]], None]
+# (key, label, prefix of its echo lines, which line sums it up)
+STEPS: list[tuple[str, str, str, str]] = [
+    ("gmail", "Gmail", "", "all"),
+    ("linkedin", "LinkedIn alerts", "linkedin", "first"),
+    ("linkedin_search", "LinkedIn search", "linkedin-search", "first"),
+    ("telegram", "Telegram", "telegram", "last"),
+    ("himalayas", "Himalayas", "himalayas", "first"),
+    ("mail", "Mail analysis", "", "all"),
+    ("descriptions", "LinkedIn descriptions", "descriptions", "first"),
+    ("ai", "AI analysis", "ai", "last"),
+]
+
+
+def describe_error(error: Exception) -> str:
+    """A failed step's reason, with what to do for the usual ones."""
+    from google.auth.exceptions import RefreshError
+
+    from .gmail.auth import GmailAuthError
+
+    if isinstance(error, RefreshError):
+        return "Gmail access expired or revoked: run `./jr auth` (docs/gmail.md)"
+    if isinstance(error, GmailAuthError):
+        return str(error).replace("`job-radar gmail auth`", "`./jr auth` (`job-radar gmail auth`)")
+    return str(error) or error.__class__.__name__
+
+
+def _summary(lines: list[str], prefix: str, pick: str) -> str:
+    def strip(line: str) -> str:
+        return line.removeprefix(f"{prefix}: ") if prefix else line
+
+    if not lines:
+        return ""
+    if pick == "first":
+        return strip(lines[0])
+    if pick == "last":
+        return strip(lines[-1])
+    return " · ".join(strip(line) for line in lines)
+
+
 def run_sync(
     settings: Settings,
     echo: Echo,
@@ -227,40 +290,92 @@ def run_sync(
     names: list[str] | None = None,
     since: date | None = None,
     progress_echo: Echo | None = None,
-) -> None:
-    """Gmail, then every import that builds on it. Raises GmailAuthError without a token."""
+    on_steps: StepsCallback | None = None,
+) -> list[Step]:
+    """Every source and analysis, each on its own: a failed step does not stop the rest."""
     from .gmail.auth import load_credentials
     from .gmail.client import ApiGmailClient
     from .gmail.sync import sync_gmail
 
-    client = ApiGmailClient(load_credentials(settings.gmail_token))
     progress_echo = progress_echo or echo
+    enabled = {
+        "linkedin_search": settings.linkedin_public_search,
+        "telegram": bool(settings.telegram_mcp_command),
+        "himalayas": settings.himalayas,
+        "descriptions": settings.linkedin_public_search,
+        "ai": settings.ai_analysis,
+    }
+    steps = [Step(key, label) for key, label, _, _ in STEPS]
+    for step in steps:
+        if not enabled.get(step.key, True):
+            step.state = "off"
+    by_key = {s.key: s for s in steps}
+    how = {key: (prefix, pick) for key, _, prefix, pick in STEPS}
 
-    def progress(name: str, stats) -> None:
-        if stats.threads % 50 == 0:
-            progress_echo(f"{name}: {stats.threads} threads, {stats.new} new...")
+    def notify() -> None:
+        if on_steps:
+            on_steps([Step(**vars(s)) for s in steps])
 
+    def run(key: str, action: Callable[[Echo], object]) -> None:
+        step = by_key[key]
+        if step.state == "off":
+            return
+        step.state = "running"
+        notify()
+        lines: list[str] = []
+
+        def step_echo(line: str) -> None:
+            lines.append(line)
+            echo(line)
+
+        try:
+            action(step_echo)
+            step.state, step.summary = "done", _summary(lines, *how[key])
+        except Exception as e:  # reported on the step; the next steps still run
+            step.state, step.summary = "failed", describe_error(e)
+            echo(f"{key}: failed: {step.summary}")
+        notify()
+
+    notify()
     upgrade_database(settings.database_url)
     engine = make_engine(settings.database_url)
+    client = None
     try:
         with make_session_factory(engine)() as session:
-            results = sync_gmail(session, client, names=names, since=since, progress=progress)
-            import_linkedin(session, echo)
-            if settings.linkedin_public_search:
-                import_linkedin_search(session, settings, echo)
-            if settings.telegram_mcp_command:
-                import_telegram(session, settings, echo)
-            if settings.himalayas:
-                import_himalayas(session, settings, echo)
-            import_rejections(session, settings, echo, client)
-            import_applications(session, settings, echo, client)
-            import_contacts(session, echo)
-            # Last: the rules for fetched descriptions see applications/rejections above.
-            if settings.linkedin_public_search:
-                import_descriptions(session, settings, echo)
-            if settings.ai_analysis:
-                analyze_descriptions(session, settings, echo)
+
+            def gmail(step_echo: Echo) -> None:
+                nonlocal client
+
+                def progress(name: str, stats) -> None:
+                    if stats.threads % 50 == 0:
+                        progress_echo(f"{name}: {stats.threads} threads, {stats.new} new...")
+
+                api = ApiGmailClient(load_credentials(settings.gmail_token))
+                try:
+                    results = sync_gmail(session, api, names=names, since=since, progress=progress)
+                except Exception:
+                    session.rollback()
+                    raise
+                client = api
+                for name, stats in results.items():
+                    step_echo(f"{name}: {stats.threads} threads, {stats.new} new")
+
+            def mail(step_echo: Echo) -> None:
+                # Without Gmail access: stored mail only, no bodies fetched.
+                use = client is not None
+                import_rejections(session, settings, step_echo, client, use_gmail=use)
+                import_applications(session, settings, step_echo, client, use_gmail=use)
+                import_contacts(session, step_echo)
+
+            run("gmail", gmail)
+            run("linkedin", lambda e: import_linkedin(session, e))
+            run("linkedin_search", lambda e: import_linkedin_search(session, settings, e))
+            run("telegram", lambda e: import_telegram(session, settings, e))
+            run("himalayas", lambda e: import_himalayas(session, settings, e))
+            run("mail", mail)
+            # Late: the rules for fetched descriptions see applications/rejections above.
+            run("descriptions", lambda e: import_descriptions(session, settings, e))
+            run("ai", lambda e: analyze_descriptions(session, settings, e))
     finally:
         engine.dispose()
-    for name, stats in results.items():
-        echo(f"{name}: {stats.threads} threads, {stats.new} new, {stats.seen} already stored")
+    return steps

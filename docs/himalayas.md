@@ -27,4 +27,4 @@ Each page has 20 jobs with title, company, publication time, salary, location an
   - **Description:** the description text, so the Python check, the language check and the auto-ignore rules work right away.
 - **Link:** the vacancy links to its himalayas.app page (attribution). Source `himalayas`, `external_id` = that page URL (the API's `guid`). A job is never imported twice.
 
-Runs as part of **Sync mail** / `./jr sync`, or alone: `uv run job-radar sync himalayas`.
+Runs as part of **Sync** / `./jr sync`, or alone: `uv run job-radar sync himalayas`.

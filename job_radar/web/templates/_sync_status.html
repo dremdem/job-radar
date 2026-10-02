@@ -1,14 +1,21 @@
+{% set icons = {"waiting": "·", "running": "…", "done": "✓", "off": "off", "failed": "✗"} %}
 <span id="sync-status" class="small"{% if job.state == "running" %} hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
   {% if job.state == "running" %}
     <b>Sync running…</b>
   {% elif job.state == "done" %}
-    <b>Sync done</b> {{ job.finished_at.strftime("%H:%M") if job.finished_at else "" }} · <a href="/">reload</a>
+    <b>Sync done</b> {{ job.finished_at.strftime("%H:%M") if job.finished_at else "" }}{% if job.failed_steps %} · <span class="neg">{{ job.failed_steps | length }} step{{ "s" if job.failed_steps | length > 1 }} failed</span>{% endif %} · <a href="/">reload</a>
   {% elif job.state == "failed" %}
     <b>Sync failed:</b> {{ job.error }}
   {% endif %}
+  {% if job.steps and job.state != "idle" %}
+  <ul class="sync-steps">
+    {% for s in job.steps %}<li class="step-{{ s.state }}"><span class="step-icon">{{ icons[s.state] }}</span> {{ s.label }}{% if s.summary %} <span class="muted" title="{{ s.summary }}">— {{ s.summary | truncate(110, true, "…") }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
   {% if job.lines and job.state != "idle" %}
-  <details class="sync-log"{% if job.state != "done" %} open{% endif %}><summary>details</summary>
-    <pre>{% for line in job.lines[-15:] %}{{ line }}
+  <details class="sync-log"><summary>details</summary>
+    <pre>{% for line in job.lines[-40:] %}{{ line }}
 {% endfor %}</pre>
   </details>
   {% endif %}
