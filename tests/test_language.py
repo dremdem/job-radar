@@ -4,6 +4,7 @@ from job_radar.language import (
     detect_text_language,
     detect_title_language,
     language_risk,
+    required_language,
     vacancy_language,
 )
 
@@ -53,7 +54,7 @@ def test_english_russian_and_noise_are_fine(title):
 
 def test_language_risk():
     points, reason = language_risk("Desarrollador Python Senior")
-    assert points == -3.0
+    assert points == -8.0
     assert reason.sign == "-"
     assert reason.text == "Title in Spanish: the job likely needs Spanish"
     assert language_risk("Senior Python Developer") is None
@@ -98,7 +99,7 @@ def test_detect_text_language(text, language):
 
 def test_description_language_risk():
     points, reason = language_risk("Senior Python Developer", GERMAN)
-    assert points == -3.0
+    assert points == -8.0
     assert reason.text == "Description in German: the job likely needs German"
     # Counted once when the title already says it.
     _, reason = language_risk("Python Entwickler (m/w/d)", GERMAN)
@@ -110,3 +111,40 @@ def test_language_of(session):
     assert vacancy_language("Senior Python Developer", GERMAN) == "German"
     assert vacancy_language("Desarrollador Python", None) == "Spanish"
     assert vacancy_language("Senior Python Developer", None) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "language"),
+    [
+        ("Fluent German (C1/C2) is required", "German"),
+        ("Speak fluent Dutch and/or French and have a good knowledge of English", "Dutch"),
+        ("• Italian language proficiency is mandatory", "Italian"),
+        ("You are fluent in both German and English, both written and spoken", "German"),
+        ("* Languages: Fluency in Polish (C1+) and a strong command of English (B2+)", "Polish"),
+        ("Fluent in Chinese & English", "Chinese"),
+        ("Sprachkenntnisse: Fließend in Deutsch (Wort und Schrift)", "German"),
+        ("Sehr gute Deutsch- und Englischkenntnisse in Wort und Schrift", "German"),
+        ("Spanish proficiency", "Spanish"),
+        ("Languages: You speak English fluently - German is a big plus", None),
+        ("Fluent English required, Korean or Mandarin is a strong plus", None),
+        ("Excellent English communication skills (German language not required)", None),
+        ("English B2+ / C1 (German is a plus, but not required)", None),
+        ("fluency in English, same in German will be a plus but not a must have", None),
+        ("including medical insurance and Polish, Slovak speaking clubs", None),
+        ("Arabic is a genuine advantage across the region", None),
+        ("Fluent English and Russian required", None),
+        ("We have offices in Germany and France.", None),
+    ],
+)
+def test_required_language(text, language):
+    found = required_language(f"About us.\n{text}\nApply now.")
+    assert (found[0] if found else None) == language
+
+
+def test_required_language_risk_is_a_hard_blocker():
+    points, reason = language_risk(
+        "Senior Python Developer", "Remote.\nFluent German is required.\n"
+    )
+    assert points == -8.0
+    assert reason.text == "Requires German — “Fluent German is required.”"
+    assert vacancy_language("Senior Python Developer", "Fluent German is required.") == "German"

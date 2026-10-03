@@ -105,11 +105,24 @@ A title written in another language usually means the job needs that language. T
 - Latin-script languages (Spanish, Portuguese, French, German, Italian, Polish, Dutch) by typical words ("Desarrollador", "Entwickler", "Développeur", "Schwerpunkt", "remoto", "h/f", …) and letters (`ñ`, `ç`, `ß`, `ã`, `ł`, …); a single weak hint is not enough;
 - English and Russian are fine. Emoji, dashes and gender markers such as `(m/w/d)` in an otherwise English title do not count.
 
-A detected language adds `− Title in <Language>: the job likely needs <Language>` (**−3**) when the queue is shown, like the other penalties. It is a hint: the title may be localized while the team works in English.
+A detected language adds `− Title in <Language>: the job likely needs <Language>` (**−8**, a hard blocker, #115) when the queue is shown, like the other penalties. It is a hint: the title may be localized while the team works in English.
 
 **The description** is checked too (#103), because an English title often hides a description written entirely in German. Long text is judged by its everyday words rather than by role names:
 - **Latin script:** the share of each language's common small words is counted ("und", "für", "wir" in German; "de", "para", "con" in Spanish; "the", "and", "you" in English). A language wins when its share is clearly above English: at least 5 % of the words and more than twice the English share.
 - **Other scripts:** a script that makes up more than 30 % of the letters (Chinese, Japanese, …; Vietnamese by its diacritics).
 - **Cyrillic:** treated as Russian and accepted, shown as info only.
 
-A description in another language adds `− Description in <Language>: the job likely needs <Language>` (**−3**). When the title already gave the language, it is not counted twice. On the real queue (2026-10-03), 8 of 274 descriptions were caught: German 3, Portuguese 2, Spanish, Italian, Polish, Vietnamese. The optional auto-ignore rule **"Description not in English"** ([settings.md](settings.md)) moves them out of To review with the reason `language: <Language>`.
+A description in another language adds `− Description in <Language>: the job likely needs <Language>` (**−8**). When the title already gave the language, it is not counted twice. On the real queue (2026-10-03), 8 of 274 descriptions were caught: German 3, Portuguese 2, Spanish, Italian, Polish, Vietnamese.
+
+**A required language in an English text** counts the same (#115). Job Radar looks for a sentence that:
+- names a language other than English or Russian (German / Deutsch, Dutch, French, Spanish, Italian, Polish, Chinese / Mandarin, …);
+- asks for it at a working level ("fluent", "fluency", "proficiency", "native", "required", "mandatory", "must", "C1", "B2", "fließend", "Deutschkenntnisse"…);
+- does not make it optional ("a plus", "nice to have", "advantage", "preferred", "not required", "not a must").
+
+Examples, from real vacancies:
+- caught: "Fluent German (C1/C2) is required", "Speak fluent Dutch and/or French", "Italian language proficiency is mandatory", "Sehr gute Deutsch- und Englischkenntnisse";
+- not caught: "German is a big plus", "Korean or Mandarin is a strong plus", "German language not required".
+
+It adds `− Requires German — “<quote>”` (**−8**). On the real data (2026-10-03), 13 such sentences were found, with no false alarms among the optional ones.
+
+The optional auto-ignore rule **"Description not in English"** ([settings.md](settings.md)) moves them, and the vacancies that require such a language, out of To review with the reason `language: <Language>`.

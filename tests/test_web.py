@@ -242,7 +242,7 @@ def test_queue_shows_language_risk(client, session):
     session.commit()
     text = client.get("/").text
     assert "Title in Spanish: the job likely needs Spanish" in text
-    assert ">5.0<" in text
+    assert ">0.0<" in text
     assert '<option value="language">' in text
 
 

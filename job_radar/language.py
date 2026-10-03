@@ -8,7 +8,7 @@ import re
 
 from .scoring import Reason
 
-LANGUAGE_PENALTY = -3.0
+LANGUAGE_PENALTY = -8.0  # a hard blocker (#115)
 MIN_EVIDENCE = 2  # a single weak hint (one accented letter, "para") is not enough
 
 # Non-Latin scripts, checked in this order (Japanese uses Han characters too).
@@ -122,11 +122,49 @@ def detect_text_language(text: str) -> str | None:
     return None
 
 
+# Required languages in an English text (#115). Name -> language; English / Russian are fine.
+_NAMES = {
+    "german": "German", "deutsch": "German", "dutch": "Dutch", "french": "French",
+    "français": "French", "francais": "French", "spanish": "Spanish", "español": "Spanish",
+    "italian": "Italian", "portuguese": "Portuguese", "polish": "Polish", "swedish": "Swedish",
+    "danish": "Danish", "norwegian": "Norwegian", "finnish": "Finnish", "czech": "Czech",
+    "slovak": "Slovak", "hungarian": "Hungarian", "romanian": "Romanian", "greek": "Greek",
+    "turkish": "Turkish", "hebrew": "Hebrew", "arabic": "Arabic", "japanese": "Japanese",
+    "korean": "Korean", "chinese": "Chinese", "mandarin": "Chinese", "cantonese": "Chinese",
+    "vietnamese": "Vietnamese", "thai": "Thai", "hindi": "Hindi", "ukrainian": "Ukrainian",
+}  # fmt: skip
+_NAME = re.compile(r"(?<![\w-])(" + "|".join(_NAMES) + r")(?=[\W_]|kenntnis|$)", re.IGNORECASE)
+_NEEDED = re.compile(
+    r"fluen|proficien|native|required|requirement|mandatory|\bmust\b|\bspeak|written and"
+    r"|\b[BC][12]\b|fließend|fliessend|kenntnisse|sehr gut",
+    re.IGNORECASE,
+)
+_OPTIONAL = re.compile(
+    r"\bplus\b|nice[ -]to[ -]have|advantage|\bbonus\b|prefer|desirable|helpful|beneficial"
+    r"|not (be )?(required|a must|mandatory|needed)|\bclubs?\b|von vorteil|wünschenswert",
+    re.IGNORECASE,
+)
+_SENTENCE = re.compile(r"[^.!?\n]+[.!?]?")
+
+
+def required_language(text: str) -> tuple[str, str] | None:
+    """(language, sentence) for the first sentence that asks for another language."""
+    for match in _SENTENCE.finditer(text):
+        sentence = " ".join(match.group(0).split())
+        names = [_NAMES[m.group(1).casefold()] for m in _NAME.finditer(sentence)]
+        if names and _NEEDED.search(sentence) and not _OPTIONAL.search(sentence):
+            return names[0], sentence.strip(" *•-·")
+    return None
+
+
 def vacancy_language(title: str, description: str | None) -> str | None:
     """Language other than English or Russian, from the title first, then the description."""
-    return detect_title_language(title) or (
-        detect_text_language(description) if description else None
-    )
+    if found := detect_title_language(title):
+        return found
+    if not description:
+        return None
+    required = required_language(description)
+    return detect_text_language(description) or (required[0] if required else None)
 
 
 def language_risk(title: str, description: str | None = None) -> tuple[float, Reason] | None:
@@ -138,4 +176,8 @@ def language_risk(title: str, description: str | None = None) -> tuple[float, Re
         return LANGUAGE_PENALTY, Reason(
             "-", f"Description in {language}: the job likely needs {language}"
         )
+    if description and (required := required_language(description)):
+        language, sentence = required
+        shown = sentence if len(sentence) <= 160 else sentence[:159] + "…"
+        return LANGUAGE_PENALTY, Reason("-", f"Requires {language} — “{shown}”")
     return None
