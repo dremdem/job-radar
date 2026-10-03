@@ -1,6 +1,7 @@
 """The queue of deep analyses and the worker that runs them one at a time. See docs/claude.md."""
 
 import threading
+import time
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
@@ -212,6 +213,7 @@ class Worker:
         self.profile_path = profile_path
         self.cv_path = cv_path
         self.idle_wait = idle_wait
+        self.retry_waits: tuple[float, ...] = (10.0, 30.0)  # pauses before attempts 2 and 3
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -293,18 +295,31 @@ class Worker:
                 salary=o.salary,
                 description=description,
             )
-            try:
-                reply = self.runner.run(
-                    prompt,
-                    system=system_prompt(settings.language),
-                    model=job.model,
-                    schema=SCHEMA,
-                    session_id=job.session_id,
-                )
-                if not isinstance(reply.structured, dict):
-                    raise ClaudeError("the answer has no structured result")
-            except Exception as e:  # shown on the row; Analyze again retries
-                job.state, job.error = "failed", str(e) or e.__class__.__name__
+            reply, error = None, None
+            for attempt in range(1 + len(self.retry_waits)):
+                if attempt:
+                    time.sleep(self.retry_waits[attempt - 1])
+                    job.session_id = str(uuid.uuid4())  # claude refuses a reused session id
+                job.attempts = attempt + 1
+                session.commit()
+                try:
+                    reply = self.runner.run(
+                        prompt,
+                        system=system_prompt(settings.language),
+                        model=job.model,
+                        schema=SCHEMA,
+                        session_id=job.session_id,
+                    )
+                    if not isinstance(reply.structured, dict):
+                        raise ClaudeError("the answer has no structured result", transient=True)
+                    error = None
+                    break
+                except Exception as e:  # transient ones are retried; the rest shown on the row
+                    error = e
+                    if not getattr(e, "transient", False):
+                        break
+            if error is not None:
+                job.state, job.error = "failed", str(error) or error.__class__.__name__
             else:
                 job.state, job.error = "done", None
                 job.result = _check_quotes(dict(reply.structured), description)

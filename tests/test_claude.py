@@ -309,3 +309,69 @@ def test_chat_markup_is_safe():
     html = str(chat_markup("**Да** <script>x</script>\n> Speak fluent Dutch"))
     assert "<b>Да</b>" in html and "&lt;script&gt;" in html
     assert '<span class="quote">Speak fluent Dutch</span>' in html
+
+
+def test_transient_errors_are_retried(session, tmp_path):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    runner = FakeRunner(
+        [
+            ClaudeError("error_max_structured_output_retries", transient=True),
+            Reply("{}", dict(RESULT), "s", None),
+        ]
+    )
+    w = worker(session, runner, tmp_path)
+    w.retry_waits = (0, 0)
+    w.run_once()
+    session.expire_all()
+    job = claude.latest(session, o.id)
+    assert job.state == "done" and job.attempts == 2
+    # Each attempt gets its own session id.
+    assert runner.calls[0]["session_id"] != runner.calls[1]["session_id"]
+
+
+def test_retries_stop_after_three_attempts(session, tmp_path):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    flaky = [ClaudeError("overloaded", transient=True)] * 3
+    w = worker(session, FakeRunner(flaky), tmp_path)
+    w.retry_waits = (0, 0)
+    w.run_once()
+    session.expire_all()
+    job = claude.latest(session, o.id)
+    assert job.state == "failed" and job.attempts == 3 and job.error == "overloaded"
+
+
+def test_final_errors_are_not_retried(session, tmp_path):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    runner = FakeRunner([ClaudeError("Not logged in")])
+    worker(session, runner, tmp_path).run_once()
+    session.expire_all()
+    assert claude.latest(session, o.id).attempts == 1 and len(runner.calls) == 1
+
+
+def test_transient_classification():
+    from job_radar.claude.runner import is_transient
+
+    transient = [
+        "error_max_structured_output_retries",
+        "error_during_execution",
+        "API Error: 529 Overloaded",
+        "rate limit exceeded",
+        "no answer in 600 s",
+    ]
+    for text in transient:
+        assert is_transient(text), text
+    for text in ("Not logged in · Please run /login", "`claude` not found"):
+        assert not is_transient(text), text
+
+
+def test_failed_row_has_a_retry_button(client, session):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    client.app.state.claude_worker.runner = FakeRunner([ClaudeError("Not logged in")])
+    client.app.state.claude_worker.run_once()
+    row = client.get(f"/opportunities/{o.id}/row").text
+    assert "Claude failed" in row and "1 attempt" in row
+    assert f'hx-post="/opportunities/{o.id}/claude"' in row and ">retry<" in row

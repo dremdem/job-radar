@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,8 +12,22 @@ from typing import Any, Protocol
 _PAID_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
 
+# Worth another attempt: the next run usually works (docs/claude.md, #113).
+_TRANSIENT = re.compile(
+    r"error_max_structured_output_retries|error_during_execution|overloaded|rate.?limit"
+    r"|\b5\d\d\b|timed? ?out|no answer in|temporarily|try again",
+    re.IGNORECASE,
+)
+
+
+def is_transient(message: str) -> bool:
+    return bool(_TRANSIENT.search(message))
+
+
 class ClaudeError(Exception):
-    pass
+    def __init__(self, message: str, *, transient: bool = False):
+        super().__init__(message)
+        self.transient = transient
 
 
 @dataclass(frozen=True)
@@ -90,14 +105,17 @@ class ClaudeCli:
                 f"`{self.command[0]}` not found: install and log in to Claude Code"
             ) from e
         except subprocess.TimeoutExpired as e:
-            raise ClaudeError(f"no answer in {self.timeout:.0f} s") from e
+            raise ClaudeError(f"no answer in {self.timeout:.0f} s", transient=True) from e
         try:
             data = json.loads(done.stdout)
         except ValueError as e:
             detail = (done.stderr or done.stdout or "").strip()[-300:]
-            raise ClaudeError(f"claude exited with {done.returncode}: {detail}") from e
+            message = f"claude exited with {done.returncode}: {detail}"
+            raise ClaudeError(message, transient=is_transient(detail)) from e
         if data.get("is_error") or done.returncode != 0:
-            raise ClaudeError(str(data.get("result") or data.get("subtype") or done.returncode))
+            message = str(data.get("result") or data.get("subtype") or done.returncode)
+            subtype = str(data.get("subtype") or "")
+            raise ClaudeError(message, transient=is_transient(f"{subtype} {message}"))
         return Reply(
             text=str(data.get("result") or ""),
             structured=data.get("structured_output"),

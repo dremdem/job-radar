@@ -45,7 +45,10 @@ Every quote is checked against the description, as for the local model. A quote 
   - each analysis is a Claude session (`--session-id`), kept so the vacancy chat (#106) can continue it with `--resume`;
   - sessions live under `data/claude/`, apart from your own Claude Code sessions.
 - **Stored:** `claude_analyses` holds state, model, session id, the answer, the error if any, the notional cost Claude reports, and the prompt version. A server restart puts unfinished vacancies back in the queue.
-- **Errors:** a failed run is marked `failed` with the reason. Press Analyze again to retry.
+- **Errors:**
+  - **Transient errors are retried by themselves**, up to 3 attempts with 10 s and then 30 s in between, each with a fresh session. Transient means: Claude Code could not fit its answer into the schema (`error_max_structured_output_retries`, seen once in 27 runs; the same prompt worked on the next try), a timeout, or an overloaded / rate-limited / 5xx answer.
+  - A missing `claude` or an expired login fails at once.
+  - A failed row shows the reason, the number of attempts and a **retry** button (#113).
 
 ## Settings
 

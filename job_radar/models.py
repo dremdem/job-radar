@@ -321,6 +321,7 @@ class ClaudeAnalysis(Base):
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     error: Mapped[str | None] = mapped_column(Text)
     cost_usd: Mapped[float | None]  # as reported by Claude Code; notional on a subscription
+    attempts: Mapped[int] = mapped_column(default=0)  # transient errors are retried (#113)
 
     opportunity: Mapped["Opportunity"] = relationship()
 
