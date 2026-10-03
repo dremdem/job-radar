@@ -41,6 +41,6 @@ def client(engine: Engine, database_url: str, tmp_path) -> Iterator[TestClient]:
         capture_debug_dir=tmp_path / "debug",
         profile=tmp_path / "profile.yaml",
     )
-    app = create_app(settings)
+    app = create_app(settings, start_worker=False)
     with TestClient(app) as client:
         yield client

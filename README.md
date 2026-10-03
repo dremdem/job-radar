@@ -17,7 +17,7 @@ uv run job-radar db upgrade  # create / migrate the SQLite database
 uv run job-radar serve       # http://127.0.0.1:8000 — review queue
 ```
 
-How the queue works (tabs, buttons, **Sync** button): [docs/queue.md](docs/queue.md). Auto-ignore rules (hybrid, already applied, …): [docs/settings.md](docs/settings.md). Send LinkedIn pages you open to the queue with the bookmarklet: [docs/linkedin-capture.md](docs/linkedin-capture.md).
+How the queue works (tabs, buttons, **Sync** button): [docs/queue.md](docs/queue.md). Deep analysis of chosen vacancies with Claude: [docs/claude.md](docs/claude.md). Auto-ignore rules (hybrid, already applied, …): [docs/settings.md](docs/settings.md). Send LinkedIn pages you open to the queue with the bookmarklet: [docs/linkedin-capture.md](docs/linkedin-capture.md).
 
 The queue is empty until a source is imported. To look around first: `uv run job-radar demo`.
 
@@ -71,6 +71,8 @@ Settings come from environment variables with the `JOB_RADAR_` prefix, or from `
 | `JOB_RADAR_HIMALAYAS` | `true` | Read Himalayas on every sync ([docs/himalayas.md](docs/himalayas.md)) |
 | `JOB_RADAR_AI_ANALYSIS` | `true` | Analyze descriptions with the local model on every sync; skipped when Ollama is not running ([docs/ai.md](docs/ai.md)) |
 | `JOB_RADAR_PROFILE` | `data/profile.yaml` | Your stack from the CV; vacancies requiring other technologies are marked ([docs/ai.md](docs/ai.md#stack-vs-your-cv), example: `profile.example.yaml`) |
+| `JOB_RADAR_CV_PATH` | — | Your CV (Markdown) for Claude's deep analysis ([docs/claude.md](docs/claude.md)) |
+| `JOB_RADAR_CLAUDE_COMMAND` | `claude` | Claude Code CLI used in print mode, on your subscription ([docs/claude.md](docs/claude.md)) |
 | `JOB_RADAR_LINKEDIN_PUBLIC_SEARCH` | `false` | Opt-in public LinkedIn search, with limits in [docs/linkedin-public-search.md](docs/linkedin-public-search.md) |
 
 ## Layout

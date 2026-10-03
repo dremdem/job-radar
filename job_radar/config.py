@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     ai_model: str = "gemma3:4b"
     ai_max_per_sync: int = 150
     profile: Path = Path("data/profile.yaml")  # your stack from the CV
+    # Deep analysis with Claude Code in print mode, on the subscription (docs/claude.md).
+    cv_path: Path | None = None
+    claude_command: str = "claude"
+    claude_workdir: Path = Path("data/claude")  # its sessions, apart from your own
     # Local-only diagnostics of bookmarklet captures (git-ignored), see docs/linkedin-capture.md.
     capture_debug_dir: Path = Path("data/capture_debug")
 

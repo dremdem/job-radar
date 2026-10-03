@@ -1,6 +1,12 @@
 <div id="queue">
 {% include "_tabs.html" %}
 {% set filter_attrs = 'hx-get="/" hx-trigger="input changed delay:250ms, search" hx-include=".col-filter" hx-target="#queue-body" hx-select="#queue-body" hx-select-oob="#tabs" hx-swap="outerHTML" hx-push-url="true"' %}
+<p class="claude-bar small">
+  <button type="button" id="claude-select">Select ≥ 6.5</button>
+  <button type="button" id="claude-clear">Clear</button>
+  <button type="button" id="claude-analyze">Analyze with Claude</button>
+  {% include "_claude_status.html" %}
+</p>
 <table>
   <thead>
     <tr><th>Title</th><th>Country</th><th>Company</th><th>Score</th><th>State</th><th></th></tr>
@@ -15,7 +21,7 @@
   </thead>
   <tbody id="queue-body">
     {% for row in rows %}
-    {% with o = row.o, rejected_at = row.rejected_at, eff_score = row.eff_score, history = row.history, history_count = row.history_count, applied_before = row.applied_before, extra_reasons = row.extra_reasons, country = row.country, reason_kinds = row.reason_kinds, python_quote = row.python_quote, description = row.description %}{% include "_row.html" %}{% endwith %}
+    {% with o = row.o, rejected_at = row.rejected_at, eff_score = row.eff_score, history = row.history, history_count = row.history_count, applied_before = row.applied_before, extra_reasons = row.extra_reasons, country = row.country, reason_kinds = row.reason_kinds, python_quote = row.python_quote, description = row.description, claude = row.claude %}{% include "_row.html" %}{% endwith %}
     {% else %}
     <tr><td colspan="6" class="muted">Nothing here.</td></tr>
     {% endfor %}

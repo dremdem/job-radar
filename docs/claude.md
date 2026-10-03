@@ -1,0 +1,60 @@
+# Deep analysis with Claude
+
+The local model (docs/ai.md) sorts every vacancy cheaply. For the few vacancies worth a closer look, Job Radar asks **Claude** through **Claude Code in print mode** (`claude -p`). It runs on your Claude subscription limits: no API key and no extra cost (issue #105).
+
+## How to use it
+
+1. In the queue, tick the vacancies to analyze, or press **Select ≥ 6.5** to tick every row with that score or more.
+2. Press **Analyze with Claude**. The vacancies are queued and analyzed in the background, **one at a time** (about 20–60 s each). You can keep working, reload the page or close it.
+3. Each finished vacancy updates its row by itself: a verdict badge (`apply` / `maybe` / `skip`), the match in %, and the analysis under **Claude**. The header shows the progress (`Claude: 2 queued, 1 running`). If you allow browser notifications, one pops up per finished vacancy.
+4. You decide. Nothing changes the vacancy's state by itself; "ignore with reason" stays a click away.
+
+## What Claude gets
+
+| Part | From |
+|---|---|
+| Your CV | the file in `JOB_RADAR_CV_PATH` (e.g. `~/text/cv/yakovenko_python_en.md`) |
+| Your profile | known / learnable / blockers / rules from [Profile](ai.md#stack-vs-your-cv) |
+| Fixed facts | full remote only, you live in Thailand, no relocation, any timezone is fine, you speak Russian (native) and English |
+| The vacancy | title, company, location, salary, the latest description |
+
+Nothing from Gmail, company history or other vacancies is sent. The vacancy text and your CV go to Anthropic, as in any Claude conversation.
+
+## What comes back
+
+A fixed JSON structure (`--json-schema`):
+
+| Field | Meaning |
+|---|---|
+| `verdict` | `apply`, `maybe` or `skip` |
+| `match` | 0–100 |
+| `summary` | Two or three sentences |
+| `location` | `ok` / `risk` / `blocker` with a note and a quote |
+| `strengths`, `gaps`, `red_flags` | Each item with a quote from the description; a gap says whether it is must-have or nice-to-have and whether it is a blocker for you |
+| `questions` | What to ask the recruiter |
+| `cv_keywords` | Words from the vacancy worth having in the CV |
+
+Every quote is checked against the description, as for the local model. A quote that is not found is shown as *unverified*. The explanations are written in the language chosen in Settings (Russian by default); quotes stay as in the original.
+
+## How it runs
+
+- **One worker** in the server takes the oldest queued vacancy and runs `claude -p --output-format json --json-schema … --model <model> --tools "" --strict-mcp-config --setting-sources ""`, with the prompt on stdin.
+  - No tools: Claude only reads and answers. It cannot open files or run commands.
+  - `ANTHROPIC_API_KEY` is removed from its environment, so it never falls back to paid API billing.
+- **Sessions:**
+  - each analysis is a Claude session (`--session-id`), kept so the vacancy chat (#106) can continue it with `--resume`;
+  - sessions live under `data/claude/`, apart from your own Claude Code sessions.
+- **Stored:** `claude_analyses` holds state, model, session id, the answer, the error if any, the notional cost Claude reports, and the prompt version. A server restart puts unfinished vacancies back in the queue.
+- **Errors:** a failed run is marked `failed` with the reason. Press Analyze again to retry.
+
+## Settings
+
+| Where | Setting | Default |
+|---|---|---|
+| Settings page | Model | `sonnet` (`opus`, `haiku`) |
+| Settings page | Analyses per day | 30; the rest wait in the queue until tomorrow |
+| Settings page | Language of the explanations | Russian |
+| `.env` | `JOB_RADAR_CV_PATH` | none: without it, the analysis says there is no CV |
+| `.env` | `JOB_RADAR_CLAUDE_COMMAND` | `claude` |
+
+You need Claude Code installed and logged in on this machine (`claude` in a terminal, once).

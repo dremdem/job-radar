@@ -1,5 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Settings · Job Radar{% endblock %}
+{% block title %}Settings · Job Radar<h2>Claude</h2>
+<p class="small muted">Deep analysis of vacancies you pick in the queue, with Claude Code on your subscription (no API key). Details: docs/claude.md.</p>
+<form method="post" action="/settings/claude" class="small">
+  <p><label>Model <select name="model">{% for m in models %}<option value="{{ m }}" {% if claude.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label></p>
+  <p><label>Analyses per day <input type="number" name="daily_cap" value="{{ claude.daily_cap }}" min="0" max="500" style="width: 5em"></label> <span class="muted">(the rest wait in the queue until tomorrow)</span></p>
+  <p><label>Explanations in <select name="language">{% for l in languages %}<option value="{{ l }}" {% if claude.language == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label></p>
+  <p class="muted">CV: {% if cv_path %}<code>{{ cv_path }}</code>{% else %}not set — add <code>JOB_RADAR_CV_PATH</code> to <code>.env</code>{% endif %}</p>
+  <p><button type="submit">Save</button></p>
+</form>
+{% endblock %}
 {% block content %}
 <h2>Auto-ignore</h2>
 {% if message %}<p><b>{{ message }}</b> <a href="/">Open the queue</a></p>{% endif %}
@@ -18,5 +27,14 @@
 </form>
 <form method="post" action="/settings/apply" class="small">
   <p><button type="submit">Apply to To review now</button> <span class="muted">runs the saved rules over the vacancies currently in To review</span></p>
+</form>
+<h2>Claude</h2>
+<p class="small muted">Deep analysis of vacancies you pick in the queue, with Claude Code on your subscription (no API key). Details: docs/claude.md.</p>
+<form method="post" action="/settings/claude" class="small">
+  <p><label>Model <select name="model">{% for m in models %}<option value="{{ m }}" {% if claude.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label></p>
+  <p><label>Analyses per day <input type="number" name="daily_cap" value="{{ claude.daily_cap }}" min="0" max="500" style="width: 5em"></label> <span class="muted">(the rest wait in the queue until tomorrow)</span></p>
+  <p><label>Explanations in <select name="language">{% for l in languages %}<option value="{{ l }}" {% if claude.language == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label></p>
+  <p class="muted">CV: {% if cv_path %}<code>{{ cv_path }}</code>{% else %}not set — add <code>JOB_RADAR_CV_PATH</code> to <code>.env</code>{% endif %}</p>
+  <p><button type="submit">Save</button></p>
 </form>
 {% endblock %}

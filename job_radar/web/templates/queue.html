@@ -111,4 +111,54 @@
     };
   })();
 </script>
+<script>
+  // Claude deep analysis (docs/claude.md): pick rows, queue them, and redraw each row when
+  // its analysis is done. The status span polls itself while anything is pending.
+  (function () {
+    var seen = null;
+    function picks() { return Array.from(document.querySelectorAll(".claude-pick:checked")).map(function (c) { return c.value; }); }
+    document.addEventListener("click", function (event) {
+      var id = event.target.id;
+      if (id === "claude-select") {
+        document.querySelectorAll("#queue-body tr[data-score]").forEach(function (row) {
+          var box = row.querySelector(".claude-pick");
+          if (box && parseFloat(row.dataset.score) >= 6.5) box.checked = true;
+        });
+      } else if (id === "claude-clear") {
+        document.querySelectorAll(".claude-pick").forEach(function (c) { c.checked = false; });
+      } else if (id === "claude-analyze") {
+        var ids = picks();
+        if (!ids.length) return;
+        if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+        htmx.ajax("POST", "/claude/analyze", {target: "#claude-status", swap: "outerHTML", values: {ids: ids}})
+          .then(function () { ids.forEach(redraw); });
+        document.querySelectorAll(".claude-pick").forEach(function (c) { c.checked = false; });
+      }
+    });
+    function redraw(id) {
+      var row = document.getElementById("opportunity-" + id);
+      if (!row || !window.htmx) return;
+      var query = new URLSearchParams(location.search).toString();
+      htmx.ajax("GET", "/opportunities/" + id + "/row?" + query, {target: "#opportunity-" + id, swap: "outerHTML"});
+    }
+    function check() {
+      var status = document.getElementById("claude-status");
+      if (!status) return;
+      var recent = (status.dataset.recent || "").split(",").filter(Boolean);
+      if (seen === null) { seen = new Set(recent); return; }  // already finished before this page
+      recent.forEach(function (id) {
+        if (seen.has(id)) return;
+        seen.add(id);
+        redraw(id);
+        var row = document.getElementById("opportunity-" + id);
+        var title = row ? row.querySelector("td a, td").textContent.trim().slice(0, 80) : "vacancy " + id;
+        if ("Notification" in window && Notification.permission === "granted") new Notification("Claude analysis done", {body: title});
+      });
+    }
+    document.body.addEventListener("htmx:afterSettle", function (event) {
+      if (event.target && event.target.id === "claude-status") check();
+    });
+    check();
+  })();
+</script>
 {% endblock %}

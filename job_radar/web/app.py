@@ -19,6 +19,11 @@ from .. import pipeline
 from ..ai.analysis import latest_analysis, recheck_stack
 from ..ai.analysis import risks as ai_risks
 from ..auto_ignore import Rules, apply_to_review, load_rules, save_rules
+from ..claude import analysis as claude
+from ..claude.analysis import ClaudeSettings
+from ..claude.analysis import Worker as ClaudeWorker
+from ..claude.runner import ClaudeCli
+from ..claude.runner import Runner as ClaudeRunner
 from ..config import Settings, get_settings
 from ..contacts import company_history
 from ..db import make_engine, make_session_factory, upgrade_database
@@ -118,7 +123,13 @@ def get_session(request: Request) -> Iterator[Session]:
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
-def create_app(settings: Settings | None = None, sync_runner: Runner | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    sync_runner: Runner | None = None,
+    claude_runner: ClaudeRunner | None = None,
+    start_worker: bool = True,
+) -> FastAPI:
+    """``start_worker=False``: tests drive the Claude worker with ``run_once``."""
     settings = settings or get_settings()
     sync_job = SyncJob()
     # The Sync button runs the same pipeline as `./jr sync`; tests pass a fake.
@@ -133,7 +144,17 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         engine = make_engine(settings.database_url)
         app.state.session_factory = make_session_factory(engine)
         app.state.settings = settings
+        worker = ClaudeWorker(
+            app.state.session_factory,
+            claude_runner or ClaudeCli(settings.claude_command, settings.claude_workdir),
+            profile_path=settings.profile,
+            cv_path=settings.cv_path,
+        )
+        app.state.claude_worker = worker
+        if start_worker:
+            worker.start()
         yield
+        worker.stop()
         engine.dispose()
 
     app = FastAPI(title="Job Radar", lifespan=lifespan)
@@ -269,9 +290,8 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request, session: SessionDep) -> HTMLResponse:
-        return templates.TemplateResponse(
-            request, "settings.html", {"rules": load_rules(session), "message": None}
-        )
+        context = _settings_context(session, settings)
+        return templates.TemplateResponse(request, "settings.html", context)
 
     @app.post("/settings", response_class=HTMLResponse)
     def save_settings(
@@ -297,7 +317,36 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
             days=days,
         )
         save_rules(session, rules)
-        context = {"rules": rules, "message": "Saved. New vacancies follow these rules."}
+        context = _settings_context(session, settings)
+        context["message"] = "Saved. New vacancies follow these rules."
+        return templates.TemplateResponse(request, "settings.html", context)
+
+    @app.post("/claude/analyze", response_class=HTMLResponse)
+    def claude_analyze(
+        request: Request, session: SessionDep, ids: Annotated[list[int] | None, Form()] = None
+    ) -> HTMLResponse:
+        added = claude.enqueue(session, ids or [])
+        request.app.state.claude_worker.wake()
+        context = {"claude_status": claude.status(session), "added": added}
+        return templates.TemplateResponse(request, "_claude_status.html", context)
+
+    @app.get("/claude/status", response_class=HTMLResponse)
+    def claude_status(request: Request, session: SessionDep) -> HTMLResponse:
+        context = {"claude_status": claude.status(session), "added": None}
+        return templates.TemplateResponse(request, "_claude_status.html", context)
+
+    @app.post("/settings/claude", response_class=HTMLResponse)
+    def save_claude_settings(
+        request: Request,
+        session: SessionDep,
+        model: Annotated[str, Form()] = "sonnet",
+        daily_cap: Annotated[int, Form(ge=0, le=500)] = 30,
+        language: Annotated[str, Form()] = "Russian",
+    ) -> HTMLResponse:
+        if model not in claude.MODELS or language not in claude.LANGUAGES:
+            raise HTTPException(status_code=422, detail="Unknown model or language")
+        claude.save_claude_settings(session, ClaudeSettings(model, daily_cap, language))
+        context = _settings_context(session, settings) | {"message": "Claude settings saved."}
         return templates.TemplateResponse(request, "settings.html", context)
 
     @app.get("/profile", response_class=HTMLResponse)
@@ -335,10 +384,8 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
     def apply_settings(request: Request, session: SessionDep) -> HTMLResponse:
         moved = apply_to_review(session)
         word = "vacancy" if moved == 1 else "vacancies"
-        context = {
-            "rules": load_rules(session),
-            "message": f"{moved} {word} auto-ignored from To review.",
-        }
+        context = _settings_context(session, settings)
+        context["message"] = f"{moved} {word} auto-ignored from To review."
         return templates.TemplateResponse(request, "settings.html", context)
 
     @app.post("/sync", response_class=HTMLResponse)
@@ -463,6 +510,17 @@ def _get_opportunity(session: Session, opportunity_id: int) -> Opportunity:
     return opportunity
 
 
+def _settings_context(session: Session, settings: Settings) -> dict:
+    return {
+        "rules": load_rules(session),
+        "claude": claude.load_claude_settings(session),
+        "models": claude.MODELS,
+        "languages": claude.LANGUAGES,
+        "cv_path": settings.cv_path,
+        "message": None,
+    }
+
+
 def _profile(session: Session) -> Profile | None:
     settings = session.info.get("settings")
     return current_profile(settings.profile) if settings else None
@@ -502,6 +560,7 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         "extra_reasons": extra_reasons,
         "python_quote": python_check.quote if python_check else "",
         "description": description or "",
+        "claude": claude.latest(session, opportunity.id),
         "country": country_from_location(opportunity.location) or "",
         "reason_kinds": [k for k in NoteKind if k is not NoteKind.NOTE],
     }
@@ -544,7 +603,13 @@ def _queue_context(
     rows.sort(key=_queue_order)
     context = _tabs_context(session, tab, filters)
     # _queue.html includes _row.html per row; the buttons need the states in scope.
-    return context | {"rows": rows, "has_any": context["total"] > 0, "states": _manual_states()}
+    return context | {
+        "rows": rows,
+        "has_any": context["total"] > 0,
+        "states": _manual_states(),
+        "claude_status": claude.status(session),
+        "added": None,
+    }
 
 
 def _queue_order(row: dict) -> tuple:

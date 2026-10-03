@@ -1,0 +1,23 @@
+{% if claude %}
+<div class="claude small">
+  {% if claude.state in ("queued", "running") %}
+    <span class="badge">Claude: {{ "analyzing…" if claude.state == "running" else "queued" }}</span>
+  {% elif claude.state == "failed" %}
+    <span class="badge reject" title="{{ claude.error }}">Claude failed: {{ claude.error | truncate(80, true, "…") }}</span>
+  {% elif claude.result %}
+    {% set r = claude.result %}
+    <details class="claude-result">
+      <summary><span class="badge verdict-{{ r.verdict }}">Claude: {{ r.verdict }} · {{ r.match }}%</span> {{ r.summary | truncate(140, true, "…") }}</summary>
+      <p>{{ r.summary }}</p>
+      {% macro quoted(item) %}{% if item.quote %} <span class="muted quote{% if not item.quote_ok %} unverified{% endif %}">“{{ item.quote }}”{% if not item.quote_ok %} (unverified){% endif %}</span>{% endif %}{% endmacro %}
+      {% if r.location %}<p><b>Location: {{ r.location.verdict }}</b> — {{ r.location.note }}{{ quoted(r.location) }}</p>{% endif %}
+      {% if r.gaps %}<p><b>Gaps</b></p><ul>{% for g in r.gaps %}<li class="{{ 'neg' if g.blocker else '' }}">{{ g.skill }} · {{ g.requirement | replace("_", " ") }}{% if g.blocker %} · <b>blocker</b>{% endif %} — {{ g.note }}{{ quoted(g) }}</li>{% endfor %}</ul>{% endif %}
+      {% if r.red_flags %}<p><b>Red flags</b></p><ul>{% for f in r.red_flags %}<li class="neg">{{ f.point }}{{ quoted(f) }}</li>{% endfor %}</ul>{% endif %}
+      {% if r.strengths %}<p><b>Strengths</b></p><ul>{% for f in r.strengths %}<li class="pos">{{ f.point }}{{ quoted(f) }}</li>{% endfor %}</ul>{% endif %}
+      {% if r.questions %}<p><b>Ask the recruiter</b></p><ul>{% for q in r.questions %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}
+      {% if r.cv_keywords %}<p><b>CV keywords:</b> {{ r.cv_keywords | join(", ") }}</p>{% endif %}
+      <p class="muted">{{ claude.model }} · {{ claude.finished_at.strftime("%Y-%m-%d %H:%M") if claude.finished_at else "" }}</p>
+    </details>
+  {% endif %}
+</div>
+{% endif %}
