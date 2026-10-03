@@ -178,3 +178,26 @@ def test_description_from_the_bookmarklet_triggers_the_rule(session):
         OpportunityState.AUTO_IGNORE,
         "no Python in the description",
     )
+
+
+def test_language_rule_reads_the_description(session):
+    from job_radar.auto_ignore import Rules, reason_for
+    from job_radar.dedup import add_snapshot, get_or_create_company, upsert_source_record
+    from job_radar.models import Opportunity, SourceType
+
+    o = Opportunity(title="Senior Python Developer", company=get_or_create_company(session, "Acme"))
+    session.add(o)
+    session.flush()
+    record = upsert_source_record(
+        session, source_type=SourceType.LINKEDIN_CAPTURE, external_id="1", url=None, opportunity=o
+    )
+    add_snapshot(
+        session,
+        record,
+        "Wir suchen einen erfahrenen Entwickler für unser Team. Du arbeitest mit Python "
+        "und Django an der Plattform, die von unseren Kunden jeden Tag genutzt wird.",
+    )
+    session.commit()
+    session.refresh(o)
+    assert reason_for(session, o, Rules()) is None
+    assert reason_for(session, o, Rules(language=True)) == "language: German"

@@ -106,3 +106,10 @@ A title written in another language usually means the job needs that language. T
 - English and Russian are fine. Emoji, dashes and gender markers such as `(m/w/d)` in an otherwise English title do not count.
 
 A detected language adds `− Title in <Language>: the job likely needs <Language>` (**−3**) when the queue is shown, like the other penalties. It is a hint: the title may be localized while the team works in English.
+
+**The description** is checked too (#103), because an English title often hides a description written entirely in German. Long text is judged by its everyday words rather than by role names:
+- **Latin script:** the share of each language's common small words is counted ("und", "für", "wir" in German; "de", "para", "con" in Spanish; "the", "and", "you" in English). A language wins when its share is clearly above English: at least 5 % of the words and more than twice the English share.
+- **Other scripts:** a script that makes up more than 30 % of the letters (Chinese, Japanese, …; Vietnamese by its diacritics).
+- **Cyrillic:** treated as Russian and accepted, shown as info only.
+
+A description in another language adds `− Description in <Language>: the job likely needs <Language>` (**−3**). When the title already gave the language, it is not counted twice. On the real queue (2026-10-03), 8 of 274 descriptions were caught: German 3, Portuguese 2, Spanish, Italian, Polish, Vietnamese. The optional auto-ignore rule **"Description not in English"** ([settings.md](settings.md)) moves them out of To review with the reason `language: <Language>`.

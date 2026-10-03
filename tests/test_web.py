@@ -299,3 +299,7 @@ def test_himalayas_jobs_are_attributed(client, session):
     text = client.get("/").text
     assert '<span class="badge">via Himalayas</span>' in text
     assert f'href="{url}"' in text and ">open on himalayas.app<" in text
+
+
+def test_settings_offers_language_rule(client):
+    assert 'name="language"' in client.get("/settings").text

@@ -279,6 +279,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         rejected: Annotated[str | None, Form()] = None,
         no_python: Annotated[str | None, Form()] = None,
         ai_location: Annotated[str | None, Form()] = None,
+        language: Annotated[str | None, Form()] = None,
         days: Annotated[int, Form(ge=1, le=3650)] = 90,
     ) -> HTMLResponse:
         rules = Rules(
@@ -288,6 +289,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
             rejected=rejected is not None,
             no_python=no_python is not None,
             ai_location=ai_location is not None,
+            language=language is not None,
             days=days,
         )
         save_rules(session, rules)
@@ -437,7 +439,7 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
     python_check = check_python(description) if description else None
     effects = (
         location_penalty(session, opportunity),
-        language_risk(opportunity.title),
+        language_risk(opportunity.title, description),
         python_risk(opportunity.title, description),
         *ai_risks(latest_analysis(opportunity)),
     )

@@ -1,4 +1,4 @@
-"""Guess the language of a vacancy title, offline and rule-based.
+"""Guess the language of a vacancy title and description, offline and rule-based.
 
 English and Russian are fine for the user; any other language gives a risk. See
 docs/applications.md#vacancy-language.
@@ -86,8 +86,56 @@ def detect_title_language(title: str) -> str | None:
     return _latin_language(title)
 
 
-def language_risk(title: str) -> tuple[float, Reason] | None:
-    language = detect_title_language(title)
-    if language is None:
+# Common small words of long text, for descriptions (docs/applications.md#vacancy-language).
+_COMMON = {
+    "English": "the and to of in for with you we our is are will be your this on as",
+    "German": "und der die das mit für wir sie ist zu den von ein eine bei du dich dir auf",
+    "Spanish": "de la el y en para con que los las una por del se tu nuestro",
+    "French": "et le la les des pour avec vous nous une est dans du au sur",
+    "Portuguese": "de e para com que os as uma em do da no na você nosso",
+    "Italian": "di e il la per con che una sono del della nel gli le",
+    "Polish": "i w z na do jest się oraz dla jak przez",
+    "Dutch": "en de het van voor met een wij je zijn bij ons",
+}
+_COMMON_SETS = {language: set(words.split()) for language, words in _COMMON.items()}
+_VIETNAMESE = re.compile(r"[ạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹđ]", re.IGNORECASE)
+MIN_SHARE = 0.05  # of all words
+SCRIPT_SHARE = 0.3  # of all letters
+
+
+def detect_text_language(text: str) -> str | None:
+    """The language of a long text when it is neither English nor Russian, else None."""
+    letters = re.findall(r"[^\W\d_]", text)
+    if not letters:
         return None
-    return LANGUAGE_PENALTY, Reason("-", f"Title in {language}: the job likely needs {language}")
+    for language, pattern in [*_SCRIPTS, ("Russian", _CYRILLIC)]:
+        if len(pattern.findall(text)) > SCRIPT_SHARE * len(letters):
+            return None if language == "Russian" else language
+    words = re.findall(r"[^\W\d_]+", text.casefold())
+    if len(_VIETNAMESE.findall(text)) > 0.05 * len(letters):
+        return "Vietnamese"
+    shares = {lang: sum(w in s for w in words) / len(words) for lang, s in _COMMON_SETS.items()}
+    english = shares.pop("English")
+    best = max(shares, key=shares.get)
+    if shares[best] >= MIN_SHARE and shares[best] > 2 * english:
+        return best
+    return None
+
+
+def vacancy_language(title: str, description: str | None) -> str | None:
+    """Language other than English or Russian, from the title first, then the description."""
+    return detect_title_language(title) or (
+        detect_text_language(description) if description else None
+    )
+
+
+def language_risk(title: str, description: str | None = None) -> tuple[float, Reason] | None:
+    if language := detect_title_language(title):
+        return LANGUAGE_PENALTY, Reason(
+            "-", f"Title in {language}: the job likely needs {language}"
+        )
+    if description and (language := detect_text_language(description)):
+        return LANGUAGE_PENALTY, Reason(
+            "-", f"Description in {language}: the job likely needs {language}"
+        )
+    return None

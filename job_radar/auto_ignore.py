@@ -29,6 +29,7 @@ class Rules:
     rejected: bool = False
     no_python: bool = False
     ai_location: bool = False  # docs/ai.md
+    language: bool = False  # title or description not in English / Russian
     days: int = 90
 
     @property
@@ -41,6 +42,7 @@ class Rules:
                 self.rejected,
                 self.no_python,
                 self.ai_location,
+                self.language,
             )
         )
 
@@ -119,6 +121,11 @@ def reason_for(
         return "no Python in the description"
     if rules.hybrid and _HYBRID.search(f"{opportunity.title} {opportunity.location or ''}"):
         return "hybrid / on-site"
+    if rules.language:
+        from .language import vacancy_language
+
+        if found := vacancy_language(opportunity.title, latest_description(opportunity)):
+            return f"language: {found}"
     if rules.ai_location:
         from .ai.analysis import auto_ignore_reason
 
