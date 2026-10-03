@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 from fastapi import Body, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -67,6 +68,20 @@ def bookmarklet(base_url: str, name: str = "bookmarklet") -> str:
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 templates.env.filters["highlight_python"] = highlight_python
+
+
+def chat_markup(text: str) -> Markup:
+    """Claude's light Markdown made safe: escape first, then **bold** and "> quote" lines."""
+    lines = []
+    for line in str(escape(text)).splitlines():
+        line = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", line)
+        if line.startswith("&gt; "):
+            line = f'<span class="quote">{line[5:]}</span>'
+        lines.append(line)
+    return Markup("\n".join(lines))
+
+
+templates.env.filters["chat_markup"] = chat_markup
 
 # Queue order: undecided first, then the ones worth a look.
 _STATE_ORDER = [
@@ -221,6 +236,47 @@ def create_app(
             opportunity.location, opportunity.company.name, opportunity.title
         )
         return templates.TemplateResponse(request, "_row_and_tabs.html", context)
+
+    @app.get("/opportunities/{opportunity_id}", response_class=HTMLResponse)
+    def opportunity_page(
+        request: Request, opportunity_id: int, session: SessionDep
+    ) -> HTMLResponse:
+        opportunity = _get_opportunity(session, opportunity_id)
+        context = _row_context(session, opportunity) | _claude_context(session, opportunity_id)
+        context["tab"] = DEFAULT_TAB
+        return templates.TemplateResponse(request, "opportunity.html", context)
+
+    @app.get("/opportunities/{opportunity_id}/claude", response_class=HTMLResponse)
+    def opportunity_claude(
+        request: Request, opportunity_id: int, session: SessionDep
+    ) -> HTMLResponse:
+        _get_opportunity(session, opportunity_id)
+        context = _claude_context(session, opportunity_id)
+        return templates.TemplateResponse(request, "_claude_section.html", context)
+
+    @app.post("/opportunities/{opportunity_id}/claude", response_class=HTMLResponse)
+    def opportunity_analyze(
+        request: Request, opportunity_id: int, session: SessionDep
+    ) -> HTMLResponse:
+        _get_opportunity(session, opportunity_id)
+        claude.enqueue(session, [opportunity_id])
+        request.app.state.claude_worker.wake()
+        context = _claude_context(session, opportunity_id)
+        return templates.TemplateResponse(request, "_claude_section.html", context)
+
+    @app.post("/opportunities/{opportunity_id}/chat", response_class=HTMLResponse)
+    def opportunity_ask(
+        request: Request,
+        opportunity_id: int,
+        session: SessionDep,
+        text: Annotated[str, Form()] = "",
+    ) -> HTMLResponse:
+        _get_opportunity(session, opportunity_id)
+        if claude.ask(session, opportunity_id, text) is None:
+            raise HTTPException(status_code=422, detail="Empty question or no analysis yet")
+        request.app.state.claude_worker.wake()
+        context = _claude_context(session, opportunity_id)
+        return templates.TemplateResponse(request, "_claude_section.html", context)
 
     @app.post("/opportunities/{opportunity_id}/rejected", response_class=HTMLResponse)
     def set_rejected(
@@ -508,6 +564,18 @@ def _get_opportunity(session: Session, opportunity_id: int) -> Opportunity:
     if opportunity is None:
         raise HTTPException(status_code=404, detail="Opportunity not found")
     return opportunity
+
+
+def _claude_context(session: Session, opportunity_id: int) -> dict:
+    current = claude.latest(session, opportunity_id)
+    chat_pending = claude.chat_pending(session, opportunity_id)
+    return {
+        "opportunity_id": opportunity_id,
+        "claude": current,
+        "messages": claude.messages(session, opportunity_id),
+        "chat_ready": claude.latest_done(session, opportunity_id) is not None,
+        "polling": chat_pending or (current is not None and current.state in claude.PENDING),
+    }
 
 
 def _settings_context(session: Session, settings: Settings) -> dict:

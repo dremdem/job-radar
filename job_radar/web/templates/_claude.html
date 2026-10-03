@@ -6,7 +6,7 @@
     <span class="badge reject" title="{{ claude.error }}">Claude failed: {{ claude.error | truncate(80, true, "…") }}</span>
   {% elif claude.result %}
     {% set r = claude.result %}
-    <details class="claude-result">
+    <details class="claude-result"{% if open_result %} open{% endif %}>
       <summary><span class="badge verdict-{{ r.verdict }}">Claude: {{ r.verdict }} · {{ r.match }}%</span> {{ r.summary | truncate(140, true, "…") }}</summary>
       <p>{{ r.summary }}</p>
       {% macro quoted(item) %}{% if item.quote %} <span class="muted quote{% if not item.quote_ok %} unverified{% endif %}">“{{ item.quote }}”{% if not item.quote_ok %} (unverified){% endif %}</span>{% endif %}{% endmacro %}

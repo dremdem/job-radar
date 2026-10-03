@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..ai.analysis import quote_in_text
 from ..description import latest_description
-from ..models import AppSetting, ClaudeAnalysis, Opportunity
+from ..models import AppSetting, ClaudeAnalysis, ClaudeMessage, Opportunity
 from ..stack import current_profile
-from .prompt import PROMPT_VERSION, SCHEMA, analysis_prompt, system_prompt
+from .prompt import PROMPT_VERSION, SCHEMA, analysis_prompt, chat_system_prompt, system_prompt
 from .runner import ClaudeError, Runner
 
 SETTINGS_KEY = "claude"
@@ -72,6 +72,57 @@ def enqueue(session: Session, opportunity_ids: list[int]) -> int:
         added += 1
     session.commit()
     return added
+
+
+def latest_done(session: Session, opportunity_id: int) -> ClaudeAnalysis | None:
+    return session.scalar(
+        select(ClaudeAnalysis)
+        .where(
+            ClaudeAnalysis.opportunity_id == opportunity_id,
+            ClaudeAnalysis.state == "done",
+            ClaudeAnalysis.session_id.is_not(None),
+        )
+        .order_by(ClaudeAnalysis.id.desc())
+        .limit(1)
+    )
+
+
+def messages(session: Session, opportunity_id: int) -> list[ClaudeMessage]:
+    return list(
+        session.scalars(
+            select(ClaudeMessage)
+            .where(ClaudeMessage.opportunity_id == opportunity_id)
+            .order_by(ClaudeMessage.id)
+        )
+    )
+
+
+def ask(session: Session, opportunity_id: int, text: str) -> ClaudeMessage | None:
+    """Queue a chat question; None when there is no finished analysis to continue."""
+    analysis = latest_done(session, opportunity_id)
+    if analysis is None or not text.strip():
+        return None
+    message = ClaudeMessage(
+        opportunity_id=opportunity_id,
+        analysis_id=analysis.id,
+        role="user",
+        text=text.strip(),
+        state="queued",
+    )
+    session.add(message)
+    session.commit()
+    return message
+
+
+def chat_pending(session: Session, opportunity_id: int) -> bool:
+    return bool(
+        session.scalar(
+            select(ClaudeMessage.id).where(
+                ClaudeMessage.opportunity_id == opportunity_id,
+                ClaudeMessage.state.in_(PENDING),
+            )
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -173,6 +224,10 @@ class Worker:
             ):
                 # A new session id: claude refuses one it has already seen.
                 row.state, row.started_at, row.session_id = "queued", None, None
+            for message in session.scalars(
+                select(ClaudeMessage).where(ClaudeMessage.state == "running")
+            ):
+                message.state = "queued"
             session.commit()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="claude-worker")
         self._thread.start()
@@ -200,7 +255,11 @@ class Worker:
         return None
 
     def run_once(self, now: datetime | None = None) -> bool:
-        """Run the oldest queued analysis. Returns False when there was nothing to run."""
+        """Answer the oldest chat question, else run the oldest queued analysis.
+
+        Returns False when there was nothing to run."""
+        if self._answer_once():
+            return True
         with self.session_factory() as session:
             now = now or datetime.now(UTC)
             settings = load_claude_settings(session)
@@ -252,5 +311,42 @@ class Worker:
                 job.session_id = reply.session_id or job.session_id
                 job.cost_usd = reply.cost_usd
             job.finished_at = datetime.now(UTC)
+            session.commit()
+            return True
+
+    def _answer_once(self) -> bool:
+        """Chat questions go first: someone is waiting on the page. Not capped."""
+        with self.session_factory() as session:
+            question = session.scalar(
+                select(ClaudeMessage)
+                .where(ClaudeMessage.state == "queued", ClaudeMessage.role == "user")
+                .order_by(ClaudeMessage.id)
+                .limit(1)
+            )
+            if question is None:
+                return False
+            question.state = "running"
+            session.commit()
+            analysis = question.analysis
+            settings = load_claude_settings(session)
+            try:
+                reply = self.runner.run(
+                    question.text,
+                    system=chat_system_prompt(settings.language),
+                    model=analysis.model,
+                    resume=analysis.session_id,
+                )
+            except Exception as e:  # shown under the question; ask again to retry
+                question.state, question.error = "failed", str(e) or e.__class__.__name__
+            else:
+                question.state, question.error = "done", None
+                session.add(
+                    ClaudeMessage(
+                        opportunity_id=question.opportunity_id,
+                        analysis_id=analysis.id,
+                        role="assistant",
+                        text=reply.text,
+                    )
+                )
             session.commit()
             return True

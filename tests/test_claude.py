@@ -228,3 +228,84 @@ def test_claude_settings(client, session):
     client.post("/settings/claude", data={"model": "opus", "daily_cap": "5", "language": "English"})
     assert claude.load_claude_settings(session) == claude.ClaudeSettings("opus", 5, "English")
     assert client.post("/settings/claude", data={"model": "gpt"}).status_code == 422
+
+
+def analyzed(session, tmp_path):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    worker(session, FakeRunner([Reply("{}", dict(RESULT), "sess-1", None)]), tmp_path).run_once()
+    session.expire_all()
+    return o
+
+
+def test_chat_needs_a_finished_analysis(session):
+    o = vacancy(session)
+    assert claude.ask(session, o.id, "Hi?") is None
+
+
+def test_chat_continues_the_analysis_session_and_goes_first(session, tmp_path):
+    o = analyzed(session, tmp_path)
+    other = vacancy(session, title="Other")
+    claude.enqueue(session, [other.id])  # an analysis waits in the queue
+    claude.ask(session, o.id, "Как ответить про TensorFlow?")
+    assert claude.chat_pending(session, o.id)
+
+    runner = FakeRunner([Reply("Честно скажите, что опыта нет.", None, "sess-1", None)])
+    worker(session, runner, tmp_path).run_once()
+    call = runner.calls[0]
+    assert call["resume"] == "sess-1" and call["schema"] is None
+    assert call["prompt"] == "Как ответить про TensorFlow?"
+    assert "Answer in Russian" in call["system"]
+    session.expire_all()
+    roles = [(m.role, m.state, m.text) for m in claude.messages(session, o.id)]
+    assert roles == [
+        ("user", "done", "Как ответить про TensorFlow?"),
+        ("assistant", "done", "Честно скажите, что опыта нет."),
+    ]
+    assert claude.latest(session, other.id).state == "queued"  # the analysis waited
+
+
+def test_chat_failure_is_shown(session, tmp_path):
+    o = analyzed(session, tmp_path)
+    claude.ask(session, o.id, "Q?")
+    worker(session, FakeRunner([ClaudeError("rate limited")]), tmp_path).run_once()
+    session.expire_all()
+    [m] = claude.messages(session, o.id)
+    assert m.state == "failed" and m.error == "rate limited"
+
+
+def test_vacancy_page_and_chat(client, session):
+    o = vacancy(session)
+    page = client.get(f"/opportunities/{o.id}").text
+    assert "Senior Python Engineer" in page and "Professional TensorFlow" in page
+    assert "Analyze with Claude" in page and "Ask Claude" not in page
+    assert f'href="/opportunities/{o.id}"' in client.get("/").text  # page link in the queue
+
+    section = client.post(f"/opportunities/{o.id}/claude").text
+    assert "Claude: queued" in section and 'hx-trigger="every 3s"' in section
+    w = client.app.state.claude_worker
+    w.runner = FakeRunner([Reply("{}", dict(RESULT), "sess-1", None)])
+    w.run_once()
+    section = client.get(f"/opportunities/{o.id}/claude").text
+    assert "Claude: maybe · 70%" in section and "Ask Claude" in section
+    assert "every 3s" not in section
+
+    asked = client.post(f"/opportunities/{o.id}/chat", data={"text": "Что спросить?"}).text
+    assert "thinking…" in asked and "every 3s" in asked
+    w.runner = FakeRunner([Reply("Спросите про контракт.", None, "sess-1", None)])
+    w.run_once()
+    page = client.get(f"/opportunities/{o.id}").text
+    assert "Что спросить?" in page and "Спросите про контракт." in page
+    assert client.post(f"/opportunities/{o.id}/chat", data={"text": " "}).status_code == 422
+
+
+def test_unknown_vacancy_page(client):
+    assert client.get("/opportunities/999").status_code == 404
+
+
+def test_chat_markup_is_safe():
+    from job_radar.web.app import chat_markup
+
+    html = str(chat_markup("**Да** <script>x</script>\n> Speak fluent Dutch"))
+    assert "<b>Да</b>" in html and "&lt;script&gt;" in html
+    assert '<span class="quote">Speak fluent Dutch</span>' in html

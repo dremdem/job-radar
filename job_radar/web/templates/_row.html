@@ -3,7 +3,7 @@
 <tr id="opportunity-{{ o.id }}" data-score="{{ eff_score if eff_score is not none else '' }}">
   <td>
     <input type="checkbox" class="claude-pick" value="{{ o.id }}" aria-label="Pick for Claude">
-    {% if link %}<a href="{{ link }}" target="_blank" rel="noopener noreferrer">{{ o.title }}</a>{% else %}{{ o.title }}{% endif %}
+    {% if link %}<a href="{{ link }}" target="_blank" rel="noopener noreferrer">{{ o.title }}</a>{% else %}{{ o.title }}{% endif %} <a class="small" href="/opportunities/{{ o.id }}">page →</a>
     <div class="muted small">
       {{ o.location or "" }}{% if o.salary %} · {{ o.salary }}{% endif %}
       {% if o.easy_apply %}<span class="badge">Easy Apply</span>{% endif %}
@@ -18,7 +18,7 @@
     <button type="button" class="small" data-description="description-{{ o.id }}">Description</button>
     <template id="description-{{ o.id }}">
       <h3>{{ o.title }}</h3>
-      <p class="muted">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if link %} · <a href="{{ link }}" target="_blank" rel="noopener noreferrer">open on {{ link.split("/")[2] | replace("www.", "") }}</a>{% endif %}</p>
+      <p class="muted">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}· <a href="/opportunities/{{ o.id }}">page →</a>{% if link %} · <a href="{{ link }}" target="_blank" rel="noopener noreferrer">open on {{ link.split("/")[2] | replace("www.", "") }}</a>{% endif %}</p>
       <div class="desc-text">{{ description | highlight_python }}</div>
     </template>
     {% endif %}

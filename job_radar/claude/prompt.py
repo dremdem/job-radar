@@ -76,6 +76,15 @@ def system_prompt(language: str) -> str:
     )
 
 
+def chat_system_prompt(language: str) -> str:
+    return (
+        "You are continuing a conversation about one job vacancy with the candidate whose CV, "
+        "rules and the vacancy you saw at the start. Answer the candidate's question in plain "
+        "text (short paragraphs and lists are fine), based only on the vacancy, the CV and what "
+        f"was said before; say so when something is unknown. Answer in {language}."
+    )
+
+
 def _list(title: str, items: list[str]) -> str:
     return f"{title}:\n" + ("\n".join(f"- {i}" for i in items) if items else "- (none)")
 

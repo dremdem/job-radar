@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ o.title }} · Job Radar{% endblock %}
+{% block content %}
+{% set links = o.source_records | selectattr("url") | list %}
+<p class="small"><a href="/">← Queue</a></p>
+<h2>{{ o.title }}</h2>
+<p>{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if o.salary %} · {{ o.salary }}{% endif %} · <b>{{ o.state.value }}</b>{% if eff_score is not none %} · score {{ "%.1f"|format(eff_score) }}{% endif %}</p>
+<p class="small">{% for r in links %}<a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.source_type.value }}: {{ r.url.split("/")[2] | replace("www.", "") }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+
+{% if extra_reasons or o.score_reasons or rejected_at %}
+<h3>Score</h3>
+<ul class="reasons small">
+  {% for r in extra_reasons %}<li class="{{ 'pos' if r.sign == '+' else 'neg' }}">{{ '+' if r.sign == '+' else '−' }} {{ r.text }}</li>{% endfor %}
+  {% if rejected_at %}<li class="neg">− Rejected by {{ o.company.name }} on {{ rejected_at.strftime("%Y-%m-%d") }}</li>{% endif %}
+  {% for r in o.score_reasons %}<li class="{{ 'pos' if r.sign == '+' else 'neg' }}">{{ '+' if r.sign == '+' else '−' }} {{ r.text }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+{% include "_claude_section.html" %}
+
+<h3>Description</h3>
+{% if description %}<div class="desc-text">{{ description | highlight_python }}</div>{% else %}<p class="muted">No description saved.</p>{% endif %}
+
+<h3>Company history</h3>
+{% if history %}
+<ul class="small">
+  {% for e in history %}<li>{{ e.at.strftime("%Y-%m-%d") }} · <b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}</li>{% endfor %}
+  {% if history_count > history | length %}<li class="muted">… {{ history_count - history | length }} more</li>{% endif %}
+</ul>
+{% else %}<p class="muted small">No contacts found.</p>{% endif %}
+{% endblock %}

@@ -179,3 +179,16 @@ What the local model found in one description snapshot (`description_analyses`),
 | `residence`, `residence_quote` | Places the employee must live in; empty when none or not supported by the text |
 | `stack` | Unknown technologies the description mentions: `[{skill, status, quote}]`, `status` = `required` / `nice_to_have` / `not_needed` / `alternative`; `null` = not checked yet ([ai.md](ai.md#stack-vs-your-cv)) |
 | `raw` | The model's answers as is, to see what code dropped |
+
+## ClaudeAnalysis, ClaudeMessage
+
+Deep analyses with Claude and the chat about a vacancy (`claude_analyses`, `claude_messages`). See [claude.md](claude.md).
+
+| Column | Notes |
+|---|---|
+| `claude_analyses.state` | `queued` / `running` / `done` / `failed`, with `error` |
+| `claude_analyses.session_id` | The Claude Code session, continued by the chat |
+| `claude_analyses.result` | The answer in the fixed schema; every quote has `quote_ok` |
+| `claude_analyses.model`, `prompt_version`, `cost_usd` | Audit: model, prompt version, the cost Claude reports (notional on a subscription) |
+| `claude_messages.role` | `user` or `assistant`; `state` as for analyses on the user's message |
+| `claude_messages.analysis_id` | The analysis whose session the chat continues |

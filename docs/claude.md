@@ -58,3 +58,18 @@ Every quote is checked against the description, as for the local model. A quote 
 | `.env` | `JOB_RADAR_CLAUDE_COMMAND` | `claude` |
 
 You need Claude Code installed and logged in on this machine (`claude` in a terminal, once).
+
+## Vacancy page and chat
+
+Every vacancy has its own page, `/opportunities/<id>`: the **page →** link next to the title in the queue and in the Description window (#106). It shows:
+- title, company, location, salary and the source links;
+- the description, with Python marked;
+- the company history;
+- the reasons behind the score (local checks and the local model);
+- the Claude analysis, opened.
+
+**Chat.** Below the analysis you can ask Claude anything about this vacancy, e.g. "how do I answer the TensorFlow requirement?" or "write a short cover note".
+- Each question continues **the same Claude session** as the analysis (`claude -p --resume <session id>`), so Claude remembers the vacancy, your CV, your profile and everything said before. A question is answered in plain text in the language chosen in Settings.
+- Questions go through the same background worker. Chat questions are answered before queued analyses, and they don't count towards the daily cap. The page shows *thinking…* and the answer when it is ready, without a reload.
+- Every message is stored in `claude_messages` and shown on every visit.
+- The chat needs a finished analysis: the page offers **Analyze with Claude** until there is one.

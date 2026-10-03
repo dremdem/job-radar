@@ -323,3 +323,21 @@ class ClaudeAnalysis(Base):
     cost_usd: Mapped[float | None]  # as reported by Claude Code; notional on a subscription
 
     opportunity: Mapped["Opportunity"] = relationship()
+
+
+class ClaudeMessage(Base):
+    """One message of the chat about a vacancy, continuing its analysis session (#106)."""
+
+    __tablename__ = "claude_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    opportunity_id: Mapped[int] = mapped_column(ForeignKey("opportunities.id"), index=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("claude_analyses.id"))
+    role: Mapped[str] = mapped_column(String(16))  # user / assistant
+    text: Mapped[str] = mapped_column(Text, default="")
+    # For a user message: queued / running / done / failed (with error).
+    state: Mapped[str] = mapped_column(String(16), default="done", index=True)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+
+    analysis: Mapped[ClaudeAnalysis] = relationship()
