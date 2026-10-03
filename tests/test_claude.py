@@ -375,3 +375,14 @@ def test_failed_row_has_a_retry_button(client, session):
     row = client.get(f"/opportunities/{o.id}/row").text
     assert "Claude failed" in row and "1 attempt" in row
     assert f'hx-post="/opportunities/{o.id}/claude"' in row and ">retry<" in row
+
+
+def test_row_links_to_the_chat(client, session):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    w = client.app.state.claude_worker
+    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
+    w.run_once()
+    row = client.get(f"/opportunities/{o.id}/row").text
+    assert f'href="/opportunities/{o.id}#chat"' in row and "Chat with Claude →" in row
+    assert 'id="chat"' in client.get(f"/opportunities/{o.id}").text

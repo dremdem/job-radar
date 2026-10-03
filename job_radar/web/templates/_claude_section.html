@@ -6,7 +6,7 @@
     <span class="small muted">on your subscription, about 30 s · docs/claude.md</span></p>
   {% endif %}
   {% if chat_ready %}
-  <h3>Chat</h3>
+  <h3 id="chat">Chat</h3>
   <div class="chat">
     {% for m in messages %}
     <div class="msg msg-{{ m.role }}">

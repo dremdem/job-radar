@@ -20,6 +20,7 @@
       {% if r.cv_keywords %}<p><b>CV keywords:</b> {{ r.cv_keywords | join(", ") }}</p>{% endif %}
       <p class="muted">{{ claude.model }} · {{ claude.finished_at.strftime("%Y-%m-%d %H:%M") if claude.finished_at else "" }}</p>
     </details>
+    {% if not open_result %}<a class="btn btn-sm btn-outline-primary my-1" href="/opportunities/{{ claude.opportunity_id }}#chat">Chat with Claude →{% if chat_count %} ({{ chat_count }}){% endif %}</a>{% endif %}
   {% endif %}
 </div>
 {% endif %}

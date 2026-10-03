@@ -648,6 +648,7 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         "python_quote": python_check.quote if python_check else "",
         "description": description or "",
         "claude": claude.latest(session, opportunity.id),
+        "chat_count": len(claude.messages(session, opportunity.id)),
         "suggestions": suggest(
             opportunity,
             description=description,
