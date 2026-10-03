@@ -4,10 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Job Radar{% endblock %}</title>
+  <script>
+    // Light or dark like the system, before the page paints (#119).
+    document.documentElement.dataset.bsTheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  </script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
   <style>
     :root { color-scheme: light dark; --muted: #888; --line: #8884; }
-    body { font: 15px/1.5 system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 16px; }
+    body { font-size: 15px; max-width: 1080px; margin: 0 auto; padding: 0 16px 16px; }
+    /* Bootstrap's .badge is filled white-on-colour; ours are outlined, keep them. */
+    .badge { color: inherit; background: transparent; font-weight: 500; vertical-align: baseline; }
+    .navbar .nav-link { padding: 4px 10px; }
+    .nav-pills .nav-link { padding: 3px 12px; }
+    .table { margin-bottom: 0; }
+    a { text-decoration-thickness: 1px; }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
     th { color: var(--muted); font-weight: 500; }
@@ -57,10 +68,28 @@
     .chips .note-form { flex-basis: 100%; }
     .why > summary { cursor: pointer; margin-top: 4px; }
     .page-state button { margin-right: 4px; }
+    /* Desktop: the title gets the room, the rest stays narrow (#119). */
+    @media (min-width: 721px) {
+      #queue table { table-layout: fixed; }
+      #queue th:nth-child(1) { width: 44%; }
+      #queue th:nth-child(2) { width: 11%; }
+      #queue th:nth-child(3) { width: 13%; }
+      #queue th:nth-child(4) { width: 6%; }
+      #queue th:nth-child(5) { width: 7%; }
+      #queue th:nth-child(6) { width: 19%; }
+      #queue td { overflow-wrap: anywhere; }
+      #queue .cell-actions .btn { margin: 0 2px 4px 0; }
+    }
     /* Phone (#111): rows become cards, nothing scrolls sideways. */
     @media (max-width: 720px) {
       body { padding: 10px; font-size: 16px; }
       h1 { font-size: 24px; margin: 4px 0 8px; }
+      .navbar { padding: 4px 0; gap: 4px !important; }
+      .navbar-brand { font-size: 18px; margin-right: 4px; }
+      .navbar .nav-link { padding: 2px 6px; font-size: 14px; }
+      .navbar .btn { min-height: 30px; padding: 2px 10px; }
+      .nav-pills .nav-link { padding: 2px 10px; font-size: 14px; }
+      h2 { font-size: 19px; margin-bottom: 4px; }
       h2 { font-size: 20px; }
       nav { line-height: 2.2; }
       button { min-height: 36px; padding: 4px 10px; }
@@ -97,19 +126,25 @@
       td a, li { overflow-wrap: anywhere; }
     }
     #arrivals { margin: 6px 0; }
-    .tabs { margin: 8px 0 12px; }
+
     td.country { white-space: nowrap; font-weight: 500; }
-    .tabs a.active { font-weight: 600; text-decoration: none; color: inherit; }
     .note-form summary { cursor: pointer; margin-bottom: 4px; }
     .note-form form { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
     button.link { border: none; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; }
   </style>
 </head>
 <body>
-  <h1><a href="/" style="color: inherit; text-decoration: none">Job Radar</a></h1>
-  <nav class="small"><a href="/">Queue</a> · <a href="/applications">Applications</a> · <a href="/capture">Capture</a> · <a href="/settings">Settings</a> · <a href="/profile">Profile</a>
-    · <button type="button" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML">Sync</button>
-    <span id="sync-status" class="small" hx-get="/sync/status" hx-trigger="load" hx-swap="outerHTML"></span></nav>
+  {% set path = request.url.path %}
+  <nav class="navbar navbar-expand border-bottom mb-3 flex-wrap gap-2">
+    <a class="navbar-brand fw-bold" href="/">Job Radar</a>
+    <div class="navbar-nav flex-wrap">
+      {% for href, label in [("/", "Queue"), ("/applications", "Applications"), ("/capture", "Capture"), ("/settings", "Settings"), ("/profile", "Profile")] %}
+      <a href="{{ href }}" class="nav-link{% if path == href or (href == '/' and path.startswith('/opportunities')) %} active{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn btn-sm btn-primary" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML">Sync</button>
+  </nav>
+  <div><span id="sync-status" class="small" hx-get="/sync/status" hx-trigger="load" hx-swap="outerHTML"></span></div>
   {% block content %}{% endblock %}
 <script>
   // On a phone, long parts of each row start folded (#111); desktop keeps them open.

@@ -4,7 +4,7 @@
     <span class="badge">Claude: {{ "analyzing…" if claude.state == "running" else "queued" }}</span>
   {% elif claude.state == "failed" %}
     <span class="badge reject" title="{{ claude.error }}">Claude failed: {{ claude.error | truncate(80, true, "…") }} · {{ claude.attempts }} attempt{{ "s" if claude.attempts != 1 }}</span>
-    {% if not open_result %}<button type="button" class="small" hx-post="/opportunities/{{ claude.opportunity_id }}/claude" hx-swap="none"
+    {% if not open_result %}<button type="button" class="btn btn-sm btn-outline-danger" hx-post="/opportunities/{{ claude.opportunity_id }}/claude" hx-swap="none"
       hx-on::after-request="htmx.ajax('GET', '/opportunities/{{ claude.opportunity_id }}/row?' + location.search.slice(1), {target: '#opportunity-{{ claude.opportunity_id }}', swap: 'outerHTML'}); htmx.ajax('GET', '/claude/status', {target: '#claude-status', swap: 'outerHTML'})">retry</button>{% endif %}
   {% elif claude.result %}
     {% set r = claude.result %}

@@ -2,7 +2,7 @@
   <h3>Claude</h3>
   {% if claude %}{% set open_result = true %}{% include "_claude.html" %}{% endif %}
   {% if not claude or claude.state in ("done", "failed") %}
-  <p><button hx-post="/opportunities/{{ opportunity_id }}/claude" hx-target="#claude-section" hx-swap="outerHTML">{{ "Analyze again" if claude else "Analyze with Claude" }}</button>
+  <p><button class="btn btn-sm {{ 'btn-outline-primary' if claude else 'btn-primary' }}" hx-post="/opportunities/{{ opportunity_id }}/claude" hx-target="#claude-section" hx-swap="outerHTML">{{ "Analyze again" if claude else "Analyze with Claude" }}</button>
     <span class="small muted">on your subscription, about 30 s · docs/claude.md</span></p>
   {% endif %}
   {% if chat_ready %}
@@ -16,8 +16,8 @@
     {% endfor %}
   </div>
   <form hx-post="/opportunities/{{ opportunity_id }}/chat" hx-target="#claude-section" hx-swap="outerHTML">
-    <textarea name="text" rows="3" cols="80" placeholder="Ask about this vacancy, e.g. how to answer the TensorFlow requirement" required></textarea>
-    <p><button type="submit">Ask Claude</button> <span class="small muted">continues the same conversation as the analysis</span></p>
+    <textarea name="text" class="form-control" rows="3" cols="80" placeholder="Ask about this vacancy, e.g. how to answer the TensorFlow requirement" required></textarea>
+    <p class="mt-2"><button type="submit" class="btn btn-primary btn-sm">Ask Claude</button> <span class="small muted">continues the same conversation as the analysis</span></p>
   </form>
   {% endif %}
 </section>

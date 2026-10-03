@@ -15,7 +15,7 @@
     </div>
     {% include "_claude.html" %}
     {% if description %}
-    <button type="button" class="small" data-description="description-{{ o.id }}">Description</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary my-1" data-description="description-{{ o.id }}">Description</button>
     <template id="description-{{ o.id }}">
       <h3>{{ o.title }}</h3>
       <p class="muted">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}· <a href="/opportunities/{{ o.id }}">page →</a>{% if link %} · <a href="{{ link }}" target="_blank" rel="noopener noreferrer">open on {{ link.split("/")[2] | replace("www.", "") }}</a>{% endif %}</p>
@@ -52,12 +52,13 @@
   <td class="state cell-state" data-label="State">{{ o.state.value }}</td>
   <td class="actions cell-actions">
     {% include "_ignore_bar.html" %}
+    {% set state_btn = {"interested": "btn-outline-success", "ignore": "btn-outline-danger", "applied": "btn-outline-primary"} %}
     {% for s in states %}
-    <button hx-post="/opportunities/{{ o.id }}/state" hx-include=".col-filter" hx-vals='{"state": "{{ s.value }}", "tab": "{{ tab }}"}'
+    <button class="btn btn-sm {{ state_btn.get(s.value, 'btn-outline-secondary') }}" hx-post="/opportunities/{{ o.id }}/state" hx-include=".col-filter" hx-vals='{"state": "{{ s.value }}", "tab": "{{ tab }}"}'
             hx-target="#opportunity-{{ o.id }}" hx-swap="outerHTML"
             {% if o.state == s %}disabled{% endif %}>{{ s.value }}</button>
     {% endfor %}
-    <button hx-post="/opportunities/{{ o.id }}/rejected" hx-include=".col-filter" hx-vals='{"tab": "{{ tab }}"}'
+    <button class="btn btn-sm btn-outline-secondary" hx-post="/opportunities/{{ o.id }}/rejected" hx-include=".col-filter" hx-vals='{"tab": "{{ tab }}"}'
             hx-target="#queue" hx-swap="outerHTML">{{ "un-reject" if rejected_at else "rejected" }}</button>
   </td>
 </tr>

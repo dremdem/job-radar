@@ -8,8 +8,8 @@
   <td class="muted small" data-label="Source">{{ i.a.source.value }}{% if i.gmail %} · <a href="{{ i.gmail }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}</td>
   {% if actions %}
   <td class="actions">
-    <button hx-post="/applications/{{ i.a.id }}/confirm" hx-include="#applications-filter" hx-target="#applications" hx-swap="outerHTML">confirm</button>
-    <button hx-post="/applications/{{ i.a.id }}/dismiss" hx-include="#applications-filter" hx-target="#applications" hx-swap="outerHTML">dismiss</button>
+    <button class="btn btn-sm btn-outline-success" hx-post="/applications/{{ i.a.id }}/confirm" hx-include="#applications-filter" hx-target="#applications" hx-swap="outerHTML">confirm</button>
+    <button class="btn btn-sm btn-outline-secondary" hx-post="/applications/{{ i.a.id }}/dismiss" hx-include="#applications-filter" hx-target="#applications" hx-swap="outerHTML">dismiss</button>
   </td>
   {% endif %}
 </tr>
@@ -22,14 +22,14 @@
 {% if suggested %}
 <h2>To review ({{ suggested | length }})</h2>
 <p class="muted small">Found by rules in ATS emails. Confirm the real ones, dismiss the rest.
-  <button hx-post="/applications/confirm-all" hx-include="#applications-filter" hx-target="#applications" hx-swap="outerHTML">confirm all</button></p>
-<table>
+  <button class="btn btn-sm btn-outline-success" hx-post="/applications/confirm-all" hx-include="#applications-filter" hx-target="#applications" hx-swap="outerHTML">confirm all</button></p>
+<table class="table align-top">
   <thead><tr><th>Date</th><th>Company</th><th>Role</th><th>Status</th><th>Source</th><th></th></tr></thead>
   <tbody>{% for i in suggested %}{{ row(i, true) }}{% endfor %}</tbody>
 </table>
 {% endif %}
 <h2>History ({{ confirmed | length }})</h2>
-<table>
+<table class="table align-top">
   <thead><tr><th>Date</th><th>Company</th><th>Role</th><th>Status</th><th>Source</th></tr></thead>
   <tbody>{% for i in confirmed %}{{ row(i, false) }}{% endfor %}</tbody>
 </table>

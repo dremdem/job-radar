@@ -83,4 +83,4 @@ The UI adapts to phone width (≤ 720 px, #111), for example over Tailscale (`ta
 - The filters stack full width, and the Description window takes the whole screen.
 - The vacancy page (**page →**) has the state buttons too, so you can open a vacancy, read the Claude analysis and decide there.
 
-Desktop layout is unchanged.
+Desktop keeps the table layout. Since #119 the UI uses Bootstrap 5 (from the jsDelivr CDN), light or dark like the system. Buttons are coloured by meaning: interested is green, ignore red, applied blue, rejected grey, and the main actions are filled.

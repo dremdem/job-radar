@@ -3,7 +3,7 @@
 {% if suggestions %}
 <div class="suggest">
   {% for s in suggestions %}
-  <button class="btn-suggest" hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter"
+  <button class="btn btn-sm btn-outline-danger btn-suggest" hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter"
           hx-vals='{{ {"action": "ignore", "kind": s.kind.value, "detail": s.detail or "", "comment": s.comment, "tab": tab, "from": page_from or ""} | tojson }}'
           hx-target="{{ target }}" hx-swap="outerHTML" title="Ignore with this reason">Ignore: {{ s.label }}</button>
   {% endfor %}
@@ -26,18 +26,18 @@
           hx-vals='{{ {"action": "ignore", "kind": kind, "detail": detail, "tab": tab, "from": page_from or ""} | tojson }}'
           hx-target="{{ target }}" hx-swap="outerHTML">{{ label }}</button>
   {% endfor %}
-  <input id="comment-{{ o.id }}" name="comment" placeholder="comment (optional)" size="18">
+  <input id="comment-{{ o.id }}" name="comment" class="form-control form-control-sm d-inline-block w-auto" placeholder="comment (optional)" size="18">
   <details class="note-form">
     <summary>more…</summary>
     <form hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter" hx-target="{{ target }}" hx-swap="outerHTML">
       <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="from" value="{{ page_from or '' }}">
-      <select name="kind">
+      <select name="kind" class="form-select form-select-sm d-inline-block w-auto">
         {% for k in reason_kinds %}<option value="{{ k.value }}">{{ "only (location)" if k.value == "only_location" else k.value | replace("_", " ") }}</option>{% endfor %}
       </select>
-      <input name="detail" value="{{ country }}" placeholder="country / language / technology" size="14">
-      <input name="comment" placeholder="comment" size="16">
-      <button name="action" value="ignore">ignore with reason</button>
-      <button name="action" value="note">add note</button>
+      <input name="detail" value="{{ country }}" class="form-control form-control-sm d-inline-block w-auto" placeholder="country / language / technology" size="14">
+      <input name="comment" class="form-control form-control-sm d-inline-block w-auto" placeholder="comment" size="16">
+      <button class="btn btn-sm btn-outline-danger" name="action" value="ignore">ignore with reason</button>
+      <button class="btn btn-sm btn-outline-secondary" name="action" value="note">add note</button>
     </form>
   </details>
 </div>

@@ -2,11 +2,11 @@
 {% block title %}Settings · Job Radar<h2>Claude</h2>
 <p class="small muted">Deep analysis of vacancies you pick in the queue, with Claude Code on your subscription (no API key). Details: docs/claude.md.</p>
 <form method="post" action="/settings/claude" class="small">
-  <p><label>Model <select name="model">{% for m in models %}<option value="{{ m }}" {% if claude.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label></p>
+  <p><label>Model <select name="model" class="form-select form-select-sm d-inline-block w-auto">{% for m in models %}<option value="{{ m }}" {% if claude.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label></p>
   <p><label>Analyses per day <input type="number" name="daily_cap" value="{{ claude.daily_cap }}" min="0" max="500" style="width: 5em"></label> <span class="muted">(the rest wait in the queue until tomorrow)</span></p>
-  <p><label>Explanations in <select name="language">{% for l in languages %}<option value="{{ l }}" {% if claude.language == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label></p>
+  <p><label>Explanations in <select name="language" class="form-select form-select-sm d-inline-block w-auto">{% for l in languages %}<option value="{{ l }}" {% if claude.language == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label></p>
   <p class="muted">CV: {% if cv_path %}<code>{{ cv_path }}</code>{% else %}not set — add <code>JOB_RADAR_CV_PATH</code> to <code>.env</code>{% endif %}</p>
-  <p><button type="submit">Save</button></p>
+  <p><button type="submit" class="btn btn-primary btn-sm">Save</button></p>
 </form>
 {% endblock %}
 {% block content %}
@@ -14,27 +14,27 @@
 {% if message %}<p><b>{{ message }}</b> <a href="/">Open the queue</a></p>{% endif %}
 <p class="small muted">A matching new vacancy goes to the <a href="/?tab=auto">Auto-ignored</a> tab with the reason, not to To review. Your own states are never changed. Details: docs/settings.md.</p>
 <form method="post" action="/settings" class="small">
-  <p><label><input type="checkbox" name="rejected" {% if rules.rejected %}checked{% endif %}> The company rejected you</label></p>
-  <p><label><input type="checkbox" name="applied" {% if rules.applied %}checked{% endif %}> You already applied to the company</label></p>
-  <p><label><input type="checkbox" name="ignored" {% if rules.ignored %}checked{% endif %}> You already ignored another vacancy of the company</label></p>
-  <p><label><input type="checkbox" name="no_python" {% if rules.no_python %}checked{% endif %}> The description has no Python (only vacancies with a saved description)</label></p>
-  <p><label><input type="checkbox" name="hybrid" {% if rules.hybrid %}checked{% endif %}> “Hybrid” or “on-site” in the title or location</label></p>
-  <p><label><input type="checkbox" name="language" {% if rules.language %}checked{% endif %}> The title or description is not in English (or Russian)</label></p>
-  <p><label><input type="checkbox" name="ai_location" {% if rules.ai_location %}checked{% endif %}> AI: the description says hybrid / on-site or only some countries (local model, see docs/ai.md)</label></p>
+  <p><label><input type="checkbox" class="form-check-input me-1" name="rejected" {% if rules.rejected %}checked{% endif %}> The company rejected you</label></p>
+  <p><label><input type="checkbox" class="form-check-input me-1" name="applied" {% if rules.applied %}checked{% endif %}> You already applied to the company</label></p>
+  <p><label><input type="checkbox" class="form-check-input me-1" name="ignored" {% if rules.ignored %}checked{% endif %}> You already ignored another vacancy of the company</label></p>
+  <p><label><input type="checkbox" class="form-check-input me-1" name="no_python" {% if rules.no_python %}checked{% endif %}> The description has no Python (only vacancies with a saved description)</label></p>
+  <p><label><input type="checkbox" class="form-check-input me-1" name="hybrid" {% if rules.hybrid %}checked{% endif %}> “Hybrid” or “on-site” in the title or location</label></p>
+  <p><label><input type="checkbox" class="form-check-input me-1" name="language" {% if rules.language %}checked{% endif %}> The title or description is not in English (or Russian)</label></p>
+  <p><label><input type="checkbox" class="form-check-input me-1" name="ai_location" {% if rules.ai_location %}checked{% endif %}> AI: the description says hybrid / on-site or only some countries (local model, see docs/ai.md)</label></p>
   <p><label>Look back <input type="number" name="days" value="{{ rules.days }}" min="1" max="3650" style="width: 5em"> days</label>
     <span class="muted">(rejections, applications and ignores older than this do not count)</span></p>
-  <p><button type="submit">Save</button></p>
+  <p><button type="submit" class="btn btn-primary btn-sm">Save</button></p>
 </form>
 <form method="post" action="/settings/apply" class="small">
-  <p><button type="submit">Apply to To review now</button> <span class="muted">runs the saved rules over the vacancies currently in To review</span></p>
+  <p><button type="submit" class="btn btn-primary btn-sm">Apply to To review now</button> <span class="muted">runs the saved rules over the vacancies currently in To review</span></p>
 </form>
 <h2>Claude</h2>
 <p class="small muted">Deep analysis of vacancies you pick in the queue, with Claude Code on your subscription (no API key). Details: docs/claude.md.</p>
 <form method="post" action="/settings/claude" class="small">
-  <p><label>Model <select name="model">{% for m in models %}<option value="{{ m }}" {% if claude.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label></p>
+  <p><label>Model <select name="model" class="form-select form-select-sm d-inline-block w-auto">{% for m in models %}<option value="{{ m }}" {% if claude.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label></p>
   <p><label>Analyses per day <input type="number" name="daily_cap" value="{{ claude.daily_cap }}" min="0" max="500" style="width: 5em"></label> <span class="muted">(the rest wait in the queue until tomorrow)</span></p>
-  <p><label>Explanations in <select name="language">{% for l in languages %}<option value="{{ l }}" {% if claude.language == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label></p>
+  <p><label>Explanations in <select name="language" class="form-select form-select-sm d-inline-block w-auto">{% for l in languages %}<option value="{{ l }}" {% if claude.language == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label></p>
   <p class="muted">CV: {% if cv_path %}<code>{{ cv_path }}</code>{% else %}not set — add <code>JOB_RADAR_CV_PATH</code> to <code>.env</code>{% endif %}</p>
-  <p><button type="submit">Save</button></p>
+  <p><button type="submit" class="btn btn-primary btn-sm">Save</button></p>
 </form>
 {% endblock %}

@@ -1,6 +1,7 @@
-<p id="page-state" class="page-state">
+<p id="page-state" class="page-state d-flex flex-wrap gap-2 align-items-center">
+  {% set state_btn = {"interested": "btn-outline-success", "ignore": "btn-outline-danger", "applied": "btn-outline-primary"} %}
   {% for s in states %}
-  <button hx-post="/opportunities/{{ o.id }}/state" hx-vals='{"state": "{{ s.value }}", "from": "page"}'
+  <button class="btn btn-sm {{ state_btn.get(s.value, 'btn-outline-secondary') }}" hx-post="/opportunities/{{ o.id }}/state" hx-vals='{"state": "{{ s.value }}", "from": "page"}'
           hx-target="#page-state" hx-swap="outerHTML" {% if o.state == s %}disabled{% endif %}>{{ s.value }}</button>
   {% endfor %}
   <span class="small muted">now: <b>{{ o.state.value }}</b></span>

@@ -336,3 +336,16 @@ def test_applications_rows_have_labels(client, session):
                             review=ApplicationReview.CONFIRMED))  # fmt: skip
     session.commit()
     assert 'data-label="Company"' in client.get("/applications").text
+
+
+def test_bootstrap_look(client, session):
+    o = add_opportunity(session)
+    text = client.get("/").text
+    assert "bootstrap@5.3" in text and "bsTheme" in text
+    assert 'class="navbar' in text and 'class="nav-link active"' in text
+    assert "btn btn-sm btn-outline-danger" in text  # ignore
+    assert "btn btn-sm btn-outline-success" in text  # interested
+    assert 'class="tabs nav nav-pills' in text  # tabs
+    page = client.get(f"/opportunities/{o.id}").text
+    assert "btn btn-sm btn-outline-danger" in page
+    assert 'class="nav-link active"' not in page or 'href="/" class="nav-link active"' in text

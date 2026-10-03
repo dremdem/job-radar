@@ -13,8 +13,8 @@
   } %}
   {% for name in lists %}
   <p><label><b>{{ name }}</b> <span class="muted">— {{ help[name] }}</span><br>
-    <textarea name="{{ name }}" rows="{{ 12 if name == "known" else 5 }}" cols="70">{{ profile[name] | join("\n") }}</textarea></label></p>
+    <textarea class="form-control" name="{{ name }}" rows="{{ 12 if name == "known" else 5 }}" cols="70">{{ profile[name] | join("\n") }}</textarea></label></p>
   {% endfor %}
-  <p><button type="submit">Save</button></p>
+  <p><button type="submit" class="btn btn-primary">Save</button></p>
 </form>
 {% endblock %}

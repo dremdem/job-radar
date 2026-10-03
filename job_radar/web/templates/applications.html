@@ -3,7 +3,7 @@
 {% block content %}
 <p class="small">
   <label>Company
-    <input id="applications-filter" type="search" name="company" value="{{ company }}" placeholder="filter" autocomplete="off"
+    <input id="applications-filter" class="form-control form-control-sm d-inline-block w-auto" type="search" name="company" value="{{ company }}" placeholder="filter" autocomplete="off"
            hx-get="/applications" hx-trigger="input changed delay:250ms, search" hx-target="#applications"
            hx-select="#applications" hx-swap="outerHTML" hx-push-url="true">
   </label>
