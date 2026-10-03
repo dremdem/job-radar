@@ -70,6 +70,7 @@ class NoteKind(enum.StrEnum):
     SENIORITY = "seniority"
     SALARY = "salary"
     CONTRACT = "contract"
+    WORK_FORMAT = "work_format"  # hybrid / on-site (#117)
     OTHER = "other"
     NOTE = "note"  # a free note, not a reason to ignore
 

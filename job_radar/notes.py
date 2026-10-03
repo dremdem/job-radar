@@ -20,6 +20,7 @@ REASON_LABELS = {
     NoteKind.SENIORITY: "seniority",
     NoteKind.SALARY: "salary",
     NoteKind.CONTRACT: "contract",
+    NoteKind.WORK_FORMAT: "hybrid / on-site",
     NoteKind.OTHER: "other",
 }
 
@@ -50,7 +51,9 @@ def add_note(
         opportunity_id=opportunity.id,
         company_id=opportunity.company_id,
         kind=kind,
-        detail=detail if kind in (NoteKind.ONLY_LOCATION, NoteKind.LANGUAGE) else None,
+        detail=detail
+        if kind in (NoteKind.ONLY_LOCATION, NoteKind.LANGUAGE, NoteKind.STACK)
+        else None,
         comment=comment,
     )
     session.add(note)
@@ -87,8 +90,8 @@ def describe(note: OpportunityNote) -> str:
     head = REASON_LABELS[note.kind]
     if note.kind is NoteKind.ONLY_LOCATION:
         head = f"only {note.detail}"
-    elif note.kind is NoteKind.LANGUAGE and note.detail:
-        head = f"language: {note.detail}"
+    elif note.kind in (NoteKind.LANGUAGE, NoteKind.STACK) and note.detail:
+        head = f"{REASON_LABELS[note.kind]}: {note.detail}"
     return " · ".join(part for part in (head, note.comment) if part)
 
 

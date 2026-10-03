@@ -50,6 +50,7 @@ from ..notes import (
 )
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
 from ..stack import LISTS, Profile, current_profile, load_profile, save_profile
+from ..suggestions import suggest
 from .sync_job import Runner, SyncJob
 
 HISTORY_SHOWN = 8
@@ -314,6 +315,7 @@ def create_app(
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
         title: Annotated[str, Form()] = "",
+        source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
         filters = Filters(country, company, title)
         # Penalties and history are per company, so the whole queue is re-rendered.
@@ -327,6 +329,9 @@ def create_app(
                 raise HTTPException(status_code=422, detail="Unknown action")
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
+        if source == "page":  # the vacancy page: show the new state
+            context = {"o": opportunity, "states": _manual_states()}
+            return templates.TemplateResponse(request, "_page_state.html", context)
         return templates.TemplateResponse(
             request, "_queue.html", _queue_context(session, _tab(tab), filters)
         )
@@ -593,6 +598,16 @@ def _settings_context(session: Session, settings: Settings) -> dict:
     }
 
 
+def _first_gap(analysis, profile: Profile | None) -> str:
+    """The first required technology not known, to prefill the Stack chip."""
+    for item in (analysis.stack or []) if analysis else []:
+        if item.get("status") == "required" and (
+            not profile or profile.level(item["skill"]) != "known"
+        ):
+            return item["skill"]
+    return ""
+
+
 def _profile(session: Session) -> Profile | None:
     settings = session.info.get("settings")
     return current_profile(settings.profile) if settings else None
@@ -633,6 +648,14 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         "python_quote": python_check.quote if python_check else "",
         "description": description or "",
         "claude": claude.latest(session, opportunity.id),
+        "suggestions": suggest(
+            opportunity,
+            description=description,
+            analysis=latest_analysis(opportunity),
+            profile=_profile(session),
+            claude=claude.latest(session, opportunity.id),
+        ),
+        "stack_hint": _first_gap(latest_analysis(opportunity), _profile(session)),
         "country": country_from_location(opportunity.location) or "",
         "reason_kinds": [k for k in NoteKind if k is not NoteKind.NOTE],
     }

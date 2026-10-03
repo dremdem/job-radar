@@ -6,6 +6,8 @@
 <h2>{{ o.title }}</h2>
 <p>{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if o.salary %} · {{ o.salary }}{% endif %} · <b>{{ o.state.value }}</b>{% if eff_score is not none %} · score {{ "%.1f"|format(eff_score) }}{% endif %}</p>
 {% include "_page_state.html" %}
+{% set target = "#page-state" %}{% set page_from = "page" %}
+<div class="page-ignore">{% include "_ignore_bar.html" %}</div>
 <p class="small">{% for r in links %}<a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.source_type.value }}: {{ r.url.split("/")[2] | replace("www.", "") }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
 
 {% if extra_reasons or o.score_reasons or rejected_at %}

@@ -51,19 +51,7 @@
   <td class="cell-score" data-label="Score">{{ "%.1f"|format(eff_score) if eff_score is not none else "—" }}</td>
   <td class="state cell-state" data-label="State">{{ o.state.value }}</td>
   <td class="actions cell-actions">
-    <details class="note-form small">
-      <summary>reason / note</summary>
-      <form hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter" hx-target="#queue" hx-swap="outerHTML">
-        <input type="hidden" name="tab" value="{{ tab }}">
-        <select name="kind">
-          {% for k in reason_kinds %}<option value="{{ k.value }}">{{ "only (location)" if k.value == "only_location" else k.value }}</option>{% endfor %}
-        </select>
-        <input name="detail" value="{{ country }}" placeholder="country / language" size="12">
-        <input name="comment" placeholder="comment" size="16">
-        <button name="action" value="ignore">ignore with reason</button>
-        <button name="action" value="note">add note</button>
-      </form>
-    </details>
+    {% include "_ignore_bar.html" %}
     {% for s in states %}
     <button hx-post="/opportunities/{{ o.id }}/state" hx-include=".col-filter" hx-vals='{"state": "{{ s.value }}", "tab": "{{ tab }}"}'
             hx-target="#opportunity-{{ o.id }}" hx-swap="outerHTML"

@@ -83,8 +83,23 @@ uv run job-radar sync gmail        # runs it last
 
 `ignore` is about the vacancy, `rejected` is about the company (it said no). When a vacancy does not fit, say why:
 
-- **Ignore with a reason** (the row's *reason / note* form): `only <country>` (the country is prefilled from the location and can be edited), `language` (type the language in the same field, e.g. `Spanish`), `stack`, `seniority`, `salary`, `contract`, `other`, plus an optional comment. The vacancy becomes `ignore`. A plain `ignore` button still works without a reason.
-- **Note**: the same form without ignoring, for any vacancy ("ask about EOR").
+- **Suggested reason, one tap** (#117). When the checks already found why to skip a vacancy, the row (and the vacancy page) shows up to three buttons **Ignore: <reason>**. They come from:
+  - the language checks (`language: German`);
+  - the local model (`only EU`, `hybrid / on-site`);
+  - the profile's blockers (`stack: TensorFlow`);
+  - Claude's `skip` verdict, by its main blocker, or `other` with its summary.
+
+  One tap ignores the vacancy with that reason.
+- **Reason chips:** **Location** (with the country from the location), **Language**, **Stack**, **Seniority**, **Salary**, **Contract**, **Other**, and an optional comment field next to them. One tap ignores with that reason. **more…** opens the full form, to type a different country or language, or a detail.
+- The reasons:
+  - `only <country>`;
+  - `language: <language>`;
+  - `stack: <technology>`;
+  - `hybrid / on-site` (kind `work_format`);
+  - `seniority`, `salary`, `contract`, `other`.
+
+  The vacancy becomes `ignore`. A plain `ignore` button still works without a reason.
+- **Note**: in **more…**, the same form without ignoring, for any vacancy ("ask about EOR").
 
 Both are stored in `opportunity_notes` and appear in the company history as `ignored` / `note` events (date, reason, comment), with a delete button.
 

@@ -63,3 +63,4 @@ dev = [
 "job_radar/hh/notifications.py" = ["RUF001"]
 "tests/test_hh_notifications.py" = ["RUF001"]
 "tests/test_claude.py" = ["RUF001"]
+"tests/test_suggestions.py" = ["RUF001"]

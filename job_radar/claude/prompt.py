@@ -4,7 +4,7 @@ from typing import Any
 
 from ..stack import Profile
 
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"  # 2: ignore_reason (#117)
 # Never inferred from the CV: stated by the user (docs/claude.md#what-claude-gets).
 FACTS = [
     "I want full remote work only.",
@@ -49,6 +49,26 @@ SCHEMA: dict[str, Any] = {
             },
         },
         "red_flags": {"type": "array", "items": _QUOTED},
+        "ignore_reason": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "enum": [
+                        "none",
+                        "location",
+                        "language",
+                        "stack",
+                        "work_format",
+                        "seniority",
+                        "salary",
+                        "contract",
+                        "other",
+                    ]
+                },
+                "detail": {"type": "string"},
+            },
+            "required": ["kind", "detail"],
+        },
         "questions": {"type": "array", "items": {"type": "string"}},
         "cv_keywords": {"type": "array", "items": {"type": "string"}},
     },
@@ -60,6 +80,7 @@ SCHEMA: dict[str, Any] = {
         "strengths",
         "gaps",
         "red_flags",
+        "ignore_reason",
         "questions",
         "cv_keywords",
     ],
@@ -121,7 +142,10 @@ def analysis_prompt(
         "location: can I do this job fully remote from Thailand? gaps: required skills I lack "
         "or know weakly; requirement must_have or nice_to_have as the text says; blocker when "
         "it breaks one of my rules or is a blocker above. red_flags: anything else against it "
-        "(language, contract type, seniority, salary). questions: what to ask the recruiter. "
-        "cv_keywords: words from the vacancy worth having in my CV.",
+        "(language, contract type, seniority, salary). ignore_reason: when the verdict is "
+        "skip, the one main reason as kind + detail of 1-3 words in English (location: "
+        '"EU only", language: "German", stack: "Azure", work_format: "hybrid"); kind none '
+        "otherwise. questions: what to ask the recruiter. cv_keywords: words from the vacancy "
+        "worth having in my CV.",
     ]
     return "\n\n".join(parts)
