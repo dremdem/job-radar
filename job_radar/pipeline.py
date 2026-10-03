@@ -139,7 +139,7 @@ def analyze_descriptions(session: Session, settings: Settings, echo: Echo, model
     """Work mode and residence from descriptions with a local model (docs/ai.md)."""
     from .ai.analysis import analyze_pending
     from .ai.ollama import OllamaClient, OllamaError
-    from .stack import load_known
+    from .stack import load_profile
 
     if not settings.ai_analysis:
         echo("ai: disabled (JOB_RADAR_AI_ANALYSIS=false).")
@@ -151,10 +151,10 @@ def analyze_descriptions(session: Session, settings: Settings, echo: Echo, model
         except OllamaError as e:
             echo(f"ai: skipped: {e}")
             return
-    known = load_known(settings.profile)
-    if known is None:
+    profile = load_profile(settings.profile)
+    if profile is None:
         echo(f"ai: no {settings.profile}; the stack check is skipped (see profile.example.yaml).")
-    stats = analyze_pending(session, model, limit=settings.ai_max_per_sync, known=known)
+    stats = analyze_pending(session, model, limit=settings.ai_max_per_sync, profile=profile)
     echo(
         f"ai: {stats.analyzed} descriptions analyzed, {stats.flagged} flagged"
         + (f", {stats.errors} failed ({stats.last_error})" if stats.errors else "")

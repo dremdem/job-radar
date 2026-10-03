@@ -1,7 +1,7 @@
 """Technologies a vacancy may require and the user's own stack. See docs/ai.md#stack-vs-your-cv."""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -77,21 +77,85 @@ CATALOGUE: list[Tech] = [
 ]
 
 
-def load_known(path: Path) -> set[str] | None:
-    """Lower-cased technology names from the profile; None when there is no profile."""
+LISTS = ("known", "learnable", "blockers", "rules")
+_HEADER = "# Your profile: edit here or on /profile. See docs/ai.md#stack-vs-your-cv.\n"
+
+
+@dataclass(frozen=True)
+class Profile:
+    known: list[str] = field(default_factory=list)
+    learnable: list[str] = field(default_factory=list)  # a required one costs less
+    blockers: list[str] = field(default_factory=list)  # a required one is a blocker
+    rules: list[str] = field(default_factory=list)  # free text for Claude (#105)
+
+    @property
+    def known_set(self) -> set[str]:
+        return {name.lower() for name in self.known}
+
+    def level(self, skill: str) -> str:
+        """known / learnable / blocker / unknown."""
+        name = skill.lower()
+        if name in self.known_set:
+            return "known"
+        if name in {s.lower() for s in self.blockers}:
+            return "blocker"
+        if name in {s.lower() for s in self.learnable}:
+            return "learnable"
+        return "unknown"
+
+    def extra_techs(self) -> list[Tech]:
+        """Learnable and blocker items the catalogue does not know, matched by name."""
+        catalogue = {t.name.lower() for t in CATALOGUE}
+        return [
+            _t(name, name)
+            for name in [*self.learnable, *self.blockers]
+            if name.lower() not in catalogue
+        ]
+
+
+def _items(value) -> list[str]:
+    return [str(item).strip() for item in value or [] if str(item).strip()]
+
+
+def load_profile(path: Path) -> Profile | None:
     if not path.exists():
         return None
     data = yaml.safe_load(path.read_text()) or {}
-    return {str(name).strip().lower() for name in data.get("known") or []}
+    return Profile(**{name: _items(data.get(name)) for name in LISTS})
+
+
+def save_profile(path: Path, profile: Profile) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {name: list(getattr(profile, name)) for name in LISTS}
+    path.write_text(_HEADER + yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+
+
+_cache: dict[Path, tuple[float, Profile | None]] = {}
+
+
+def current_profile(path: Path) -> Profile | None:
+    """load_profile, re-read only when the file changed (the queue asks for every row)."""
+    mtime = path.stat().st_mtime if path.exists() else -1.0
+    cached = _cache.get(path)
+    if cached is None or cached[0] != mtime:
+        _cache[path] = (mtime, load_profile(path))
+    return _cache[path][1]
+
+
+def load_known(path: Path) -> set[str] | None:
+    """Lower-cased technology names from the profile; None when there is no profile."""
+    profile = load_profile(path)
+    return profile.known_set if profile else None
 
 
 def is_known(tech: Tech, known: set[str]) -> bool:
     return tech.name.lower() in known
 
 
-def unknown_mentions(text: str, known: set[str]) -> list[Tech]:
-    """Catalogue technologies the text mentions and the profile lacks, in order of appearance."""
-    found = [(m.start(), t) for t in CATALOGUE if not is_known(t, known) and (m := t.search(text))]
+def unknown_mentions(text: str, known: set[str], extra: list[Tech] | None = None) -> list[Tech]:
+    """Catalogue (and extra) technologies the text mentions and the profile lacks, in order."""
+    techs = [*CATALOGUE, *(extra or [])]
+    found = [(m.start(), t) for t in techs if not is_known(t, known) and (m := t.search(text))]
     return [t for _, t in sorted(found, key=lambda pair: pair[0])]
 
 

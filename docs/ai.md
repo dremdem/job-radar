@@ -63,7 +63,16 @@ Quality depends on the prompt, so treat the reasons as **marks to check, with th
 
 Vacancies that **require** a technology you have never worked with get marked and lowered, not ignored (issue #95).
 
-1. **Your stack.** It is listed in `data/profile.yaml` (git-ignored). Copy `profile.example.yaml` and list the technologies from your CV under `known:`. Without the file the stack check is skipped.
+1. **Your profile.** It lives in `data/profile.yaml` (git-ignored), and you can edit it on the **Profile** page (`/profile`, linked from the header) or by hand; the page reads and writes the same file (#104). It has four lists:
+
+   | List | Meaning | A required one costs |
+   |---|---|---|
+   | `known` | Technologies from your CV | nothing |
+   | `learnable` | Not a blocker, e.g. something you tried or can pick up fast | −0.5 |
+   | `blockers` | A separate field you won't learn in days, e.g. professional TensorFlow | −3, shown as a blocker |
+   | `rules` | Free-text rules in your words ("Only full remote from Thailand, no relocation") | passed to Claude (#105); code does not interpret them |
+
+   A technology in none of the lists costs −1. Without the file the stack check is skipped. Copy `profile.example.yaml` to start.
 2. **Unknown technologies.** Job Radar has a catalogue of technologies common in backend vacancies: languages, data stores, queues, cloud, infrastructure, observability, data / ML tools, front-end frameworks. Each one has a match pattern; for example, `Go` matches only as a capitalised word or `Golang`. Everything in the catalogue that is not in your profile counts as unknown. Basics such as Git, SQL, REST and Linux are not in the catalogue.
 3. **The question.** For every unknown technology the description mentions (at most 8), the local model answers one question: is it **required**, **nice to have**, or **not needed** (only the company's stack or another team)? It also gives the sentence that shows it. This takes about 1 s per question.
 4. **What counts as a gap.** Code keeps a gap only when all of these hold:
@@ -71,7 +80,7 @@ Vacancies that **require** a technology you have never worked with get marked an
    - the quote is in the description and names the technology;
    - the quote does not offer an alternative you know. Choices are spotted by "or", "one of", "at least one", "any", "или", "не принципиален", or a slash next to a known name: "strong in at least one of Kotlin, Go **or TypeScript**" and "AWS/GCP/Azure" are not gaps when TypeScript or AWS is in your profile, while "CI/CD" is no choice at all;
    - the quote does not call the technology a plus ("a plus", "bonus", "preferred", "будет плюсом", "желательно"). Then it counts as nice to have.
-5. **In the queue.** `Requires Go (not in your CV) — “<quote>”` with −1 per technology, −3 at most. There is no auto-ignore rule for this: you decide.
+5. **In the queue.** `Requires Go (not in your CV) — “<quote>”` (−1), `Requires RabbitMQ (learnable)` (−0.5), `Requires TensorFlow (blocker)` (−3). Non-blockers cost −3 at most together; blockers are not capped. Levels are applied when the queue is shown, so moving a technology between lists changes the score at once. A technology added to `learnable` or `blockers` that the description mentions is asked about at the next Sync. There is no auto-ignore rule for this: you decide.
 
 **Measured** on 79 vacancies in To review: 2 min 37 s; 31 have at least one gap (most often Spark, PyTorch, ClickHouse, Redis, Databricks). The rules for alternatives and optional wording were added after reading every "required" answer.
 
@@ -79,4 +88,4 @@ The result is stored in `description_analyses.stack`. A description analyzed bef
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `JOB_RADAR_PROFILE` | `data/profile.yaml` | Your stack |
+| `JOB_RADAR_PROFILE` | `data/profile.yaml` | Your profile |

@@ -2,7 +2,7 @@ import json
 import re
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .. import applications as apps
 from .. import pipeline
-from ..ai.analysis import latest_analysis
+from ..ai.analysis import latest_analysis, recheck_stack
 from ..ai.analysis import risks as ai_risks
 from ..auto_ignore import Rules, apply_to_review, load_rules, save_rules
 from ..config import Settings, get_settings
@@ -43,6 +43,7 @@ from ..notes import (
     location_penalty,
 )
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
+from ..stack import LISTS, Profile, current_profile, load_profile, save_profile
 from .sync_job import Runner, SyncJob
 
 HISTORY_SHOWN = 8
@@ -109,6 +110,8 @@ def _tab(value: str | None) -> str:
 
 def get_session(request: Request) -> Iterator[Session]:
     with request.app.state.session_factory() as session:
+        # Row helpers below read per-user files (the profile) through the session.
+        session.info["settings"] = request.app.state.settings
         yield session
 
 
@@ -129,6 +132,7 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         upgrade_database(settings.database_url)
         engine = make_engine(settings.database_url)
         app.state.session_factory = make_session_factory(engine)
+        app.state.settings = settings
         yield
         engine.dispose()
 
@@ -296,6 +300,37 @@ def create_app(settings: Settings | None = None, sync_runner: Runner | None = No
         context = {"rules": rules, "message": "Saved. New vacancies follow these rules."}
         return templates.TemplateResponse(request, "settings.html", context)
 
+    @app.get("/profile", response_class=HTMLResponse)
+    def profile_page(request: Request) -> HTMLResponse:
+        profile = load_profile(settings.profile) or Profile()
+        context = {"profile": asdict(profile), "lists": LISTS, "path": settings.profile}
+        context["message"] = None
+        return templates.TemplateResponse(request, "profile.html", context)
+
+    @app.post("/profile", response_class=HTMLResponse)
+    def save_profile_page(
+        request: Request,
+        session: SessionDep,
+        known: Annotated[str, Form()] = "",
+        learnable: Annotated[str, Form()] = "",
+        blockers: Annotated[str, Form()] = "",
+        rules: Annotated[str, Form()] = "",
+    ) -> HTMLResponse:
+        def lines(text: str) -> list[str]:
+            return [line.strip() for line in text.splitlines() if line.strip()]
+
+        profile = Profile(lines(known), lines(learnable), lines(blockers), lines(rules))
+        save_profile(settings.profile, profile)
+        asked = recheck_stack(session)
+        message = "Saved." + (
+            f" The stack of {asked} vacancies in To review is checked again at the next Sync."
+            if asked
+            else ""
+        )
+        context = {"profile": asdict(profile), "lists": LISTS, "path": settings.profile}
+        context["message"] = message
+        return templates.TemplateResponse(request, "profile.html", context)
+
     @app.post("/settings/apply", response_class=HTMLResponse)
     def apply_settings(request: Request, session: SessionDep) -> HTMLResponse:
         moved = apply_to_review(session)
@@ -428,6 +463,11 @@ def _get_opportunity(session: Session, opportunity_id: int) -> Opportunity:
     return opportunity
 
 
+def _profile(session: Session) -> Profile | None:
+    settings = session.info.get("settings")
+    return current_profile(settings.profile) if settings else None
+
+
 def _row_context(session: Session, opportunity: Opportunity, rejected: dict | None = None) -> dict:
     if rejected is None:
         rejected = latest_rejections(session)
@@ -441,7 +481,7 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         location_penalty(session, opportunity),
         language_risk(opportunity.title, description),
         python_risk(opportunity.title, description),
-        *ai_risks(latest_analysis(opportunity)),
+        *ai_risks(latest_analysis(opportunity), _profile(session)),
     )
     for penalty in effects:
         if penalty is None:

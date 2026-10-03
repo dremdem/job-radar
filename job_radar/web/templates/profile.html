@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Profile · Job Radar{% endblock %}
+{% block content %}
+<h2>Profile</h2>
+{% if message %}<p><b>{{ message }}</b> <a href="/">Open the queue</a></p>{% endif %}
+<p class="small muted">Your stack and rules, saved to <code>{{ path }}</code> (you can also edit the file by hand). One item per line. A required technology costs: known — nothing, learnable −0.5, not listed −1, blocker −3. Rules are free text for Claude's deep analysis. Details: docs/ai.md#stack-vs-your-cv.</p>
+<form method="post" action="/profile" class="profile-form small">
+  {% set help = {
+    "known": "From your CV: no gap",
+    "learnable": "Not a blocker: something you tried or can pick up fast",
+    "blockers": "A separate field you won't learn in days",
+    "rules": "In your words, e.g. “Only full remote from Thailand, no relocation”",
+  } %}
+  {% for name in lists %}
+  <p><label><b>{{ name }}</b> <span class="muted">— {{ help[name] }}</span><br>
+    <textarea name="{{ name }}" rows="{{ 12 if name == "known" else 5 }}" cols="70">{{ profile[name] | join("\n") }}</textarea></label></p>
+  {% endfor %}
+  <p><button type="submit">Save</button></p>
+</form>
+{% endblock %}

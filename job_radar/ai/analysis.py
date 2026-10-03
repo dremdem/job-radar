@@ -14,14 +14,16 @@ from sqlalchemy.orm import Session
 from ..description import latest_snapshot
 from ..models import DescriptionAnalysis, Opportunity, OpportunityState
 from ..scoring import Reason
-from ..stack import known_alternative, says_optional, unknown_mentions
+from ..stack import Profile, Tech, known_alternative, says_optional, unknown_mentions
 
 HYBRID_PENALTY = -3.0
 RESIDENCE_PENALTY = -2.5
 MAX_TEXT = 10000
 QUOTE_SHOWN = 160
-STACK_PENALTY = -1.0  # per required unknown technology
-STACK_PENALTY_MAX = -3.0
+# Per required technology, by its level in the profile (docs/ai.md#stack-vs-your-cv).
+STACK_PENALTIES = {"unknown": -1.0, "learnable": -0.5, "blocker": -3.0}
+STACK_PENALTY_MAX = -3.0  # all non-blockers together; blockers are not capped
+_LEVEL_TEXT = {"unknown": "not in your CV", "learnable": "learnable", "blocker": "blocker"}
 MAX_STACK_QUESTIONS = 8
 # Places the user can work from; anything else in `residence` is a restriction.
 _OPEN = re.compile(
@@ -148,13 +150,13 @@ def extract(text: str, model: Model) -> tuple[Facts, dict[str, Any]]:
 
 
 def check_stack(
-    text: str, model: Model, known: set[str]
+    text: str, model: Model, known: set[str], extra: list[Tech] | None = None
 ) -> tuple[list[dict[str, str]], dict[str, Any]]:
     """Unknown technologies the text mentions, each judged by the model and checked by code."""
     text = text[:MAX_TEXT]
     stack: list[dict[str, str]] = []
     raw: dict[str, Any] = {}
-    for tech in unknown_mentions(text, known)[:MAX_STACK_QUESTIONS]:
+    for tech in unknown_mentions(text, known, extra)[:MAX_STACK_QUESTIONS]:
         prompt = STACK_PROMPT.format(text=text, skill=tech.name, what=tech.what)
         answer = model.generate_json(prompt, STACK_SCHEMA)
         raw[tech.name] = answer
@@ -172,7 +174,10 @@ def check_stack(
     return stack, raw
 
 
-def stack_risks(analysis: DescriptionAnalysis | None) -> list[tuple[float, Reason]]:
+def stack_risks(
+    analysis: DescriptionAnalysis | None, profile: Profile | None = None
+) -> list[tuple[float, Reason]]:
+    """Required technologies by their level in the current profile (known ones drop out)."""
     if analysis is None or not analysis.stack:
         return []
     out: list[tuple[float, Reason]] = []
@@ -180,9 +185,16 @@ def stack_risks(analysis: DescriptionAnalysis | None) -> list[tuple[float, Reaso
     for item in analysis.stack:
         if item.get("status") != "required":
             continue
-        points = max(STACK_PENALTY, left) if left < 0 else 0.0
-        left -= points
-        text = f"Requires {item['skill']} (not in your CV) — “{_shown(item.get('quote', ''))}”"
+        level = profile.level(item["skill"]) if profile else "unknown"
+        if level == "known":
+            continue
+        points = STACK_PENALTIES[level]
+        if level != "blocker":
+            points = max(points, left) if left < 0 else 0.0
+            left -= points
+        text = (
+            f"Requires {item['skill']} ({_LEVEL_TEXT[level]}) — “{_shown(item.get('quote', ''))}”"
+        )
         out.append((points, Reason("-", text)))
     return out
 
@@ -192,7 +204,9 @@ def _shown(quote: str) -> str:
     return quote if len(quote) <= QUOTE_SHOWN else quote[: QUOTE_SHOWN - 1] + "…"
 
 
-def risks(analysis: DescriptionAnalysis | None) -> list[tuple[float, Reason]]:
+def risks(
+    analysis: DescriptionAnalysis | None, profile: Profile | None = None
+) -> list[tuple[float, Reason]]:
     if analysis is None:
         return []
     out = []
@@ -203,7 +217,7 @@ def risks(analysis: DescriptionAnalysis | None) -> list[tuple[float, Reason]]:
     if restriction := residence_restriction(analysis):
         text = f"AI: only for {restriction} — “{_shown(analysis.residence_quote)}”"
         out.append((RESIDENCE_PENALTY, Reason("-", text)))
-    return out + stack_risks(analysis)
+    return out + stack_risks(analysis, profile)
 
 
 def residence_restriction(analysis: DescriptionAnalysis) -> str | None:
@@ -258,11 +272,19 @@ def pending(session: Session, *, with_stack: bool = False) -> list[Opportunity]:
 
 
 def analyze_pending(
-    session: Session, model: Model, *, limit: int = 150, known: set[str] | None = None
+    session: Session,
+    model: Model,
+    *,
+    limit: int = 150,
+    known: set[str] | None = None,
+    profile: Profile | None = None,
 ) -> AnalysisStats:
     """Work mode and residence for new descriptions; the stack check when `known` is given."""
     from ..auto_ignore import apply_rules
 
+    if profile is not None:
+        known = profile.known_set
+    extra = profile.extra_techs() if profile else None
     stats = AnalysisStats()
     todo = pending(session, with_stack=known is not None)
     stats.pending = max(0, len(todo) - limit)
@@ -285,7 +307,7 @@ def analyze_pending(
                     raw=answer,
                 )
             if known is not None:
-                stack, raw = check_stack(snapshot.raw_text, model, known)
+                stack, raw = check_stack(snapshot.raw_text, model, known, extra)
                 analysis.stack = stack
                 analysis.raw = {**(analysis.raw or {}), "stack": raw}
         except Exception as e:  # one bad answer must not stop the rest
@@ -296,7 +318,20 @@ def analyze_pending(
         session.add(analysis)
         session.flush()
         stats.analyzed += 1
-        stats.flagged += bool(risks(analysis))
+        stats.flagged += bool(risks(analysis, profile))
         apply_rules(session, opportunity)
         session.commit()
     return stats
+
+
+def recheck_stack(session: Session) -> int:
+    """Forget the stack check of To review vacancies, so the next run asks with the new profile."""
+    rows = session.scalars(
+        select(DescriptionAnalysis)
+        .join(Opportunity, Opportunity.id == DescriptionAnalysis.opportunity_id)
+        .where(Opportunity.state == OpportunityState.NEW, DescriptionAnalysis.stack.is_not(None))
+    ).all()
+    for row in rows:
+        row.stack = None
+    session.commit()
+    return len(rows)

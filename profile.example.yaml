@@ -1,10 +1,14 @@
-# Technologies you have worked with (copy to data/profile.yaml). Names as in the catalogue
-# (job_radar/stack.py); anything the catalogue knows and this list lacks counts as unknown.
-# See docs/ai.md#stack-vs-your-cv.
-known:
+# Your profile (copy to data/profile.yaml, or edit it on the Profile page /profile).
+# See docs/ai.md#stack-vs-your-cv. One item per line; names as in job_radar/stack.py where possible.
+known:        # from your CV: no gap
   - Python
   - Django
   - FastAPI
   - PostgreSQL
   - Docker
   - AWS
+learnable: [] # not a blocker; a required one costs -0.5
+blockers: []  # a required one costs -3
+rules:        # free text for Claude's deep analysis (#105); code does not interpret it
+  - Only full remote. I live in Thailand and do not relocate; any timezone is fine.
+  - A description not in English (German, Spanish, Chinese, ...) is a blocker.
