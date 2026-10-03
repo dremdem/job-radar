@@ -71,3 +71,16 @@ The full log is under **details**, and a **reload** link appears at the end.
 **Steps are independent.** When one fails, the others still run. Without Gmail access the mail-based steps work on the mail already stored and do not fetch message bodies. The Gmail line then says what to do: *Gmail access expired or revoked: run `./jr auth`*.
 
 `./jr sync` prints the same lines and exits with code 1 when a step failed.
+
+## Phone
+
+The UI adapts to phone width (≤ 720 px, #111), for example over Tailscale (`tailscale serve`).
+- Each vacancy is a card:
+  - the title with the score and the state;
+  - country · company, then badges and the Claude verdict;
+  - the action buttons in a row, large enough to tap.
+- Long parts start folded on the phone: tap **Why 7.5** for the score reasons and **contacted · N** for the company history.
+- The filters stack full width, and the Description window takes the whole screen.
+- The vacancy page (**page →**) has the state buttons too, so you can open a vacancy, read the Claude analysis and decide there.
+
+Desktop layout is unchanged.

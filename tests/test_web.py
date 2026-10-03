@@ -303,3 +303,36 @@ def test_himalayas_jobs_are_attributed(client, session):
 
 def test_settings_offers_language_rule(client):
     assert 'name="language"' in client.get("/settings").text
+
+
+def test_queue_rows_carry_phone_card_hooks(client, session):
+    from job_radar.models import OpportunityState
+
+    o = add_opportunity(session, score=7.5)
+    o.score_reasons = [{"sign": "+", "text": "Python"}]
+    session.commit()
+    text = client.get("/").text
+    assert "@media (max-width: 720px)" in text
+    assert 'class="cell-title"' in text and 'data-label="Score"' in text
+    assert '<details class="why"' in text and "Why 7.5" in text
+    page = client.get(f"/opportunities/{o.id}").text
+    assert f'hx-post="/opportunities/{o.id}/state"' in page
+    response = client.post(
+        f"/opportunities/{o.id}/state", data={"state": "interested", "from": "page"}
+    )
+    assert response.status_code == 200
+    session.refresh(o)
+    assert o.state is OpportunityState.INTERESTED
+
+
+def test_applications_rows_have_labels(client, session):
+    from datetime import UTC, datetime
+
+    from job_radar.models import Application, ApplicationReview, ApplicationSource
+
+    o = add_opportunity(session)
+    session.add(Application(company_id=o.company_id, applied_at=datetime(2026, 3, 1, tzinfo=UTC),
+                            role="Dev", source=ApplicationSource.MANUAL,
+                            review=ApplicationReview.CONFIRMED))  # fmt: skip
+    session.commit()
+    assert 'data-label="Company"' in client.get("/applications").text

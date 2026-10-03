@@ -12,10 +12,10 @@
     <tr><th>Title</th><th>Country</th><th>Company</th><th>Score</th><th>State</th><th></th></tr>
     <tr class="filter-row">
       <th><input type="hidden" class="col-filter" name="tab" value="{{ tab }}">
-        <input type="search" class="col-filter" name="title" value="{{ filters.title }}" placeholder="filter" autocomplete="off" aria-label="Filter by title" {{ filter_attrs | safe }}>
+        <input type="search" class="col-filter" name="title" value="{{ filters.title }}" placeholder="filter title" autocomplete="off" aria-label="Filter by title" {{ filter_attrs | safe }}>
         {% if filters.title or filters.country or filters.company %}<a class="small" href="/?tab={{ tab }}">clear filters</a>{% endif %}</th>
-      <th><input type="search" class="col-filter" name="country" value="{{ filters.country }}" placeholder="filter" autocomplete="off" aria-label="Filter by country" {{ filter_attrs | safe }}></th>
-      <th><input type="search" class="col-filter" name="company" value="{{ filters.company }}" placeholder="filter" autocomplete="off" aria-label="Filter by company" {{ filter_attrs | safe }}></th>
+      <th><input type="search" class="col-filter" name="country" value="{{ filters.country }}" placeholder="filter country" autocomplete="off" aria-label="Filter by country" {{ filter_attrs | safe }}></th>
+      <th><input type="search" class="col-filter" name="company" value="{{ filters.company }}" placeholder="filter company" autocomplete="off" aria-label="Filter by company" {{ filter_attrs | safe }}></th>
       <th></th><th></th><th></th>
     </tr>
   </thead>

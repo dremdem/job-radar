@@ -48,6 +48,45 @@
     #description-dialog .desc-text { white-space: pre-wrap; margin-top: 14px; }
     #description-dialog mark { background: rgba(255, 200, 0, 0.35); color: inherit; padding: 0 2px; border-radius: 3px; }
     .dialog-close { position: absolute; top: 10px; right: 14px; font-size: 22px; line-height: 1; border: none; background: none; color: inherit; cursor: pointer; }
+    .why > summary { cursor: pointer; margin-top: 4px; }
+    .page-state button { margin-right: 4px; }
+    /* Phone (#111): rows become cards, nothing scrolls sideways. */
+    @media (max-width: 720px) {
+      body { padding: 10px; font-size: 16px; }
+      h1 { font-size: 24px; margin: 4px 0 8px; }
+      h2 { font-size: 20px; }
+      nav { line-height: 2.2; }
+      button { min-height: 36px; padding: 4px 10px; }
+      table, thead, tbody, tr, td { display: block; width: 100%; box-sizing: border-box; }
+      thead tr:first-child { display: none; }
+      .filter-row th { display: block; padding: 2px 0; }
+      .filter-row th:empty { display: none; }
+      #queue-body > tr, #applications tbody > tr {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px;
+        border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin: 10px 0;
+      }
+      #queue-body > tr > td, #applications tbody > tr > td { border: none; padding: 0; }
+      #queue-body > tr.current { border-color: #7b8cff; background: rgba(120, 140, 255, 0.10); }
+      #queue-body > tr.current > td { background: none; box-shadow: none; }
+      #queue-body .cell-title { grid-column: 1; grid-row: 1; }
+      #queue-body .cell-score { grid-column: 2; grid-row: 1; font-size: 20px; font-weight: 600; text-align: right; }
+      #queue-body .cell-state { grid-column: 2; grid-row: 2; text-align: right; font-size: 13px; }
+      #queue-body .cell-country, #queue-body .cell-company { grid-column: 1; font-size: 14px; white-space: normal; }
+      #queue-body .cell-country::before, #queue-body .cell-company::before,
+      #applications td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: 13px; }
+      #queue-body .cell-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      #queue-body .cell-actions .note-form { flex-basis: 100%; }
+      #queue-body .cell-actions button { margin: 0; flex: 1 1 auto; }
+      #applications tbody > tr { grid-template-columns: minmax(0, 1fr); }
+      #applications .actions { display: flex; gap: 6px; }
+      .claude-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+      .claude-bar #claude-status { flex-basis: 100%; }
+      textarea { width: 100%; box-sizing: border-box; }
+      #description-dialog { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
+      #description-dialog .dialog-body { max-height: 100dvh; padding: 16px 14px 24px; font-size: 16px; }
+      .desc-text, .msg-text { overflow-wrap: anywhere; }
+      td a, li { overflow-wrap: anywhere; }
+    }
     #arrivals { margin: 6px 0; }
     .tabs { margin: 8px 0 12px; }
     td.country { white-space: nowrap; font-weight: 500; }
@@ -63,5 +102,17 @@
     · <button type="button" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML">Sync</button>
     <span id="sync-status" class="small" hx-get="/sync/status" hx-trigger="load" hx-swap="outerHTML"></span></nav>
   {% block content %}{% endblock %}
+<script>
+  // On a phone, long parts of each row start folded (#111); desktop keeps them open.
+  (function () {
+    var phone = window.matchMedia("(max-width: 720px)");
+    function fold(root) {
+      if (!phone.matches) return;
+      (root || document).querySelectorAll("details.why[open], details.history[open]").forEach(function (d) { d.open = false; });
+    }
+    fold(document);
+    document.body.addEventListener("htmx:afterSwap", function (event) { fold(event.target); });
+  })();
+</script>
 </body>
 </html>

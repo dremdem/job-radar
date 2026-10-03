@@ -1,11 +1,11 @@
 <div id="applications">
 {% macro row(i, actions) %}
 <tr>
-  <td>{{ i.a.applied_at.strftime("%Y-%m-%d") }}</td>
-  <td>{{ i.a.company.name }}</td>
-  <td>{{ i.a.role or "unknown role" }}</td>
-  <td class="state">{{ i.status }}</td>
-  <td class="muted small">{{ i.a.source.value }}{% if i.gmail %} · <a href="{{ i.gmail }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}</td>
+  <td data-label="Date">{{ i.a.applied_at.strftime("%Y-%m-%d") }}</td>
+  <td data-label="Company" class="cell-company">{{ i.a.company.name }}</td>
+  <td data-label="Role">{{ i.a.role or "unknown role" }}</td>
+  <td class="state" data-label="Status">{{ i.status }}</td>
+  <td class="muted small" data-label="Source">{{ i.a.source.value }}{% if i.gmail %} · <a href="{{ i.gmail }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}</td>
   {% if actions %}
   <td class="actions">
     <button hx-post="/applications/{{ i.a.id }}/confirm" hx-include="#applications-filter" hx-target="#applications" hx-swap="outerHTML">confirm</button>

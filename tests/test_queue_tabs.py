@@ -108,8 +108,8 @@ def test_country_has_its_own_column(client, session):
     session.commit()
     text = client.get("/").text
     assert "<th>Country</th>" in text
-    assert '<td class="country">India</td>' in text
-    assert '<td class="country">—</td>' in text
+    assert 'data-label="Country">India</td>' in text
+    assert 'data-label="Country">—</td>' in text
 
 
 def seed_places(session):

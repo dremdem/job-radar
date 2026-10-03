@@ -1,0 +1,7 @@
+<p id="page-state" class="page-state">
+  {% for s in states %}
+  <button hx-post="/opportunities/{{ o.id }}/state" hx-vals='{"state": "{{ s.value }}", "from": "page"}'
+          hx-target="#page-state" hx-swap="outerHTML" {% if o.state == s %}disabled{% endif %}>{{ s.value }}</button>
+  {% endfor %}
+  <span class="small muted">now: <b>{{ o.state.value }}</b></span>
+</p>

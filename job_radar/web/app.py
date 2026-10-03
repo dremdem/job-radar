@@ -202,6 +202,7 @@ def create_app(
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
         title: Annotated[str, Form()] = "",
+        source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
         filters = Filters(country, company, title)
         tab = _tab(tab)
@@ -209,6 +210,9 @@ def create_app(
         opportunity.state = state
         opportunity.auto_ignore_reason = None  # your choice replaces the rule's
         session.commit()
+        if source == "page":  # the vacancy page: redraw its buttons only
+            context = {"o": opportunity, "states": _manual_states()}
+            return templates.TemplateResponse(request, "_page_state.html", context)
         # Replace only this row (or remove it when it leaves the tab) and refresh the tab counts
         # out of band: re-rendering the whole queue made the page jump to the end (#70).
         states = TABS[tab][1]
