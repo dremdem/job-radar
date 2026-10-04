@@ -9,7 +9,7 @@
   {% elif claude.result %}
     {% set r = claude.result %}
     <details class="claude-result"{% if open_result %} open{% endif %}>
-      <summary><span class="badge verdict-{{ r.verdict }}">Claude: {{ r.verdict }} · {{ r.match }}%</span> {{ r.summary | truncate(140, true, "…") }}</summary>
+      <summary class="fold fold-claude"><span class="fold-text"><span class="badge verdict-{{ r.verdict }}">Claude: {{ r.verdict }} · {{ r.match }}%</span> {{ r.summary | truncate(140, true, "…") }}</span><span class="fold-hint" aria-hidden="true"></span></summary>
       <p>{{ r.summary }}</p>
       {% macro quoted(item) %}{% if item.quote %} <span class="muted quote{% if not item.quote_ok %} unverified{% endif %}">“{{ item.quote }}”{% if not item.quote_ok %} (unverified){% endif %}</span>{% endif %}{% endmacro %}
       {% if r.location %}<p><b>Location: {{ r.location.verdict }}</b> — {{ r.location.note }}{{ quoted(r.location) }}</p>{% endif %}

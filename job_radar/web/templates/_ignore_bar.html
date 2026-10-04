@@ -28,7 +28,7 @@
   {% endfor %}
   <input id="comment-{{ o.id }}" name="comment" class="form-control form-control-sm d-inline-block w-auto" placeholder="comment (optional)" size="18">
   <details class="note-form">
-    <summary>more…</summary>
+    <summary class="fold">more…</summary>
     <form hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter" hx-target="{{ target }}" hx-swap="outerHTML">
       <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="from" value="{{ page_from or '' }}">
       <select name="kind" class="form-select form-select-sm d-inline-block w-auto">

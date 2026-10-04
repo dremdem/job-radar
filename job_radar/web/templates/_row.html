@@ -24,7 +24,7 @@
     {% endif %}
     {% if history_count %}
     <details class="history small" open>
-      <summary><span class="badge">contacted · {{ history_count }}</span>{% if applied_before %} <span class="badge warn">already applied {{ applied_before.strftime("%Y-%m-%d") }}</span>{% endif %}</summary>
+      <summary class="fold"><span class="badge">contacted · {{ history_count }}</span>{% if applied_before %} <span class="badge warn">already applied {{ applied_before.strftime("%Y-%m-%d") }}</span>{% endif %}</summary>
       <ul>
         {% for e in history %}
         <li>{{ e.at.strftime("%Y-%m-%d") }} · <b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}{% if e.note_id %} <button class="link" hx-post="/notes/{{ e.note_id }}/delete" hx-include=".col-filter" hx-vals='{"tab": "{{ tab }}"}' hx-target="#queue" hx-swap="outerHTML" title="delete">×</button>{% endif %}</li>
@@ -36,7 +36,7 @@
     <div class="muted small">no contacts found</div>
     {% endif %}
     {% if rejected_at or o.score_reasons or extra_reasons %}
-    <details class="why" open><summary class="small muted">Why {{ "%.1f"|format(eff_score) if eff_score is not none else "this score" }}</summary>
+    <details class="why" open><summary class="small muted fold">Why {{ "%.1f"|format(eff_score) if eff_score is not none else "this score" }}</summary>
     <ul class="reasons">
       {% for r in extra_reasons %}<li class="{{ 'pos' if r.sign == '+' else 'neg' }}">{{ '+' if r.sign == '+' else '−' }} {{ r.text }}</li>{% endfor %}
       {% if python_quote %}<li class="muted quote">“{{ python_quote }}”</li>{% endif %}

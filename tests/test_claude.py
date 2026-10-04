@@ -411,3 +411,13 @@ def test_worker_can_be_switched_off(engine, database_url, tmp_path):
     with TestClient(create_app(settings)) as client:
         assert client.app.state.claude_worker_on is False
         assert "Claude worker is off" in client.get("/claude/status").text
+
+
+def test_claude_verdict_is_a_big_toggle(client, session):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    w = client.app.state.claude_worker
+    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
+    w.run_once()
+    row = client.get(f"/opportunities/{o.id}/row").text
+    assert '<summary class="fold fold-claude">' in row and 'class="fold-hint"' in row

@@ -14,7 +14,7 @@
     :root { color-scheme: light dark; --muted: #888; --line: #8884; }
     body { font-size: 15px; max-width: 1080px; margin: 0 auto; padding: 0 16px 16px; }
     /* Bootstrap's .badge is filled white-on-colour; ours are outlined, keep them. */
-    .badge { color: inherit; background: transparent; font-weight: 500; vertical-align: baseline; }
+    .badge { color: inherit; background: transparent; font-weight: 500; vertical-align: baseline; white-space: normal; text-align: left; overflow-wrap: anywhere; }
     .navbar .nav-link { padding: 4px 10px; }
     .nav-pills .nav-link { padding: 3px 12px; }
     .table { margin-bottom: 0; }
@@ -77,6 +77,17 @@
     /* Rows apart at a glance (#125). */
     #queue-body > tr:nth-child(even) > td { background-color: var(--bs-tertiary-bg); }
     #queue-body > tr > td { border-bottom: 2px solid var(--bs-border-color); }
+    /* Fold/unfold targets (#129): the whole line toggles, with Show / Hide on the right. */
+    summary.fold { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; border-radius: 8px; padding: 2px 4px; }
+    summary.fold::-webkit-details-marker { display: none; }
+    summary.fold::before { content: "▸"; display: inline-block; transition: transform .15s; color: var(--bs-secondary-color); }
+    details[open] > summary.fold::before { transform: rotate(90deg); }
+    summary.fold:hover { background: var(--bs-tertiary-bg); }
+    summary.fold-claude { border: 1px solid var(--bs-border-color); padding: 6px 10px; margin: 4px 0; }
+    summary.fold-claude::before { content: none; }
+    summary.fold-claude .fold-text { flex: 1 1 auto; min-width: 0; }
+    summary.fold-claude .fold-hint::after { content: "Show ▾"; white-space: nowrap; font-size: 13px; color: var(--bs-link-color); }
+    details[open] > summary.fold-claude .fold-hint::after { content: "Hide ▴"; }
     .why > summary { cursor: pointer; margin-top: 4px; }
     .page-state button { margin-right: 4px; }
     /* Desktop: the title gets the room, the rest stays narrow (#119). */
@@ -130,6 +141,8 @@
       #queue-body .cell-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
       #queue-body .cell-actions .note-form { flex-basis: 100%; }
       .title-pick { display: none; }
+      summary.fold { min-height: 40px; padding: 6px 8px; }
+      summary.fold-claude { min-height: 48px; background: var(--bs-tertiary-bg); }
       .select-toggle { display: inline-flex; align-items: center; min-height: 40px; }
       #queue-body .cell-actions button { margin: 0; flex: 1 1 auto; }
       #applications tbody > tr { grid-template-columns: minmax(0, 1fr); }
