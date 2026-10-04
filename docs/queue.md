@@ -75,10 +75,10 @@ The full log is under **details**, and a **reload** link appears at the end.
 ## Phone
 
 The UI adapts to phone width (≤ 720 px, #111), for example over Tailscale (`tailscale serve`).
-- Each vacancy is a card:
+- Each vacancy is a card with a strong border, a shadow and a background that alternates from card to card:
   - the title with the score and the state;
   - country · company, then badges and the Claude verdict;
-  - the action buttons in a row, large enough to tap, with **Select** (pick for Claude) and **✨ Claude** (analyze this one) among them, so the tick is never next to the title link.
+  - the action buttons in a row, large enough to tap, under a line that names the vacancy ("▸ Senior Backend Developer…"), so on a long card you always know which vacancy they act on (#125), with **Select** (pick for Claude) and **✨ Claude** (analyze this one) among them, so the tick is never next to the title link.
 - Long parts start folded on the phone: tap **Why 7.5** for the score reasons and **contacted · N** for the company history.
 - The filters stack full width, and the Description window takes the whole screen.
 - The vacancy page (**page →**) has the state buttons too, so you can open a vacancy, read the Claude analysis and decide there.

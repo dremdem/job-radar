@@ -51,6 +51,7 @@
   <td class="cell-score" data-label="Score">{{ "%.1f"|format(eff_score) if eff_score is not none else "—" }}</td>
   <td class="state cell-state" data-label="State">{{ o.state.value }}</td>
   <td class="actions cell-actions">
+    <div class="actions-for small">▸ {{ o.title | truncate(60, true, "…") }}</div>
     {% include "_ignore_bar.html" %}
     {% set state_btn = {"interested": "btn-outline-success", "ignore": "btn-outline-danger", "applied": "btn-outline-primary"} %}
     {# Phone: a big Select toggle away from the title link, and Claude in one tap (#123). #}

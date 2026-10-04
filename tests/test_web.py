@@ -349,3 +349,8 @@ def test_bootstrap_look(client, session):
     page = client.get(f"/opportunities/{o.id}").text
     assert "btn btn-sm btn-outline-danger" in page
     assert 'class="nav-link active"' not in page or 'href="/" class="nav-link active"' in text
+
+
+def test_actions_name_their_vacancy(client, session):
+    add_opportunity(session, title="Senior Backend Developer")
+    assert '<div class="actions-for small">▸ Senior Backend Developer</div>' in client.get("/").text

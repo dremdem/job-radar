@@ -73,6 +73,10 @@
     .select-toggle { display: none; }
     .select-toggle input { width: 18px; height: 18px; vertical-align: -3px; margin-right: 4px; }
     .title-pick { width: 16px; height: 16px; vertical-align: -2px; }
+    .actions-for { display: none; }
+    /* Rows apart at a glance (#125). */
+    #queue-body > tr:nth-child(even) > td { background-color: var(--bs-tertiary-bg); }
+    #queue-body > tr > td { border-bottom: 2px solid var(--bs-border-color); }
     .why > summary { cursor: pointer; margin-top: 4px; }
     .page-state button { margin-right: 4px; }
     /* Desktop: the title gets the room, the rest stays narrow (#119). */
@@ -109,6 +113,12 @@
         border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin: 10px 0;
       }
       #queue-body > tr > td, #applications tbody > tr > td { border: none; padding: 0; }
+      #queue-body > tr { border-width: 2px; border-color: var(--bs-border-color); margin: 22px 0;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22); }
+      #queue-body > tr:nth-child(even) { background: var(--bs-tertiary-bg); }
+      #queue-body > tr:nth-child(even) > td, #queue-body > tr > td { background: none; border-bottom: none; }
+      .actions-for { display: block; flex-basis: 100%; color: var(--bs-secondary-color); font-weight: 600;
+        border-top: 1px dashed var(--bs-border-color); padding-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #queue-body > tr.current { border-color: #7b8cff; background: rgba(120, 140, 255, 0.10); }
       #queue-body > tr.current > td { background: none; box-shadow: none; }
       #queue-body .cell-title { grid-column: 1; grid-row: 1; }
