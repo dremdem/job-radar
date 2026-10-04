@@ -2,7 +2,7 @@
 {% set has_description = o.source_records | selectattr("snapshots") | list | length > 0 %}
 <tr id="opportunity-{{ o.id }}" data-score="{{ eff_score if eff_score is not none else '' }}">
   <td class="cell-title">
-    <input type="checkbox" class="claude-pick" value="{{ o.id }}" aria-label="Pick for Claude">
+    <input type="checkbox" class="claude-pick title-pick me-1" value="{{ o.id }}" aria-label="Pick for Claude">
     {% if link %}<a href="{{ link }}" target="_blank" rel="noopener noreferrer">{{ o.title }}</a>{% else %}{{ o.title }}{% endif %} <a class="small" href="/opportunities/{{ o.id }}">page →</a>
     <div class="muted small">
       {{ o.location or "" }}{% if o.salary %} · {{ o.salary }}{% endif %}
@@ -53,6 +53,12 @@
   <td class="actions cell-actions">
     {% include "_ignore_bar.html" %}
     {% set state_btn = {"interested": "btn-outline-success", "ignore": "btn-outline-danger", "applied": "btn-outline-primary"} %}
+    {# Phone: a big Select toggle away from the title link, and Claude in one tap (#123). #}
+    <label class="btn btn-sm btn-outline-secondary select-toggle"><input type="checkbox" class="claude-pick" value="{{ o.id }}"> Select</label>
+    {% if not claude or claude.state == "failed" %}
+    <button type="button" class="btn btn-sm btn-outline-primary claude-one" hx-post="/opportunities/{{ o.id }}/claude" hx-swap="none"
+            hx-on::after-request="window.jrClaudeQueued && jrClaudeQueued({{ o.id }})">✨ Claude</button>
+    {% endif %}
     {% for s in states %}
     <button class="btn btn-sm {{ state_btn.get(s.value, 'btn-outline-secondary') }}" hx-post="/opportunities/{{ o.id }}/state" hx-include=".col-filter" hx-vals='{"state": "{{ s.value }}", "tab": "{{ tab }}"}'
             hx-target="#opportunity-{{ o.id }}" hx-swap="outerHTML"

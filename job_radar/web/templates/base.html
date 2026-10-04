@@ -66,6 +66,13 @@
     .chip { border: 1px solid var(--line); border-radius: 999px; background: transparent; color: inherit; padding: 2px 10px; cursor: pointer; font-size: 12px; }
     .chip:hover { border-color: #d0583c; color: #d0583c; }
     .chips .note-form { flex-basis: 100%; }
+    .pick-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1030; display: flex; flex-wrap: nowrap; gap: 8px; white-space: nowrap; align-items: center; justify-content: center;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color); box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15); }
+    .pick-bar[hidden] { display: none; }
+    body.has-pick-bar { padding-bottom: 80px; }
+    .select-toggle { display: none; }
+    .select-toggle input { width: 18px; height: 18px; vertical-align: -3px; margin-right: 4px; }
+    .title-pick { width: 16px; height: 16px; vertical-align: -2px; }
     .why > summary { cursor: pointer; margin-top: 4px; }
     .page-state button { margin-right: 4px; }
     /* Desktop: the title gets the room, the rest stays narrow (#119). */
@@ -112,6 +119,8 @@
       #applications td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: 13px; }
       #queue-body .cell-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
       #queue-body .cell-actions .note-form { flex-basis: 100%; }
+      .title-pick { display: none; }
+      .select-toggle { display: inline-flex; align-items: center; min-height: 40px; }
       #queue-body .cell-actions button { margin: 0; flex: 1 1 auto; }
       #applications tbody > tr { grid-template-columns: minmax(0, 1fr); }
       #applications .actions { display: flex; gap: 6px; }

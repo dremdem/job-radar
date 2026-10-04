@@ -386,3 +386,16 @@ def test_row_links_to_the_chat(client, session):
     row = client.get(f"/opportunities/{o.id}/row").text
     assert f'href="/opportunities/{o.id}#chat"' in row and "Chat with Claude →" in row
     assert 'id="chat"' in client.get(f"/opportunities/{o.id}").text
+
+
+def test_card_button_and_select_toggle(client, session):
+    o = vacancy(session)
+    row = client.get("/").text
+    assert f'hx-post="/opportunities/{o.id}/claude"' in row and "✨ Claude" in row
+    assert 'class="btn btn-sm btn-outline-secondary select-toggle"' in row
+    assert 'id="pick-bar"' in row and 'data-claude-action="analyze"' in row
+    # The card button queues this one vacancy.
+    client.post(f"/opportunities/{o.id}/claude")
+    assert claude.latest(session, o.id).state == "queued"
+    row = client.get(f"/opportunities/{o.id}/row").text
+    assert "Claude: queued" in row and "✨ Claude" not in row

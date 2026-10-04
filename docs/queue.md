@@ -78,7 +78,7 @@ The UI adapts to phone width (≤ 720 px, #111), for example over Tailscale (`ta
 - Each vacancy is a card:
   - the title with the score and the state;
   - country · company, then badges and the Claude verdict;
-  - the action buttons in a row, large enough to tap.
+  - the action buttons in a row, large enough to tap, with **Select** (pick for Claude) and **✨ Claude** (analyze this one) among them, so the tick is never next to the title link.
 - Long parts start folded on the phone: tap **Why 7.5** for the score reasons and **contacted · N** for the company history.
 - The filters stack full width, and the Description window takes the whole screen.
 - The vacancy page (**page →**) has the state buttons too, so you can open a vacancy, read the Claude analysis and decide there.

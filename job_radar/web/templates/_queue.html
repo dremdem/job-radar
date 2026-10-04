@@ -2,9 +2,9 @@
 {% include "_tabs.html" %}
 {% set filter_attrs = 'hx-get="/" hx-trigger="input changed delay:250ms, search" hx-include=".col-filter" hx-target="#queue-body" hx-select="#queue-body" hx-select-oob="#tabs" hx-swap="outerHTML" hx-push-url="true"' %}
 <p class="claude-bar small d-flex flex-wrap gap-2 align-items-center">
-  <button type="button" class="btn btn-sm btn-outline-secondary" id="claude-select">Select ≥ 6.5</button>
-  <button type="button" class="btn btn-sm btn-outline-secondary" id="claude-clear">Clear</button>
-  <button type="button" class="btn btn-sm btn-primary" id="claude-analyze">Analyze with Claude</button>
+  <button type="button" class="btn btn-sm btn-outline-secondary" id="claude-select" data-claude-action="select">Select ≥ 6.5</button>
+  <button type="button" class="btn btn-sm btn-outline-secondary" id="claude-clear" data-claude-action="clear">Clear</button>
+  <button type="button" class="btn btn-sm btn-primary" id="claude-analyze" data-claude-action="analyze">Analyze with Claude</button>
   {% include "_claude_status.html" %}
 </p>
 <table class="table align-top">
