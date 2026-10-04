@@ -47,3 +47,25 @@ def test_python_risk():
 def test_python_risk_needs_a_description_and_respects_the_title():
     assert python_risk("Backend Engineer", None) is None
     assert python_risk("Senior Python Developer", "Go and Rust only.") is None
+
+
+def test_latest_snapshot_mixes_stored_and_new_snapshots(session):
+    """A snapshot from SQLite is naive, one just added is aware: comparing them used to fail."""
+
+    from job_radar.dedup import add_snapshot, get_or_create_company, upsert_source_record
+    from job_radar.description import latest_description
+    from job_radar.models import Opportunity, SourceType
+
+    o = Opportunity(title="Python Developer", company=get_or_create_company(session, "Acme"))
+    session.add(o)
+    session.flush()
+    record = upsert_source_record(
+        session, source_type=SourceType.LINKEDIN_CAPTURE, external_id="1", url=None, opportunity=o
+    )
+    add_snapshot(session, record, "old text")
+    session.commit()
+    session.expire_all()  # the old snapshot now comes back from SQLite, without tzinfo
+    record = o.source_records[0]
+    _, created = add_snapshot(session, record, "new text")
+    assert created and record.snapshots[-1].retrieved_at.tzinfo is not None
+    assert latest_description(o) == "new text"

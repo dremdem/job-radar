@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from markupsafe import Markup, escape
 
@@ -49,11 +50,16 @@ def check_python(description: str) -> PythonCheck:
     return PythonCheck(mentions=len(found), related=related, quote=quote)
 
 
+def _utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
 def latest_snapshot(opportunity: Opportunity) -> JobSnapshot | None:
     snapshots = [s for r in opportunity.source_records for s in r.snapshots]
     if not snapshots:
         return None
-    return max(snapshots, key=lambda s: (s.retrieved_at, s.id))
+    # SQLite returns naive datetimes, a snapshot added in this session is aware: all are UTC.
+    return max(snapshots, key=lambda s: (_utc(s.retrieved_at), s.id))
 
 
 def latest_description(opportunity: Opportunity) -> str | None:
