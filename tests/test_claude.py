@@ -399,3 +399,15 @@ def test_card_button_and_select_toggle(client, session):
     assert claude.latest(session, o.id).state == "queued"
     row = client.get(f"/opportunities/{o.id}/row").text
     assert "Claude: queued" in row and "✨ Claude" not in row
+
+
+def test_worker_can_be_switched_off(engine, database_url, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from job_radar.config import Settings
+    from job_radar.web.app import create_app
+
+    settings = Settings(database_url=database_url, profile=tmp_path / "p.yaml", claude_worker=False)
+    with TestClient(create_app(settings)) as client:
+        assert client.app.state.claude_worker_on is False
+        assert "Claude worker is off" in client.get("/claude/status").text

@@ -167,7 +167,8 @@ def create_app(
             cv_path=settings.cv_path,
         )
         app.state.claude_worker = worker
-        if start_worker:
+        app.state.claude_worker_on = start_worker and settings.claude_worker
+        if app.state.claude_worker_on:
             worker.start()
         yield
         worker.stop()
@@ -392,12 +393,20 @@ def create_app(
     ) -> HTMLResponse:
         added = claude.enqueue(session, ids or [])
         request.app.state.claude_worker.wake()
-        context = {"claude_status": claude.status(session), "added": added}
+        context = {
+            "claude_status": claude.status(session),
+            "added": added,
+            "worker_off": not request.app.state.claude_worker_on,
+        }
         return templates.TemplateResponse(request, "_claude_status.html", context)
 
     @app.get("/claude/status", response_class=HTMLResponse)
     def claude_status(request: Request, session: SessionDep) -> HTMLResponse:
-        context = {"claude_status": claude.status(session), "added": None}
+        context = {
+            "claude_status": claude.status(session),
+            "added": None,
+            "worker_off": not request.app.state.claude_worker_on,
+        }
         return templates.TemplateResponse(request, "_claude_status.html", context)
 
     @app.post("/settings/claude", response_class=HTMLResponse)

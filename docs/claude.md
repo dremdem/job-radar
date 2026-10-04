@@ -59,6 +59,7 @@ Every quote is checked against the description, as for the local model. A quote 
 | Settings page | Language of the explanations | Russian |
 | `.env` | `JOB_RADAR_CV_PATH` | none: without it, the analysis says there is no CV |
 | `.env` | `JOB_RADAR_CLAUDE_COMMAND` | `claude` |
+| `.env` | `JOB_RADAR_CLAUDE_WORKER` | `true`; set `false` on a test server over a copy of the database, so it never runs the queue a second time (#127) |
 
 You need Claude Code installed and logged in on this machine (`claude` in a terminal, once).
 

@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # Deep analysis with Claude Code in print mode, on the subscription (docs/claude.md).
     cv_path: Path | None = None
     claude_command: str = "claude"
+    claude_worker: bool = True  # false on test servers over a DB copy: never spend limits twice
     claude_workdir: Path = Path("data/claude")  # its sessions, apart from your own
     # Local-only diagnostics of bookmarklet captures (git-ignored), see docs/linkedin-capture.md.
     capture_debug_dir: Path = Path("data/capture_debug")
