@@ -1,3 +1,4 @@
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -23,6 +24,8 @@ class Settings(BaseSettings):
     # Himalayas public API (docs/himalayas.md): official, no key; the first run looks back a day.
     himalayas: bool = True
     himalayas_first_run_days: float = 1
+    # hh.ru digests from the remote saved search, received on or after this date (docs/hh.md).
+    hh_digests_since: date | None = None
     # Description analysis with a local model through Ollama (docs/ai.md).
     ai_analysis: bool = True
     ollama_url: str = "http://localhost:11434"

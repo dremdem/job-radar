@@ -11,7 +11,7 @@ Each notice names the vacancy and the employer in the same way, `Ваканси�
 | «Работодатель не готов пригласить вас (на собеседование)» | **Rejection** by the company, plus the applied vacancy and the application (below) |
 | «Работодатель закрыл позицию» | The same: the company closed it without you |
 | «Вам написали по вакансии…», «С вами хотят связаться из…», «Новое сообщение в чате» | The mail goes to the company's history as `recruiter_outreach` |
-| «Вакансии по подписке: …» | A digest of new vacancies (part 2, not yet) |
+| «Вакансии по подписке: …» | A digest of new vacancies from your saved search: they go to the queue (below) |
 | «Спасибо за ваше резюме!» | An employer's auto-reply without a company: left as it is |
 
 **Applied vacancy and application.** hh.ru sends no mail when you apply, but a rejection means you did. So the first notice about a vacancy creates three things, all linked to the hh.ru page:
@@ -24,3 +24,19 @@ The application date is not in the mail, so it is set to the date of the first n
 **The employer is sometimes a person.** Some vacancies list a recruiter or a sole trader as the employer, e.g. a full name. Job Radar keeps the name as it is: the mail has nothing better.
 
 Without Gmail access these mails wait for the next run with access.
+
+## Digests: «Вакансии по подписке» (#102)
+
+hh.ru mails the new vacancies of your saved search ("автопоиск"). Since 2026-10-05 that search is **Python, any region, remote only, full-time**, so every vacancy in a digest is remote by construction.
+
+**Only digests from the remote search are imported.** `JOB_RADAR_HH_DIGESTS_SINCE` (e.g. `2026-10-05`, in `.env`) sets the date of the change: older digests came from the earlier Moscow office search and are left alone. Without the setting no digest is imported.
+
+For each vacancy in a digest:
+- **Read from the mail:** title, salary, employer, city and the vacancy id. The digest body is read from Gmail and not stored, like other hh.ru mail.
+- **Kept only when** the title names a developer-type role. This is the same title filter as for Telegram and Himalayas: engineer / developer / разработчик / architect / backend / …, and not analyst / manager / QA / teacher / author / …. The search already matched "Python" somewhere in the vacancy.
+- **Location:** `Remote (<employer's city>)`. The employer's city is kept, because "remote" on hh.ru often still means "living in Russia": the score asks to check whether Thailand is allowed.
+- **Link:** source `hh` with `external_id` = the vacancy id, shared with the notices above, so a vacancy is never duplicated. It links to `https://hh.ru/vacancy/<id>`.
+- **Rules:** the usual scoring and auto-ignore rules apply.
+- **Description:** the digest has none, so the vacancy shows *verify manually* until #101 (the hh.ru API) brings it.
+
+Each digest is imported once, then marked `hh_digest_done`; older digests stay `hh_digest`. The step runs within Mail analysis.

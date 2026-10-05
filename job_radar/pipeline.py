@@ -226,15 +226,26 @@ def import_hh(
 ) -> None:
     """Rejections, applications and employer messages from hh.ru mail (docs/hh.md)."""
     from .gmail.client import body_fetcher
+    from .hh.digests import import_hh_digests
     from .hh.notifications import import_hh_notifications
 
     if use_gmail:
         client = client or gmail_client_or_none(settings)
-    stats = import_hh_notifications(session, body_fetcher(client) if client else None)
+    fetch = body_fetcher(client) if client else None
+    stats = import_hh_notifications(session, fetch)
     echo(
         f"hh: {stats.notices} notices, {stats.rejections} rejections, "
         f"{stats.vacancies} applied vacancies, {stats.messages} employer messages"
         + (f", {stats.pending} wait for Gmail access" if stats.pending else "")
+    )
+    if settings.hh_digests_since is None:
+        echo("hh digests: off; set JOB_RADAR_HH_DIGESTS_SINCE (see docs/hh.md).")
+        return
+    digests = import_hh_digests(session, fetch, since=settings.hh_digests_since)
+    echo(
+        f"hh digests: {digests.digests} digests, {digests.vacancies} new vacancies, "
+        f"{digests.known} already known, {digests.skipped} skipped as noise"
+        + (f", {digests.pending} wait for Gmail access" if digests.pending else "")
     )
 
 
