@@ -37,6 +37,33 @@ For each vacancy in a digest:
 - **Location:** `Remote (<employer's city>)`. The employer's city is kept, because "remote" on hh.ru often still means "living in Russia": the score asks to check whether Thailand is allowed.
 - **Link:** source `hh` with `external_id` = the vacancy id, shared with the notices above, so a vacancy is never duplicated. It links to `https://hh.ru/vacancy/<id>`.
 - **Rules:** the usual scoring and auto-ignore rules apply.
-- **Description:** the digest has none, so the vacancy shows *verify manually* until #101 (the hh.ru API) brings it.
+- **Description:** the digest has none, so the vacancy shows *verify manually*. Open it on hh.ru and click the **→ Job Radar** bookmarklet (below).
 
 Each digest is imported once, then marked `hh_digest_done`; older digests stay `hh_digest`. The step runs within Mail analysis.
+
+## Descriptions: the bookmarklet (#136)
+
+The official API cannot be used: since 2025-12-15 dev.hh.ru registers apps only for employers (#101), and anonymous requests to `api.hh.ru` get 403. Job Radar does not fetch hh.ru pages by itself either.
+
+Instead, open a vacancy on hh.ru (`hh.ru/vacancy/<id>`, any hh.ru subdomain) and click the same **→ Job Radar** bookmarklet as for LinkedIn ([linkedin-capture.md](linkedin-capture.md)).
+
+**It reads from the page you opened:**
+
+| Field | From |
+|---|---|
+| Vacancy id | the URL |
+| Title, company | `data-qa="vacancy-title"`, `"vacancy-company-name"` |
+| Salary | `data-qa^="vacancy-salary"` |
+| Work format | `data-qa="work-formats-text"`, e.g. "Формат работы: удалённо или гибрид" |
+| City | the first part of `data-qa="vacancy-view-raw-address"` |
+| Description | `data-qa="vacancy-description"` |
+
+**What Job Radar does with it:**
+- **The vacancy:** the one with that hh.ru id (source `hh`) gets the description, or a new vacancy is created.
+- **The location follows the work format:**
+  - any "удалённо" → `Remote (<city>)`;
+  - else "гибрид" → `Hybrid, <city>`;
+  - else "на месте работодателя" → `On-site, <city>`.
+
+  The hybrid / on-site auto-ignore rule then applies.
+- **The checks:** the description is stored as a snapshot, so the Python, language, stack and AI checks run on it as for any vacancy.

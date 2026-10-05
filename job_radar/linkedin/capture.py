@@ -97,6 +97,12 @@ def _job_id(value: Any) -> str | None:
 
 def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
     stats = CaptureStats()
+    if payload.get("source") == "hh":  # an hh.ru vacancy page (#136)
+        from ..hh.capture import import_hh_capture
+
+        import_hh_capture(session, payload, stats)
+        session.commit()
+        return stats
     detail = payload.get("detail") or {}
     detail_id = _job_id(detail.get("job_id"))
     own_card: AlertJob | None = None

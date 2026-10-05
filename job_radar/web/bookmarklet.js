@@ -1,6 +1,22 @@
 (function () {
-  /* Reads the LinkedIn page the user opened; no navigation, clicks or requests to LinkedIn. */
+  /* Reads the LinkedIn or hh.ru page the user opened; no navigation, clicks or requests. */
   var base = '__BASE__';
+  var hh = location.pathname.match(/\/vacancy\/(\d+)/);
+  if (/(^|\.)hh\.(ru|kz|by|uz)$/.test(location.hostname) && hh) {
+    /* hh.ru vacancy page (#136): fields carry data-qa attributes. */
+    var g = function (sel) { var e = document.querySelector(sel); return e ? (e.innerText || e.textContent || '').trim() : ''; };
+    var hhData = { source: 'hh', source_url: location.origin + location.pathname, cards: [], detail: {
+      job_id: hh[1],
+      title: g('[data-qa="vacancy-title"]'),
+      company: g('[data-qa="vacancy-company-name"]'),
+      salary: g('[data-qa^="vacancy-salary"]'),
+      work_format: g('[data-qa="work-formats-text"]'),
+      address: g('[data-qa="vacancy-view-raw-address"]') || g('[data-qa="vacancy-view-location"]'),
+      description: g('[data-qa="vacancy-description"]').slice(0, 20000)
+    } };
+    window.open(base + '/capture#' + encodeURIComponent(JSON.stringify(hhData)), '_blank');
+    return;
+  }
   var seen = {}, cards = [];
   function add(id, el) {
     if (!id || seen[id]) return;

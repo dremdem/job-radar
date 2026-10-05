@@ -25,6 +25,10 @@ A new tab opens on `/capture` and shows what was received: jobs on the page, new
 
 LinkedIn changes its page layout from time to time. If cards come back empty or wrong, the capture page says so; send a screenshot and the parser gets a new rule and test.
 
+## hh.ru vacancies
+
+The same bookmarklet works on an hh.ru vacancy page (`hh.ru/vacancy/<id>`): it sends the title, company, salary, work format, city and description of that one vacancy. See [hh.md](hh.md#descriptions-the-bookmarklet-136).
+
 ## When a page comes back unreadable
 
 The capture page offers a second bookmarklet, **→ Job Radar (debug)**. Clicked on the LinkedIn page, it opens `/capture/debug` and hands over the page's HTML (scripts, styles and images removed) with `postMessage`; the app saves it to `data/capture_debug/<time>.html`. The last payload of the normal bookmarklet is kept as `data/capture_debug/last_payload.json`. Both stay on this machine (`data/` is git-ignored) and are used to write parser rules and sanitized test fixtures.
