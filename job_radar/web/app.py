@@ -38,6 +38,7 @@ from ..models import (
     EmailMessage,
     NoteKind,
     Opportunity,
+    OpportunityNote,
     OpportunityState,
     SourceRecord,
 )
@@ -295,13 +296,11 @@ def create_app(
         title: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
         filters = Filters(country, company, title)
-        # Rejection is per company, so a toggle can move several rows: re-render the queue.
+        # Rejection is per company: redraw this row and its company's other rows only (#138).
         opportunity = _get_opportunity(session, opportunity_id)
         toggle_manual_rejection(session, opportunity)
         session.commit()
-        return templates.TemplateResponse(
-            request, "_queue.html", _queue_context(session, _tab(tab), filters)
-        )
+        return _company_rows(request, session, opportunity, _tab(tab), filters)
 
     @app.post("/opportunities/{opportunity_id}/notes", response_class=HTMLResponse)
     def add_opportunity_note(
@@ -333,9 +332,7 @@ def create_app(
         if source == "page":  # the vacancy page: show the new state
             context = {"o": opportunity, "states": _manual_states()}
             return templates.TemplateResponse(request, "_page_state.html", context)
-        return templates.TemplateResponse(
-            request, "_queue.html", _queue_context(session, _tab(tab), filters)
-        )
+        return _company_rows(request, session, opportunity, _tab(tab), filters)
 
     @app.post("/notes/{note_id}/delete", response_class=HTMLResponse)
     def remove_note(
@@ -348,11 +345,12 @@ def create_app(
         title: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
         filters = Filters(country, company, title)
-        if not delete_note(session, note_id):
+        note = session.get(OpportunityNote, note_id)
+        if note is None:
             raise HTTPException(status_code=404, detail="Note not found")
-        return templates.TemplateResponse(
-            request, "_queue.html", _queue_context(session, _tab(tab), filters)
-        )
+        opportunity = _get_opportunity(session, note.opportunity_id)
+        delete_note(session, note_id)
+        return _company_rows(request, session, opportunity, _tab(tab), filters)
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request, session: SessionDep) -> HTMLResponse:
@@ -582,6 +580,30 @@ def _get_opportunity(session: Session, opportunity_id: int) -> Opportunity:
     if opportunity is None:
         raise HTTPException(status_code=404, detail="Opportunity not found")
     return opportunity
+
+
+def _company_rows(
+    request: Request, session: Session, opportunity: Opportunity, tab: str, filters: Filters
+) -> HTMLResponse:
+    """This row (gone when it leaves the tab), the company's other rows out of band, and the
+    tab counts: history and penalties are per company, the queue is not re-rendered (#138)."""
+    session.refresh(opportunity)
+    states = TABS[tab][1]
+    rejected = latest_rejections(session)
+
+    def visible(o: Opportunity) -> bool:
+        in_tab = states is None or o.state in states
+        return in_tab and filters.matches(o.location, o.company.name, o.title)
+
+    context = _row_context(session, opportunity, rejected) | _tabs_context(session, tab, filters)
+    context["show_row"] = visible(opportunity)
+    others = session.scalars(
+        select(Opportunity).where(
+            Opportunity.company_id == opportunity.company_id, Opportunity.id != opportunity.id
+        )
+    ).all()
+    context["company_rows"] = [_row_context(session, o, rejected) for o in others if visible(o)]
+    return templates.TemplateResponse(request, "_row_and_tabs.html", context)
 
 
 def _claude_context(session: Session, opportunity_id: int) -> dict:

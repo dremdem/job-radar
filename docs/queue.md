@@ -37,7 +37,7 @@ The full text opens with the row's **Description** button in a large reading win
 
 ## Buttons
 
-- `interested` / `ignore` / `applied`, *ignore with reason* and `rejected` act at once. In a filtered tab a vacancy that no longer belongs there **disappears immediately** and the counts update, no reload needed. In **All** the row stays in place and only its state changes.
+- `interested` / `ignore` / `applied`, *ignore with reason* and `rejected` act at once, and only the rows they change are redrawn (that vacancy and the same company's other rows, #138), so the page does not jump. In a filtered tab a vacancy that no longer belongs there **disappears immediately** and the counts update, no reload needed. In **All** the row stays in place and only its state changes.
 - There is no "back to new": find the vacancy in **Ignored** or **All** and pick another state.
 
 Company history, reasons and notes: [applications.md](applications.md).

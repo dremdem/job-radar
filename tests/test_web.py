@@ -354,3 +354,28 @@ def test_bootstrap_look(client, session):
 def test_actions_name_their_vacancy(client, session):
     add_opportunity(session, title="Senior Backend Developer")
     assert '<div class="actions-for small">▸ Senior Backend Developer</div>' in client.get("/").text
+
+
+def test_reason_redraws_only_the_company_rows(client, session):
+    o = add_opportunity(session, title="India only role", company="Globex")
+    o.location = "Lucknow, India"
+    sibling = add_opportunity(session, title="Another Globex role", company="Globex", score=8.0)
+    other = add_opportunity(session, title="Initech role", company="Initech")
+    session.commit()
+    response = client.post(
+        f"/opportunities/{o.id}/notes",
+        data={"action": "ignore", "kind": "only_location", "detail": "India", "tab": "review"},
+    ).text
+    assert 'id="queue"' not in response  # the queue itself is not re-rendered
+    assert f'id="opportunity-{o.id}"' not in response  # it left To review
+    assert f'id="opportunity-{sibling.id}"' in response and 'hx-swap-oob="outerHTML"' in response
+    assert "Last time Globex hired only in India" in response
+    assert f'id="opportunity-{other.id}"' not in response
+    assert 'id="tabs"' in response
+
+
+def test_rejected_redraws_rows_not_the_queue(client, session):
+    o = add_opportunity(session, title="Python Engineer", company="Globex", score=9)
+    response = client.post(f"/opportunities/{o.id}/rejected", data={"tab": "review"}).text
+    assert 'id="queue"' not in response and f'id="opportunity-{o.id}"' in response
+    assert "un-reject" in response
