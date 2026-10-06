@@ -35,9 +35,13 @@ A small wrapper so you do not have to remember the commands below:
 | `./jr auth` | One-time Gmail consent (read-only) |
 | `./jr update` | `git pull`, install dependencies, restart the server |
 | `./jr check` | `ruff` + `pytest` |
+| `./jr autostart on` / `off` | Start Job Radar with the machine and restart it if it crashes (a systemd **user** service, no root) / turn that off |
+| `./jr unit` | Print that service file without installing it |
 | `./jr help` | This list |
 
 A second `./jr start` does not start a second server.
+
+**Autostart.** `./jr autostart on` writes `~/.config/systemd/user/job-radar.service` and enables it. The service runs `uv run job-radar serve` in this folder on 127.0.0.1:8000, logs to `data/server.log` and uses the `PATH` of the shell you ran it from, so `claude` and `uv` are found. After that, `./jr start` / `stop` / `restart` / `status` go through `systemctl --user`. The service starts at boot without a login when *linger* is on for your user (`loginctl show-user $USER -p Linger`); otherwise it starts when you log in. Run `./jr autostart on` again after moving the folder or changing `PATH`.
 
 ## CLI
 

@@ -8,6 +8,66 @@ PORT=8000
 URL="http://$HOST:$PORT"
 PID_FILE=data/server.pid
 LOG_FILE=data/server.log
+ROOT=$(pwd -P)
+UNIT=job-radar.service
+UNIT_FILE="$HOME/.config/systemd/user/$UNIT"
+
+# With autostart on (a systemd user service), start/stop/restart/status go through systemd.
+managed() {
+  systemctl --user is-enabled --quiet "$UNIT" 2>/dev/null
+}
+
+unit() {
+  cat <<UNIT_EOF
+[Unit]
+Description=Job Radar web UI (docs: README, "Everyday commands")
+After=network-online.target
+
+[Service]
+WorkingDirectory=$ROOT
+Environment=PATH=$PATH
+ExecStart=$(command -v uv) run job-radar serve --host $HOST --port $PORT
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:$ROOT/$LOG_FILE
+StandardError=append:$ROOT/$LOG_FILE
+
+[Install]
+WantedBy=default.target
+UNIT_EOF
+}
+
+autostart() {
+  case "${1:-}" in
+    on)
+      mkdir -p data "$(dirname "$UNIT_FILE")"
+      # A server started by hand would hold the port.
+      if ! managed && [[ -n $(server_pid) ]]; then stop; fi
+      unit >"$UNIT_FILE"
+      systemctl --user daemon-reload
+      systemctl --user enable --now "$UNIT"
+      if wait_up; then
+        echo "Autostart on: $URL starts with the machine (unit: $UNIT_FILE)"
+      else
+        echo "The service did not come up; see: systemctl --user status $UNIT" >&2
+        return 1
+      fi
+      if [[ $(loginctl show-user "$USER" -p Linger --value 2>/dev/null) != yes ]]; then
+        echo "Note: linger is off, so it starts when you log in, not at boot (loginctl enable-linger)."
+      fi
+      ;;
+    off)
+      systemctl --user disable --now "$UNIT" 2>/dev/null || true
+      rm -f "$UNIT_FILE"
+      systemctl --user daemon-reload
+      echo "Autostart off. Start by hand with: ./jr start"
+      ;;
+    *)
+      echo "Usage: ./jr autostart on|off" >&2
+      return 2
+      ;;
+  esac
+}
 
 server_pid() {
   # From the pid file, else any `job-radar serve` started from this folder.
@@ -27,6 +87,10 @@ wait_up() {
 }
 
 start() {
+  if managed; then
+    systemctl --user start "$UNIT" && wait_up && echo "Job Radar is running: $URL (systemd: $UNIT)"
+    return
+  fi
   if [[ -n $(server_pid) ]]; then
     echo "Already running: $URL"
     return 0
@@ -45,6 +109,10 @@ start() {
 }
 
 stop() {
+  if managed; then
+    systemctl --user stop "$UNIT" && echo "Stopped (autostart stays on; ./jr autostart off removes it)."
+    return
+  fi
   local pid
   pid=$(server_pid)
   if [[ -z $pid ]]; then
@@ -61,6 +129,10 @@ stop() {
 }
 
 status() {
+  if managed; then
+    echo "$(systemctl --user is-active "$UNIT"): $URL (autostart on, systemd: $UNIT)"
+    return
+  fi
   if [[ -n $(server_pid) ]]; then
     echo "Running: $URL (pid $(server_pid))"
   else
@@ -81,6 +153,8 @@ Usage: ./jr <command>
   auth      One-time Gmail consent (read-only)
   update    git pull, install dependencies, restart the web UI
   check     ruff + pytest
+  autostart on|off  Start with the machine, restart on crash (systemd user service)
+  unit      Print that service file
   help      This list
 EOF
 }
@@ -88,7 +162,15 @@ EOF
 case "${1:-help}" in
   start) start ;;
   stop) stop ;;
-  restart) stop && start ;;
+  restart)
+    if managed; then
+      systemctl --user restart "$UNIT" && wait_up && echo "Restarted: $URL (systemd: $UNIT)"
+    else
+      stop && start
+    fi
+    ;;
+  autostart) autostart "${2:-}" ;;
+  unit) unit ;;
   status) status ;;
   logs) touch "$LOG_FILE" && tail -f "$LOG_FILE" ;;
   sync) uv run job-radar sync gmail ;;
@@ -96,7 +178,7 @@ case "${1:-help}" in
   update)
     git pull --ff-only
     uv sync
-    if [[ -n $(server_pid) ]]; then stop && start; else echo "Updated. Start with: ./jr start"; fi
+    if managed || [[ -n $(server_pid) ]]; then "$0" restart; else echo "Updated. Start with: ./jr start"; fi
     ;;
   check) uv run ruff check . && uv run ruff format --check . && uv run pytest -q ;;
   help | -h | --help) usage ;;
