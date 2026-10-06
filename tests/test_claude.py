@@ -421,3 +421,22 @@ def test_claude_verdict_is_a_big_toggle(client, session):
     w.run_once()
     row = client.get(f"/opportunities/{o.id}/row").text
     assert '<summary class="fold fold-claude">' in row and 'class="fold-hint"' in row
+
+
+def test_chat_has_quick_prompts(client, session):
+    from job_radar.claude.prompt import QUICK_PROMPTS
+
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    w = client.app.state.claude_worker
+    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
+    w.run_once()
+    page = client.get(f"/opportunities/{o.id}").text
+    labels = [label for label, _ in QUICK_PROMPTS]
+    assert "Cover letter (EN)" in labels and "Сопроводительное (RU)" in labels
+    for label in labels:
+        assert f">{label}</button>" in page
+    assert 'class="btn btn-sm btn-outline-secondary quick-prompt"' in page
+    letter_en = dict(QUICK_PROMPTS)["Cover letter (EN)"]
+    assert "in English" in letter_en and "do not invent" in letter_en.lower()
+    assert "на русском" in dict(QUICK_PROMPTS)["Сопроводительное (RU)"]

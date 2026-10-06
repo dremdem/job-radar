@@ -23,6 +23,7 @@ from ..auto_ignore import Rules, apply_to_review, load_rules, save_rules
 from ..claude import analysis as claude
 from ..claude.analysis import ClaudeSettings
 from ..claude.analysis import Worker as ClaudeWorker
+from ..claude.prompt import QUICK_PROMPTS
 from ..claude.runner import ClaudeCli
 from ..claude.runner import Runner as ClaudeRunner
 from ..config import Settings, get_settings
@@ -614,6 +615,7 @@ def _claude_context(session: Session, opportunity_id: int) -> dict:
         "claude": current,
         "messages": claude.messages(session, opportunity_id),
         "chat_ready": claude.latest_done(session, opportunity_id) is not None,
+        "quick_prompts": QUICK_PROMPTS,
         "polling": chat_pending or (current is not None and current.state in claude.PENDING),
     }
 

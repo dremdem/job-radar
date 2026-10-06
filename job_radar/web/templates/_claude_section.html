@@ -15,6 +15,10 @@
     </div>
     {% endfor %}
   </div>
+  <div class="quick-prompts d-flex flex-wrap gap-1 mb-2">
+    {% for label, text in quick_prompts %}<button type="button" class="btn btn-sm btn-outline-secondary quick-prompt" data-prompt="{{ text }}"
+      onclick="var f = this.closest('section').querySelector('textarea[name=text]'); f.value = this.dataset.prompt; f.focus(); f.setSelectionRange(f.value.length, f.value.length);">{{ label }}</button>{% endfor %}
+  </div>
   <form hx-post="/opportunities/{{ opportunity_id }}/chat" hx-target="#claude-section" hx-swap="outerHTML">
     <textarea name="text" class="form-control" rows="3" cols="80" placeholder="Ask about this vacancy, e.g. how to answer the TensorFlow requirement" required></textarea>
     <p class="mt-2"><button type="submit" class="btn btn-primary btn-sm">Ask Claude</button> <span class="small muted">continues the same conversation as the analysis</span></p>

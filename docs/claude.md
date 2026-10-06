@@ -77,3 +77,13 @@ Every vacancy has its own page, `/opportunities/<id>`: the **page →** link nex
 - Questions go through the same background worker. Chat questions are answered before queued analyses, and they don't count towards the daily cap. The page shows *thinking…* and the answer when it is ready, without a reload.
 - Every message is stored in `claude_messages` and shown on every visit.
 - The chat needs a finished analysis: the page offers **Analyze with Claude** until there is one.
+- **Quick prompts** (#144). Buttons above the chat box put a ready question into it; edit it if you like, then press **Ask Claude**. The buttons never send anything themselves.
+
+  | Button | Asks for |
+  |---|---|
+  | Cover letter (EN) / Сопроводительное (RU) | A cover letter for this company and vacancy, 150–200 words, based only on your CV and the vacancy text (no invented facts or numbers), plain text ready to paste |
+  | Why I fit | 3–5 bullets tying your CV to the vacancy's requirements |
+  | Questions to ask | What to ask the recruiter about this job |
+  | Reply to recruiter (EN) | A short, polite reply to a recruiter's message (paste their message after the prompt) |
+
+  The prompts live in `job_radar/claude/prompt.py` (`QUICK_PROMPTS`).

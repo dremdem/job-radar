@@ -97,6 +97,48 @@ def system_prompt(language: str) -> str:
     )
 
 
+# Buttons above the vacancy chat (#144): (label, prompt). They only fill the text box.
+_HONEST = (
+    "Base it only on my CV and this vacancy's text; do not invent facts, numbers, projects or "
+    "employers. "
+)
+QUICK_PROMPTS: list[tuple[str, str]] = [
+    (
+        "Cover letter (EN)",
+        "Write a cover letter in English for this vacancy at this company, 150-200 words. "
+        + _HONEST
+        + "Start with why this role, then 2-3 concrete matches between my experience and their "
+        "requirements, mention that I work fully remote from Thailand. Plain text, no "
+        "placeholders, ready to paste.",
+    ),
+    (
+        "Сопроводительное (RU)",
+        "Напиши сопроводительное письмо на русском для этой вакансии в этой компании, 150-200 "
+        "слов. Опирайся только на моё CV и текст вакансии, не выдумывай факты, цифры, проекты и "
+        "работодателей. Начни с того, почему эта роль, затем 2-3 конкретных совпадения опыта с "
+        "требованиями, упомяни, что работаю полностью удалённо из Таиланда. Простой текст без "
+        "плейсхолдеров, готовый к вставке.",
+    ),
+    (
+        "Why I fit",
+        "In 3-5 bullets, why I fit this vacancy: tie each point of my CV to a requirement and "
+        "quote the requirement. " + _HONEST + "Add one bullet on the biggest gap, honestly.",
+    ),
+    (
+        "Questions to ask",
+        "Which 5 questions should I ask the recruiter about this job, most important first "
+        "(remote from Thailand and contract type, the gaps you found, the team, the stack)?",
+    ),
+    (
+        "Reply to recruiter (EN)",
+        "Write a short, polite reply in English to the recruiter's message below, showing "
+        "interest and asking the one most important open question. "
+        + _HONEST
+        + "Recruiter's message:\n\n",
+    ),
+]
+
+
 def chat_system_prompt(language: str) -> str:
     return (
         "You are continuing a conversation about one job vacancy with the candidate whose CV, "
