@@ -26,6 +26,26 @@ def db_upgrade(revision: str = "head") -> None:
     typer.echo(f"Database is at {revision}: {settings.database_url}")
 
 
+@db_app.command("merge-hh-duplicates")
+def db_merge_hh_duplicates(
+    apply: Annotated[bool, typer.Option("--apply", help="Merge; without it only list.")] = False,
+) -> None:
+    """Merge vacancies made from hh.ru notices into the same one from another source (#172)."""
+    from .hh.notifications import merge_hh_duplicates
+
+    settings = Settings()
+    upgrade_database(settings.database_url)
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            pairs = merge_hh_duplicates(session, apply=apply)
+    finally:
+        engine.dispose()
+    for keep, dup in pairs:
+        typer.echo(f"#{dup} -> #{keep}")
+    typer.echo(f"{len(pairs)} {'merged' if apply else 'to merge (dry run, add --apply)'}")
+
+
 @app.command()
 def serve(
     host: str = "127.0.0.1",

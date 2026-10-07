@@ -147,3 +147,86 @@ def test_earlier_rejection_mark_is_completed(session):
     assert stats.rejections == 1
     session.refresh(email)
     assert session.get(Company, email.company_id).name == "ANCOR"
+
+
+def known_vacancy(session, title="Backend Python Developer (Middle / Middle+)", company="ANCOR"):
+    from job_radar.dedup import get_or_create_company, upsert_source_record
+
+    o = Opportunity(title=title, company=get_or_create_company(session, company))
+    session.add(o)
+    session.flush()
+    upsert_source_record(
+        session, source_type=SourceType.TELEGRAM, external_id="tg-1", url=None, opportunity=o
+    )
+    session.commit()
+    return o
+
+
+def test_notice_attaches_to_the_same_vacancy_from_another_source(session):
+    known = known_vacancy(session, title="backend python developer  (middle / middle+)")
+    add_mail(session, "rejection_new", "g-rejection_new", datetime(2026, 10, 2, tzinfo=UTC))
+    import_hh_notifications(session, fetch)
+    assert session.scalars(select(Opportunity)).all() == [known]
+    assert {r.source_type for r in known.source_records} == {SourceType.TELEGRAM, SourceType.HH}
+    assert known.state is OpportunityState.APPLIED
+    assert session.scalars(select(Rejection)).one().opportunity_id == known.id
+
+
+def test_notice_does_not_attach_to_another_hh_vacancy_or_when_ambiguous(session):
+    from job_radar.dedup import upsert_source_record
+
+    other_hh = known_vacancy(session)
+    other_hh.source_records[0].source_type = SourceType.HH  # a different hh.ru posting
+    session.commit()
+    add_mail(session, "rejection_new", "g-rejection_new", datetime(2026, 10, 2, tzinfo=UTC))
+    import_hh_notifications(session, fetch)
+    assert len(session.scalars(select(Opportunity)).all()) == 2
+
+    # Two Telegram candidates: ambiguous, so the importer creates its own vacancy.
+    from job_radar.hh.notifications import same_vacancy
+
+    a = known_vacancy(session, title="Go Developer", company="Globex")
+    b = Opportunity(title="Go developer", company_id=a.company_id)
+    session.add(b)
+    session.flush()
+    upsert_source_record(
+        session, source_type=SourceType.TELEGRAM, external_id="tg-2", url=None, opportunity=b
+    )
+    assert same_vacancy(session, a.company_id, "GO DEVELOPER") is None
+
+
+def test_merge_hh_duplicates(session):
+    from job_radar.dedup import upsert_source_record
+    from job_radar.hh.notifications import merge_hh_duplicates
+    from job_radar.models import ClaudeAnalysis, ClaudeMessage, NoteKind, OpportunityNote
+
+    known = known_vacancy(session)
+    known.state = OpportunityState.NEW
+    dup = Opportunity(title=known.title, company_id=known.company_id)
+    dup.state = OpportunityState.APPLIED
+    session.add(dup)
+    session.flush()
+    upsert_source_record(
+        session, source_type=SourceType.HH, external_id="137434460", url=None, opportunity=dup
+    )
+    session.add(
+        OpportunityNote(
+            opportunity_id=dup.id, company_id=dup.company_id, kind=NoteKind.NOTE, comment="hh"
+        )
+    )
+    analysis = ClaudeAnalysis(opportunity_id=dup.id, model="sonnet", prompt_version="2")
+    session.add(analysis)
+    session.flush()
+    session.add(ClaudeMessage(opportunity_id=dup.id, analysis_id=analysis.id, role="user"))
+    session.commit()
+
+    assert merge_hh_duplicates(session, apply=False) == [(known.id, dup.id)]
+    assert len(session.scalars(select(Opportunity)).all()) == 2  # dry run
+    assert merge_hh_duplicates(session, apply=True) == [(known.id, dup.id)]
+    session.expire_all()
+    assert session.scalars(select(Opportunity)).all() == [known]
+    assert {r.source_type for r in known.source_records} == {SourceType.TELEGRAM, SourceType.HH}
+    assert known.state is OpportunityState.APPLIED
+    assert session.scalars(select(OpportunityNote)).one().opportunity_id == known.id
+    assert session.scalars(select(ClaudeMessage)).one().opportunity_id == known.id
+    assert merge_hh_duplicates(session, apply=True) == []

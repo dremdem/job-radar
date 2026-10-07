@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 
 from bs4 import BeautifulSoup
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from ..dedup import get_or_create_company
@@ -106,11 +106,16 @@ def _vacancy(session: Session, notice: Notice, company_id: int) -> Opportunity |
     )
     if record is not None:
         return record.opportunity
-    opportunity = Opportunity(
-        title=notice.title[:255], company_id=company_id, state=OpportunityState.APPLIED
-    )
-    session.add(opportunity)
-    session.flush()
+    # The same vacancy may already be here from Telegram or LinkedIn (#172).
+    opportunity = same_vacancy(session, company_id, notice.title)
+    if opportunity is not None:
+        _mark_applied(opportunity)
+    else:
+        opportunity = Opportunity(
+            title=notice.title[:255], company_id=company_id, state=OpportunityState.APPLIED
+        )
+        session.add(opportunity)
+        session.flush()
     session.add(
         SourceRecord(
             source_type=SourceType.HH,
@@ -121,6 +126,94 @@ def _vacancy(session: Session, notice: Notice, company_id: int) -> Opportunity |
     )
     session.flush()
     return opportunity
+
+
+def _same_title(title: str) -> str:
+    return " ".join(title.casefold().split())
+
+
+def _has_hh(opportunity: Opportunity) -> bool:
+    return any(r.source_type is SourceType.HH for r in opportunity.source_records)
+
+
+def same_vacancy(session: Session, company_id: int, title: str) -> Opportunity | None:
+    """The one vacancy of the company with this title and no hh.ru source; None if 0 or 2+."""
+    found = [
+        o
+        for o in session.scalars(select(Opportunity).where(Opportunity.company_id == company_id))
+        if _same_title(o.title) == _same_title(title) and not _has_hh(o)
+    ]
+    return found[0] if len(found) == 1 else None
+
+
+def _mark_applied(opportunity: Opportunity) -> None:
+    # An hh.ru notice about a vacancy means you applied to it.
+    if opportunity.state is not OpportunityState.APPLIED:
+        opportunity.state = OpportunityState.APPLIED
+        opportunity.auto_ignore_reason = None
+
+
+def merge_hh_duplicates(session: Session, *, apply: bool) -> list[tuple[int, int]]:
+    """Merge vacancies made from hh.ru notices into the same vacancy from another source.
+
+    Returns (kept, merged) pairs; with apply=False nothing changes (a dry run).
+    """
+    pairs = []
+    hh_vacancies = session.scalars(
+        select(Opportunity)
+        .join(SourceRecord)
+        .where(SourceRecord.source_type == SourceType.HH)
+        .distinct()
+    ).all()
+    for dup in hh_vacancies:
+        keep = same_vacancy(session, dup.company_id, dup.title)
+        # 1:1 only: the other vacancy must match no other hh.ru vacancy either.
+        rivals = [
+            o
+            for o in hh_vacancies
+            if o.company_id == dup.company_id and _same_title(o.title) == _same_title(dup.title)
+        ]
+        if keep is None or len(rivals) != 1 or keep.id > dup.id:
+            continue
+        pairs.append((keep.id, dup.id))
+        if apply:
+            _merge(session, keep, dup)
+    if apply:
+        session.commit()
+    return pairs
+
+
+def _merge(session: Session, keep: Opportunity, dup: Opportunity) -> None:
+    from ..models import (
+        Application,
+        ClaudeAnalysis,
+        ClaudeMessage,
+        DescriptionAnalysis,
+        OpportunityNote,
+        Rejection,
+        TelegramPost,
+    )
+
+    for model in (
+        SourceRecord,
+        Rejection,
+        Application,
+        OpportunityNote,
+        TelegramPost,
+        DescriptionAnalysis,
+        ClaudeAnalysis,
+        ClaudeMessage,
+    ):
+        session.execute(
+            update(model).where(model.opportunity_id == dup.id).values(opportunity_id=keep.id)
+        )
+    if dup.state is OpportunityState.APPLIED:
+        _mark_applied(keep)
+    session.flush()
+    session.expire(keep)
+    session.expire(dup)
+    session.delete(dup)
+    session.flush()
 
 
 def _application(session: Session, email: EmailMessage, notice: Notice, company_id: int, o):

@@ -21,6 +21,10 @@ Each notice names the vacancy and the employer in the same way, `Ваканси�
 
 The application date is not in the mail, so it is set to the date of the first notice, and the application's note says so. Later notices about the same vacancy reuse what is already there.
 
+**Already known from another source (#172).** Telegram channels and LinkedIn often carry the same vacancy. If exactly one vacancy of the company has the same title (ignoring case and spaces) and no hh.ru source yet, the notice attaches the hh.ru page to it instead of creating a second one; the vacancy becomes `applied`. Two hh.ru vacancies with the same title stay apart: they are different postings (another city or team). When several candidates match, nothing is merged.
+
+Duplicates made before this fix are merged with `job-radar db merge-hh-duplicates` (a dry run that lists the pairs) and `--apply`. The older vacancy is kept; the hh.ru one gives it its sources, rejections, applications, notes, Telegram posts, analyses and chat, then is deleted. Back up `data/job_radar.db` first.
+
 **The employer is sometimes a person.** Some vacancies list a recruiter or a sole trader as the employer, e.g. a full name. Job Radar keeps the name as it is: the mail has nothing better.
 
 Without Gmail access these mails wait for the next run with access.
