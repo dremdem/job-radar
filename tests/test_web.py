@@ -288,7 +288,7 @@ def test_himalayas_jobs_are_attributed(client, session):
     session.commit()
     text = client.get(f"/opportunities/{o.id}/panel").text
     assert '<span class="badge">via Himalayas</span>' in text
-    assert f'href="{url}"' in text and ">open on himalayas.app<" in text
+    assert f'href="{url}"' in text and "Open on himalayas.app ↗" in text
 
 
 def test_settings_offers_language_rule(client):
@@ -379,3 +379,25 @@ def test_vacancy_page_goes_back_to_the_queue_it_came_from(client, session):
     assert "jr-queue-url" in client.get("/?tab=interested").text
     page = client.get(f"/opportunities/{o.id}").text
     assert 'id="back-to-queue"' in page and "jr-queue-url" in page
+
+
+def test_panel_links_are_big_buttons(client, session):
+    from job_radar.dedup import upsert_source_record
+    from job_radar.models import SourceType
+
+    o = add_opportunity(session, title="Python Developer")
+    upsert_source_record(
+        session,
+        source_type=SourceType.LINKEDIN_ALERT,
+        external_id="42",
+        url="https://www.linkedin.com/jobs/view/42/",
+        opportunity=o,
+    )
+    session.commit()
+    panel = client.get(f"/opportunities/{o.id}/panel").text
+    links = panel[panel.index('class="detail-links"') :]
+    assert 'class="btn btn-sm btn-outline-info link-btn" data-open-key="o"' in links
+    assert "Open on linkedin.com ↗ <kbd>O</kbd>" in links
+    assert f'href="/opportunities/{o.id}">Full page →' in links
+    assert "Full page" not in client.get(f"/opportunities/{o.id}").text  # already on it
+    assert 'key === "o"' in client.get("/").text

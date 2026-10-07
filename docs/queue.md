@@ -35,10 +35,13 @@ Pick a vacancy in the list, read the panel, decide. After **interested**, **igno
 |---|---|
 | `J` / `K` | Next / previous vacancy |
 | `I` / `X` / `A` | Interested / ignore / applied |
+| `O` | Open the posting on its site (LinkedIn, hh.ru, …) in a new tab |
 | `Enter` | Open the vacancy page |
 | `/` | Search |
 
 Keys are ignored while you type in a field.
+
+**Links.** Under the title the panel has a row of big buttons: **Open on linkedin.com ↗** (one per site the vacancy came from, in a new tab) and **Full page →** (#164).
 
 ## Filters
 

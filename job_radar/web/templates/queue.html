@@ -116,6 +116,9 @@
       } else if (key === "i" || key === "x" || key === "a") {
         var button = document.querySelector('#detail [data-state-key="' + key + '"]:not([disabled])');
         if (button) { event.preventDefault(); if (window.htmx) htmx.process(button); button.click(); }  // a fresh panel may not be processed yet
+      } else if (key === "o") {
+        var link = document.querySelector('#detail [data-open-key="o"]');
+        if (link) { event.preventDefault(); window.open(link.href, "_blank", "noopener"); }
       } else if (key === "enter" && current) {
         location.href = current.getAttribute("href");
       } else if (key === "/") {

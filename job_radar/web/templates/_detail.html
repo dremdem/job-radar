@@ -6,9 +6,13 @@
   <div class="detail-head">
     <div class="detail-headline">
       <h2 class="detail-title">{{ o.title }}</h2>
-      <div class="detail-meta">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if o.salary %} · {{ o.salary }}{% endif %} · <b>{{ o.state.value }}</b>
-        {% for r in links %} · <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">open on {{ r.url.split("/")[2] | replace("www.", "") }}</a>{% endfor %}
-        {% if panel %} · <a href="/opportunities/{{ o.id }}">page →</a>{% endif %}</div>
+      <div class="detail-meta">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if o.salary %} · {{ o.salary }}{% endif %} · <b>{{ o.state.value }}</b></div>
+      {% if links or panel %}
+      <div class="detail-links">{# big targets, not inline text links (#164) #}
+        {% for r in links %}<a class="btn btn-sm btn-outline-info link-btn"{% if loop.first %} data-open-key="o"{% endif %} href="{{ r.url }}" target="_blank" rel="noopener noreferrer">Open on {{ r.url.split("/")[2] | replace("www.", "") }} ↗{% if loop.first and panel %} <kbd>O</kbd>{% endif %}</a>{% endfor %}
+        {% if panel %}<a class="btn btn-sm btn-outline-secondary link-btn" href="/opportunities/{{ o.id }}">Full page → <kbd>↵</kbd></a>{% endif %}
+      </div>
+      {% endif %}
       {% set has_description = o.source_records | selectattr("snapshots") | list | length > 0 %}
       <div class="detail-badges">
         {% if o.easy_apply %}<span class="badge">Easy Apply</span>{% endif %}
