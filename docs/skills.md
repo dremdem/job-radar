@@ -26,7 +26,7 @@ For every vacancy in the chosen states and period, Job Radar collects the techno
 | Avg score | Average score of the vacancies that require it |
 | In profile | known / learnable / blocker / not listed |
 
-Rows are sorted by *Would unlock*, then by *Must-have*. Open a row for the vacancies with their quotes.
+Rows are sorted by *Would unlock*, then by *Must-have*. Click a column header to sort by it, and click again to flip the order (#156). Open a row for the vacancies with their quotes.
 
 **Best set.** Above the table, Job Radar picks the 1, 2 and 3 technologies that together unlock the most vacancies, using a greedy pick. A vacancy is unlocked when all of its missing must-haves are in the set and nothing else blocks it.
 

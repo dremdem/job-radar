@@ -23,7 +23,8 @@
 </div></div>
 {% endif %}
 <table class="table align-top skills">
-  <thead><tr><th>Technology</th><th>Must-have</th><th>Nice</th><th>Would unlock</th><th>Avg score</th><th>In profile</th><th></th></tr></thead>
+  {% macro head(key, label) %}{% set active = sort == key %}<a class="sort-link" href="/skills?sort={{ key }}&dir={{ ('asc' if dir == 'desc' else 'desc') if active else ('asc' if key in ('name', 'level') else 'desc') }}&days={{ days }}&scope={{ scope }}">{{ label }}{% if active %} {{ "▼" if dir == "desc" else "▲" }}{% endif %}</a>{% endmacro %}
+  <thead><tr><th>{{ head("name", "Technology") }}</th><th>{{ head("must", "Must-have") }}</th><th>{{ head("nice", "Nice") }}</th><th>{{ head("unlock", "Would unlock") }}</th><th>{{ head("avg", "Avg score") }}</th><th>{{ head("level", "In profile") }}</th><th></th></tr></thead>
   <tbody>
   {% for r in report.rows %}
   <tr>

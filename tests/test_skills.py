@@ -110,3 +110,29 @@ def test_all_analysed_counts_ignored_too(session):
     claude(session, o, [gap("Go")])
     assert "Go" not in {r.name for r in build_report(session, PROFILE).rows}
     assert "Go" in {r.name for r in build_report(session, PROFILE, everything=True).rows}
+
+
+def test_sort_rows():
+    from job_radar.skills import SkillRow, sort_rows
+
+    rows = [SkillRow("Go", must=3, nice=1, unlock=1, scores=[6.0]),
+            SkillRow("Azure", must=5, nice=4, unlock=0, scores=[8.0]),
+            SkillRow("Redis", must=1, nice=0, unlock=2, level="learnable")]  # fmt: skip
+    assert [r.name for r in sort_rows(rows, "must", "desc")] == ["Azure", "Go", "Redis"]
+    assert [r.name for r in sort_rows(rows, "name", "asc")] == ["Azure", "Go", "Redis"]
+    assert [r.name for r in sort_rows(rows, "avg", "desc")] == [
+        "Azure",
+        "Go",
+        "Redis",
+    ]  # no score last
+    assert [r.name for r in sort_rows(rows, "unlock", "asc")] == ["Azure", "Go", "Redis"]
+    assert sort_rows(rows, "nope", "desc")[0].name == "Redis"  # default: unlock
+
+
+def test_sort_links_on_the_page(client, session):
+    o = add_vacancy(session, title="Go job", text="Python and Go.")
+    claude(session, o, [gap("Go")])
+    page = client.get("/skills?sort=must&dir=desc&scope=all").text
+    assert 'href="/skills?sort=must&dir=asc&days=0&scope=all"' in page  # flips
+    assert 'href="/skills?sort=nice&dir=desc&days=0&scope=all"' in page
+    assert "▼" in page

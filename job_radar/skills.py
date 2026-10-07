@@ -203,3 +203,20 @@ def build_report(
     best = {k: best_set(unlockable, k) for k in (1, 2, 3)}
     best_unlocks = {k: sum(1 for m in unlockable if m <= set(chosen)) for k, chosen in best.items()}
     return Report(ordered, non_tech, counted, best, best_unlocks)
+
+
+SORTS = {
+    "name": lambda r: r.name.casefold(),
+    "must": lambda r: r.must,
+    "nice": lambda r: r.nice,
+    "unlock": lambda r: r.unlock,
+    "avg": lambda r: r.avg_score if r.avg_score is not None else float("-inf"),
+    "level": lambda r: r.level,
+}
+
+
+def sort_rows(rows: list[SkillRow], sort: str, direction: str) -> list[SkillRow]:
+    """Sort by a column (#156); ties keep the default order (unlock, must, name)."""
+    key = SORTS.get(sort, SORTS["unlock"])
+    base = sorted(rows, key=lambda r: (-r.unlock, -r.must, r.name))
+    return sorted(base, key=key, reverse=direction != "asc")

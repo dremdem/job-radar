@@ -51,7 +51,7 @@ from ..notes import (
     location_penalty,
 )
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
-from ..skills import build_report
+from ..skills import SORTS, build_report, sort_rows
 from ..stack import LISTS, Profile, current_profile, load_profile, save_profile
 from ..suggestions import suggest
 from .sync_job import Runner, SyncJob
@@ -426,13 +426,20 @@ def create_app(
 
     @app.get("/skills", response_class=HTMLResponse)
     def skills_page(
-        request: Request, session: SessionDep, days: int = 0, scope: str = "open"
+        request: Request,
+        session: SessionDep,
+        days: int = 0,
+        scope: str = "open",
+        sort: str = "unlock",
+        dir: str = "desc",
     ) -> HTMLResponse:
         everything = scope == "all"
         report = build_report(
             session, load_profile(settings.profile), days=days or None, everything=everything
         )
+        report.rows = sort_rows(report.rows, sort, dir)
         context = {"report": report, "days": days, "scope": scope, "message": ""}
+        context |= {"sort": sort if sort in SORTS else "unlock", "dir": dir}
         return templates.TemplateResponse(request, "skills.html", context)
 
     @app.post("/skills/level", response_class=HTMLResponse)
@@ -456,6 +463,7 @@ def create_app(
         )
         message = f"{name.strip()} is now {level.rstrip('s')} in your profile."
         context = {"report": report, "days": days, "scope": scope, "message": message}
+        context |= {"sort": "unlock", "dir": "desc"}
         return templates.TemplateResponse(request, "skills.html", context)
 
     @app.get("/profile", response_class=HTMLResponse)
