@@ -70,23 +70,43 @@
         mark(item);  // the phone opens the page; remember where you were
       }
     });
+    // The panel is the source of truth for "current": a redrawn item loses its .selected class (#166).
+    function shownItem() {
+      var panel = document.querySelector("#detail .detail");
+      return panel ? document.getElementById("opportunity-" + panel.dataset.opportunity) : null;
+    }
+    function clearPanel() {
+      window.jrGap = null;
+      items().forEach(function (i) { i.classList.remove("selected"); });
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      document.getElementById("detail").innerHTML = '<p class="muted">Nothing left in this tab.</p>';
+    }
     // A decision in the panel: remember the next item; open it if this one left the list.
     document.addEventListener("htmx:beforeRequest", function (event) {
       var inPanel = event.target.closest && event.target.closest("#detail");
       var path = event.detail.requestConfig && event.detail.requestConfig.path || "";
       if (!inPanel || !/\/(state|notes|rejected)$/.test(path)) return;
-      var current = selected();
-      if (!current) return;
-      var next = current.nextElementSibling || current.previousElementSibling;
-      nextAfter = {from: current.id, to: next && next.id};
+      var panel = document.querySelector("#detail .detail");
+      if (!panel) return;
+      var current = shownItem(), gap = window.jrGap || {};
+      var next = current ? (current.nextElementSibling || current.previousElementSibling)
+                         : (document.getElementById(gap.next || "") || document.getElementById(gap.prev || ""));
+      nextAfter = {from: "opportunity-" + panel.dataset.opportunity, to: next && next.id};
     });
     document.addEventListener("htmx:afterSettle", function () {
       if (!nextAfter) return;
-      var gone = !document.getElementById(nextAfter.from);
-      var to = nextAfter.to && document.getElementById(nextAfter.to);
+      var after = nextAfter;
       nextAfter = null;
-      if (gone) { if (to) open(to); else document.getElementById("detail").innerHTML = '<p class="muted">Nothing left in this tab.</p>'; }
-      else mark(document.getElementById(selected() ? selected().id : ""));
+      setTimeout(function () {  // let every swap of this response (panel, items, tabs) land first
+        var to = after.to && document.getElementById(after.to);
+        if (!document.getElementById(after.from)) { if (to) open(to); else clearPanel(); }
+        else mark(shownItem());
+      }, 0);
+    });
+    // Any redraw: keep the item shown in the panel highlighted.
+    document.addEventListener("htmx:afterSettle", function () {
+      var item = shownItem();
+      if (item && !item.classList.contains("selected")) item.classList.add("selected");
     });
     // After filtering, keep the selection if the item is still listed.
     document.addEventListener("htmx:afterSwap", function (event) {

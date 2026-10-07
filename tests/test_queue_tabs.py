@@ -246,3 +246,12 @@ def test_queue_has_the_notice_area_and_asks_for_notices_after_capture(client, se
     add(session, "Fresh role")
     text = client.get("/").text
     assert 'id="notices"' in text and "notify=1" in text
+
+
+def test_the_panel_decides_what_is_current_and_clears_after_the_last(client, session):
+    add(session, "Fresh role")
+    text = client.get("/").text
+    # A redrawn item loses its highlight, so the next-after-a-decision logic reads the panel.
+    assert 'document.querySelector("#detail .detail")' in text and "shownItem()" in text
+    assert "Nothing left in this tab." in text and "localStorage.removeItem(KEY)" in text
+    assert "#queue-body:not(:has(.item, p))::after" in text

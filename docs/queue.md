@@ -29,7 +29,7 @@ The main page (`/`) lists opportunities in tabs:
 
 ## Triage and keyboard
 
-Pick a vacancy in the list, read the panel, decide. After **interested**, **ignore**, **applied** or an ignore reason, the list and the counts update. When the vacancy leaves the tab, the panel opens the **next** one, so you can go through the tab one by one.
+Pick a vacancy in the list, read the panel, decide. After **interested**, **ignore**, **applied** or an ignore reason, the list and the counts update. When the vacancy leaves the tab, the panel opens the **next** one, so you can go through the tab one by one. After the last one the panel and the list are empty: "Nothing left in this tab" (#166). The vacancy in the panel is always the current one, even if its list item was redrawn meanwhile.
 
 | Key | Action |
 |---|---|

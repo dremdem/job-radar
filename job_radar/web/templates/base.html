@@ -37,6 +37,7 @@
     .item-title { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }  /* wrap, never cut (#160) */
     .item-meta { font-size: 13px; color: #A9B0BC; overflow-wrap: anywhere; }
     .item-line { font-size: 12px; }
+    #queue-body:not(:has(.item, p))::after { content: "Nothing here."; display: block; padding: 16px 20px; color: #8A92A0; }
     .notices { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1080; width: min(720px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px; }
     .notice { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 12px 16px; border-radius: 8px;
       background: #2A2216; border: 1px solid #8A6A2A; color: #F3E3C0; box-shadow: 0 6px 24px rgba(0, 0, 0, .5); font-size: 14px; }
