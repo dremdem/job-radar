@@ -11,21 +11,46 @@ The main page (`/`) lists opportunities in tabs:
 | **Auto-ignored** | `auto_ignore`: set by the rules in [settings.md](settings.md), with the reason | `/?tab=auto` |
 | **All** | everything | `/?tab=all` |
 
-Columns: title (with the full location, salary and badges below it), **Country**, company, score, state. The country is the last part of the location ("Lucknow, Uttar Pradesh, India" → India, "Germany (Remote)" → Germany); when the source gives only a city ("Lucknow (Remote)"), that is what is shown, and `—` when there is no location.
+**Layout (#158): an inbox.**
 
-Each tab label carries its count. Inside a tab the order is: score (after penalties), highest first; vacancies of companies that rejected you at the bottom.
+- **Header:** the tabs (each with its count), a search box, **Analyze ≥ 6.5**, **Sync** and the Claude status.
+- **Left: the list.** One compact item per vacancy: the score, colour-coded (green from 8, amber from 6, red below), the title, company · location, and one line that says the most useful thing. That is Claude's verdict ("Claude: apply · 82%"), a suggested reason to ignore ("ignore? only India"), "no description" or "not analyzed".
+- **Right: the panel** of the selected vacancy. It has the same content as its own page (**page →**):
+  - the state buttons, the one-tap reasons to ignore and the reason chips ([applications.md](applications.md#reasons-and-notes));
+  - the links and the reasons behind the score;
+  - Claude's analysis with the chat and quick prompts ([claude.md](claude.md));
+  - the description with *Python* highlighted, and the company history.
+
+**The order inside a tab:** score after penalties, highest first; vacancies of companies that rejected you go last.
+
+**The country** is the last part of the location ("Lucknow, Uttar Pradesh, India" → India, "Germany (Remote)" → Germany).
+
+**Analyze ≥ 6.5** queues every vacancy in the list with a score of 6.5 or more, a description and no Claude analysis yet.
+
+## Triage and keyboard
+
+Pick a vacancy in the list, read the panel, decide. After **interested**, **ignore**, **applied** or an ignore reason, the list and the counts update. When the vacancy leaves the tab, the panel opens the **next** one, so you can go through the tab one by one.
+
+| Key | Action |
+|---|---|
+| `J` / `K` | Next / previous vacancy |
+| `I` / `X` / `A` | Interested / ignore / applied |
+| `Enter` | Open the vacancy page |
+| `/` | Search |
+
+Keys are ignored while you type in a field.
 
 ## Filters
 
-In the table header, right under the column titles (like a spreadsheet's column filters): **Title**, **Country** and **Company**. Both match any part of the text, ignoring case (`ind` finds India, `EPAM` finds "EPAM Anywhere", `fastapi` finds "Senior Python Developer (FastAPI)"); with several filled, a vacancy must match all of them. Country is searched in the whole location (city, region, country), so `london` works too.
+The search box matches the title, the company and the location, ignoring case and anywhere in the text: `ind` finds India, `EPAM` finds "EPAM Anywhere", `fastapi` finds "Senior Python Developer (FastAPI)". The list updates while you type.
 
-The rows update while you type; the field keeps focus, and the header with the filters stays even when nothing matches. Filters are kept in the URL (`/?tab=review&title=python&country=india&company=tri`), survive switching tabs and clicking the row buttons, and the tab counts show how many vacancies match the filters.
+Filters are kept in the URL (`/?tab=review&title=python`), survive switching tabs, and the tab counts show how many vacancies match.
 
-## Current row
+## Current item
 
-Clicking a row — the vacancy link (also with the middle mouse button) or anywhere in the row — highlights it until you click another one. Open a vacancy in a new tab, study it, come back: the row you left from is marked. The choice is remembered in this browser (localStorage), so it survives a reload and the queue re-rendering after buttons and filters. After a reload the page **scrolls to the highlighted row**: a saved description changes the score, so the row may have moved in the list.
+The vacancy you open stays selected and is remembered in this browser (localStorage). After a reload, or coming back from the vacancy page, it is opened again and scrolled into view.
 
-**Back from a vacancy page.** **← Queue** on the vacancy page (**page →**) returns to the queue you came from, with the same tab and filters (remembered for this browser tab), and scrolls to the vacancy you opened (#150).
+**Back from a vacancy page.** **← Queue** on the vacancy page returns to the queue you came from, with the same tab and filters (remembered for this browser tab), and selects the vacancy you opened (#150).
 
 ## Description checks
 
@@ -35,11 +60,11 @@ When a vacancy has its description (sent by the [bookmarklet](linkedin-capture.m
 - `− No Python in description` and **−3** to the score when the word never appears — unless the title already says Python;
 - nothing without a description (the row keeps *verify manually*).
 
-The full text opens with the row's **Description** button in a large reading window (bigger font, paragraphs kept, title/company/location on top, every *Python* highlighted); close it with Esc, the × button or a click outside. No need to open LinkedIn again just to read. The quote shows the context: Python in "nice to have" counts the same as in the requirements, so read it. Also available as an auto-ignore rule in [settings.md](settings.md).
+The full text is in the panel and on the vacancy page, every *Python* highlighted. The quote shows the context: Python in "nice to have" counts the same as in the requirements, so read it. Also available as an auto-ignore rule in [settings.md](settings.md).
 
 ## Buttons
 
-- `interested` / `ignore` / `applied`, *ignore with reason* and `rejected` act at once, and only the rows they change are redrawn (that vacancy and the same company's other rows, #138), so the page does not jump. In a filtered tab a vacancy that no longer belongs there **disappears immediately** and the counts update, no reload needed. In **All** the row stays in place and only its state changes.
+- `interested` / `ignore` / `applied`, *ignore with reason* and `rejected` act at once. Only the list items they change are redrawn: that vacancy and the same company's other vacancies (#138). A vacancy that no longer belongs to the tab leaves the list, and the panel moves to the next one. In **All** it stays, with its new state.
 - There is no "back to new": find the vacancy in **Ignored** or **All** and pick another state.
 
 Company history, reasons and notes: [applications.md](applications.md).
@@ -76,13 +101,12 @@ The full log is under **details**, and a **reload** link appears at the end. Whe
 
 ## Phone
 
-The UI adapts to phone width (≤ 720 px, #111), for example over Tailscale (`tailscale serve`).
-- Each vacancy is a card with a strong border, a shadow and a background that alternates from card to card:
-  - the title with the score and the state;
-  - country · company, then badges and the Claude verdict;
-  - the action buttons in a row, large enough to tap, under a line that names the vacancy ("▸ Senior Backend Developer…"), so on a long card you always know which vacancy they act on (#125), with **Select** (pick for Claude) and **✨ Claude** (analyze this one) among them, so the tick is never next to the title link.
-- Long parts start folded on the phone: tap **Why 7.5** for the score reasons and **contacted · N** for the company history. Claude's verdict is a full-width block: tap anywhere on it (**Show ▾ / Hide ▴**) to open the analysis (#129).
-- The filters stack full width, and the Description window takes the whole screen.
-- The vacancy page (**page →**) has the state buttons too, so you can open a vacancy, read the Claude analysis and decide there.
+At phone width the list fills the screen, and tapping a vacancy opens its page. The page has the same panel content with large buttons; **← Queue** brings you back to the same item. The page works over Tailscale too (`tailscale serve`).
 
-Desktop keeps the table layout. Since #119 the UI uses Bootstrap 5 (from the jsDelivr CDN), light or dark like the system. Buttons are coloured by meaning: interested is green, ignore red, applied blue, rejected grey, and the main actions are filled.
+## Look
+
+Since #158 the UI is dark: ground #101318, accent #3D7BFF, IBM Plex Sans with Plex Mono for scores. It is built on Bootstrap 5 from the jsDelivr CDN (#119). Buttons are coloured by meaning:
+- interested is green;
+- ignore and reasons to ignore are red;
+- applied is blue;
+- the main actions are filled.

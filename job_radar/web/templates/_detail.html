@@ -1,0 +1,78 @@
+{# A vacancy in full: the inbox panel (mode "panel") and the vacancy page (mode "page"), #158. #}
+{% set links = o.source_records | selectattr("url") | list %}
+{% set panel = mode == "panel" %}
+{% set verdict = claude.result if claude and claude.state == "done" and claude.result else none %}
+<div class="detail" data-opportunity="{{ o.id }}">
+  <div class="detail-head">
+    <div class="detail-headline">
+      <h2 class="detail-title">{{ o.title }}</h2>
+      <div class="detail-meta">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if o.salary %} · {{ o.salary }}{% endif %} · <b>{{ o.state.value }}</b>
+        {% for r in links %} · <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">open on {{ r.url.split("/")[2] | replace("www.", "") }}</a>{% endfor %}
+        {% if panel %} · <a href="/opportunities/{{ o.id }}">page →</a>{% endif %}</div>
+      {% set has_description = o.source_records | selectattr("snapshots") | list | length > 0 %}
+      <div class="detail-badges">
+        {% if o.easy_apply %}<span class="badge">Easy Apply</span>{% endif %}
+        {% if o.source_records and o.source_records | map(attribute="source_type.value") | reject("equalto", "linkedin_search") | list | length == 0 %}<span class="badge">public search</span>{% endif %}
+        {% if o.source_records | selectattr("source_type.value", "equalto", "himalayas") | list %}<span class="badge">via Himalayas</span>{% endif %}
+        {% if not has_description %}<span class="badge warn">verify manually</span>{% endif %}
+        {% if o.auto_ignore_reason %}<span class="badge warn">auto-ignored: {{ o.auto_ignore_reason }}</span>{% endif %}
+        {% if rejected_at %}<span class="badge reject">rejected {{ rejected_at.strftime("%Y-%m-%d") }}</span>{% endif %}
+        {% if history_count %}<span class="badge">contacted · {{ history_count }}</span>{% endif %}
+        {% if applied_before %}<span class="badge warn">already applied {{ applied_before.strftime("%Y-%m-%d") }}</span>{% endif %}
+      </div>
+    </div>
+    {% if panel %}
+    {% set state_btn = {"interested": ("btn-outline-success", "I"), "ignore": ("btn-outline-danger", "X"), "applied": ("btn-outline-primary", "A")} %}
+    <div class="detail-actions">
+      {% for s in states %}
+      <button class="btn btn-sm {{ state_btn[s.value][0] }}" data-state-key="{{ state_btn[s.value][1] | lower }}"
+              hx-post="/opportunities/{{ o.id }}/state" hx-include=".col-filter" hx-vals='{"state": "{{ s.value }}", "from": "panel"}'
+              hx-target="#detail" hx-swap="innerHTML" {% if o.state == s %}disabled{% endif %}>{{ s.value }} <kbd>{{ state_btn[s.value][1] }}</kbd></button>
+      {% endfor %}
+      <button class="btn btn-sm btn-outline-secondary" hx-post="/opportunities/{{ o.id }}/rejected" hx-include=".col-filter" hx-vals='{"from": "panel"}'
+              hx-target="#detail" hx-swap="innerHTML">{{ "un-reject" if rejected_at else "rejected" }}</button>
+    </div>
+    {% else %}
+    {% include "_page_state.html" %}
+    {% endif %}
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat"><div class="stat-label">Score</div><div class="stat-value score-{{ 'hi' if eff_score is not none and eff_score >= 8 else ('mid' if eff_score is not none and eff_score >= 6 else 'lo') }}">{{ "%.1f"|format(eff_score) if eff_score is not none else "—" }}</div></div>
+    <div class="stat"><div class="stat-label">Claude</div><div class="stat-value line-{{ verdict.verdict if verdict else 'muted' }}">{{ verdict.verdict ~ " · " ~ verdict.match ~ "%" if verdict else ("analyzing…" if claude and claude.state in ("queued", "running") else "not analyzed") }}</div></div>
+    <div class="stat"><div class="stat-label">Location</div><div class="stat-value stat-text">{{ (verdict.location.verdict ~ " · " if verdict and verdict.location else "") ~ (country or o.location or "unknown") }}</div></div>
+  </div>
+
+  {% if panel %}{% with target = "#detail", page_from = "panel", swap = "innerHTML" %}{% include "_ignore_bar.html" %}{% endwith %}
+  {% else %}{% with target = "#page-state", page_from = "page" %}<div class="page-ignore">{% include "_ignore_bar.html" %}</div>{% endwith %}{% endif %}
+
+  {% if extra_reasons or o.score_reasons or rejected_at %}
+  <section class="panel-card">
+    <div class="card-label">Why {{ "%.1f"|format(eff_score) if eff_score is not none else "this score" }}</div>
+    <ul class="reasons">
+      {% for r in extra_reasons %}<li class="{{ 'pos' if r.sign == '+' else 'neg' }}">{{ '+' if r.sign == '+' else '−' }} {{ r.text }}</li>{% endfor %}
+      {% if python_quote %}<li class="muted quote">“{{ python_quote }}”</li>{% endif %}
+      {% if rejected_at %}<li class="neg">− Rejected by {{ o.company.name }} on {{ rejected_at.strftime("%Y-%m-%d") }}</li>{% endif %}
+      {% for r in o.score_reasons %}<li class="{{ 'pos' if r.sign == '+' else 'neg' }}">{{ '+' if r.sign == '+' else '−' }} {{ r.text }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <div class="panel-card">{% include "_claude_section.html" %}</div>
+
+  <section class="panel-card">
+    <div class="card-label">Description</div>
+    {% if description %}<div class="desc-text">{{ description | highlight_python }}</div>
+    {% else %}<p class="muted mb-0">No description saved. Open the vacancy and click the → Job Radar bookmarklet.</p>{% endif %}
+  </section>
+
+  <section class="panel-card">
+    <div class="card-label">Company history</div>
+    {% if history %}
+    <ul class="small mb-0">
+      {% for e in history %}<li>{{ e.at.strftime("%Y-%m-%d") }} · <b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}</li>{% endfor %}
+      {% if history_count > history | length %}<li class="muted">… {{ history_count - history | length }} more</li>{% endif %}
+    </ul>
+    {% else %}<p class="muted small mb-0">no contacts found</p>{% endif %}
+  </section>
+</div>

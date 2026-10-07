@@ -108,12 +108,12 @@ def test_analyze_pending_checks_stack_also_for_analyzed_descriptions(session):
 
 
 def test_queue_shows_stack_gap(client, session):
-    add_vacancy(session, title="Python Developer", text=GO_JOB)
+    o = add_vacancy(session, title="Python Developer", text=GO_JOB)
     model = FakeModel({"Go": {"status": "required", "quote": "working in Go in production"}})
     analyze_pending(session, model, known={k.lower() for k in KNOWN})
-    text = client.get("/").text
+    assert ">7.0<" in client.get("/").text  # 8.0 - 1
+    text = client.get(f"/opportunities/{o.id}/panel").text
     assert "Requires Go (not in your CV) — “working in Go in production”" in text
-    assert ">7.0<" in text  # 8.0 - 1
 
 
 @pytest.mark.parametrize(

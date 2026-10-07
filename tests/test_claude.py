@@ -209,7 +209,7 @@ def test_cli_runner_reports_missing_command(tmp_path):
 def test_queue_button_and_row_badges(client, session):
     o = vacancy(session)
     text = client.get("/").text
-    assert 'id="claude-analyze"' in text and f'class="claude-pick" value="{o.id}"' in text
+    assert 'id="analyze-top"' in text and 'data-has-description="1"' in text
     status = client.post("/claude/analyze", data={"ids": [o.id]}).text
     assert "1 queued" in status and 'hx-trigger="every 3s"' in status
     assert "Claude: queued" in client.get(f"/opportunities/{o.id}/row").text
@@ -217,7 +217,9 @@ def test_queue_button_and_row_badges(client, session):
     client.app.state.claude_worker.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
     client.app.state.claude_worker.run_once()
     row = client.get(f"/opportunities/{o.id}/row").text
-    assert "Claude: maybe · 70%" in row and "TensorFlow" in row and "(unverified)" in row
+    assert "Claude: maybe · 70%" in row and 'data-claude="done"' in row
+    panel = client.get(f"/opportunities/{o.id}/panel").text
+    assert "TensorFlow" in panel and "(unverified)" in panel
     assert "every 3s" not in client.get("/claude/status").text
 
 
@@ -370,9 +372,9 @@ def test_failed_row_has_a_retry_button(client, session):
     claude.enqueue(session, [o.id])
     client.app.state.claude_worker.runner = FakeRunner([ClaudeError("Not logged in")])
     client.app.state.claude_worker.run_once()
-    row = client.get(f"/opportunities/{o.id}/row").text
-    assert "Claude failed" in row and "1 attempt" in row
-    assert f'hx-post="/opportunities/{o.id}/claude"' in row and ">retry<" in row
+    panel = client.get(f"/opportunities/{o.id}/panel").text
+    assert "Claude failed" in panel and "1 attempt" in panel
+    assert f'hx-post="/opportunities/{o.id}/claude"' in panel and ">Analyze again<" in panel
 
 
 def test_row_links_to_the_chat(client, session):
@@ -381,22 +383,20 @@ def test_row_links_to_the_chat(client, session):
     w = client.app.state.claude_worker
     w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
     w.run_once()
-    row = client.get(f"/opportunities/{o.id}/row").text
-    assert f'href="/opportunities/{o.id}#chat"' in row and "Chat with Claude →" in row
+    # The chat lives right in the panel and on the vacancy page.
+    assert 'id="chat"' in client.get(f"/opportunities/{o.id}/panel").text
     assert 'id="chat"' in client.get(f"/opportunities/{o.id}").text
 
 
 def test_card_button_and_select_toggle(client, session):
     o = vacancy(session)
-    row = client.get("/").text
-    assert f'hx-post="/opportunities/{o.id}/claude"' in row and "✨ Claude" in row
-    assert 'class="btn btn-sm btn-outline-secondary select-toggle"' in row
-    assert 'id="pick-bar"' in row and 'data-claude-action="analyze"' in row
-    # The card button queues this one vacancy.
+    panel = client.get(f"/opportunities/{o.id}/panel").text
+    assert f'hx-post="/opportunities/{o.id}/claude"' in panel and ">Analyze with Claude<" in panel
+    # The panel button queues this one vacancy.
     client.post(f"/opportunities/{o.id}/claude")
     assert claude.latest(session, o.id).state == "queued"
     row = client.get(f"/opportunities/{o.id}/row").text
-    assert "Claude: queued" in row and "✨ Claude" not in row
+    assert "Claude: queued" in row
 
 
 def test_worker_can_be_switched_off(engine, database_url, tmp_path):
@@ -409,16 +409,6 @@ def test_worker_can_be_switched_off(engine, database_url, tmp_path):
     with TestClient(create_app(settings)) as client:
         assert client.app.state.claude_worker_on is False
         assert "Claude worker is off" in client.get("/claude/status").text
-
-
-def test_claude_verdict_is_a_big_toggle(client, session):
-    o = vacancy(session)
-    claude.enqueue(session, [o.id])
-    w = client.app.state.claude_worker
-    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
-    w.run_once()
-    row = client.get(f"/opportunities/{o.id}/row").text
-    assert '<summary class="fold fold-claude">' in row and 'class="fold-hint"' in row
 
 
 def test_chat_has_quick_prompts(client, session):
@@ -458,8 +448,8 @@ def test_finished_row_can_run_again(client, session):
     w = client.app.state.claude_worker
     w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
     w.run_once()
-    row = client.get(f"/opportunities/{o.id}/row").text
-    assert "↻ again" in row and f'hx-post="/opportunities/{o.id}/claude"' in row
+    panel = client.get(f"/opportunities/{o.id}/panel").text
+    assert ">Analyze again<" in panel and f'hx-post="/opportunities/{o.id}/claude"' in panel
 
 
 def test_answers_have_a_copy_button(client, session):

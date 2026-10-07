@@ -116,15 +116,27 @@ class Filters:
     country: str = ""
     company: str = ""
     title: str = ""
+    q: str = ""  # the inbox search box: title, company or location (#158)
 
     def matches(self, location: str | None, company: str, title: str = "") -> bool:
         def has(needle: str, text: str | None) -> bool:
             return needle.strip().casefold() in (text or "").casefold()
 
-        return has(self.country, location) and has(self.company, company) and has(self.title, title)
+        anywhere = " ".join((title, company, location or ""))
+        return (
+            has(self.country, location)
+            and has(self.company, company)
+            and has(self.title, title)
+            and has(self.q, anywhere)
+        )
 
     def href(self, tab: str) -> str:
-        pairs = (("title", self.title), ("country", self.country), ("company", self.company))
+        pairs = (
+            ("q", self.q),
+            ("title", self.title),
+            ("country", self.country),
+            ("company", self.company),
+        )
         return "/?" + urlencode({"tab": tab} | {k: v for k, v in pairs if v})
 
 
@@ -191,8 +203,9 @@ def create_app(
         country: str = "",
         company: str = "",
         title: str = "",
+        q: str = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title)
+        filters = Filters(country, company, title, q)
         return templates.TemplateResponse(
             request, "queue.html", _queue_context(session, _tab(tab), filters)
         )
@@ -207,9 +220,10 @@ def create_app(
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
         title: Annotated[str, Form()] = "",
+        q: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title)
+        filters = Filters(country, company, title, q)
         tab = _tab(tab)
         opportunity = _get_opportunity(session, opportunity_id)
         opportunity.state = state
@@ -218,6 +232,8 @@ def create_app(
         if source == "page":  # the vacancy page: redraw its buttons only
             context = {"o": opportunity, "states": _manual_states()}
             return templates.TemplateResponse(request, "_page_state.html", context)
+        if source == "panel":  # the inbox panel (#158)
+            return _panel_response(request, session, opportunity, tab, filters)
         # Replace only this row (or remove it when it leaves the tab) and refresh the tab counts
         # out of band: re-rendering the whole queue made the page jump to the end (#70).
         states = TABS[tab][1]
@@ -234,9 +250,10 @@ def create_app(
         country: str = "",
         company: str = "",
         title: str = "",
+        q: str = "",
     ) -> HTMLResponse:
         # One row for live updates (e.g. a description saved by the bookmarklet in another tab).
-        tab, filters = _tab(tab), Filters(country, company, title)
+        tab, filters = _tab(tab), Filters(country, company, title, q)
         opportunity = _get_opportunity(session, opportunity_id)
         states = TABS[tab][1]
         context = _row_context(session, opportunity) | _tabs_context(session, tab, filters)
@@ -246,13 +263,23 @@ def create_app(
         )
         return templates.TemplateResponse(request, "_row_and_tabs.html", context)
 
+    @app.get("/opportunities/{opportunity_id}/panel", response_class=HTMLResponse)
+    def opportunity_panel(
+        request: Request, opportunity_id: int, session: SessionDep, tab: str = DEFAULT_TAB
+    ) -> HTMLResponse:
+        # The inbox's right-hand panel (#158): the vacancy page's content.
+        opportunity = _get_opportunity(session, opportunity_id)
+        context = _row_context(session, opportunity) | _claude_context(session, opportunity_id)
+        context |= {"tab": _tab(tab), "mode": "panel"}
+        return templates.TemplateResponse(request, "_detail.html", context)
+
     @app.get("/opportunities/{opportunity_id}", response_class=HTMLResponse)
     def opportunity_page(
         request: Request, opportunity_id: int, session: SessionDep
     ) -> HTMLResponse:
         opportunity = _get_opportunity(session, opportunity_id)
         context = _row_context(session, opportunity) | _claude_context(session, opportunity_id)
-        context["tab"] = DEFAULT_TAB
+        context |= {"tab": DEFAULT_TAB, "mode": "page"}
         return templates.TemplateResponse(request, "opportunity.html", context)
 
     @app.get("/opportunities/{opportunity_id}/claude", response_class=HTMLResponse)
@@ -296,12 +323,16 @@ def create_app(
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
         title: Annotated[str, Form()] = "",
+        q: Annotated[str, Form()] = "",
+        source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title)
+        filters = Filters(country, company, title, q)
         # Rejection is per company: redraw this row and its company's other rows only (#138).
         opportunity = _get_opportunity(session, opportunity_id)
         toggle_manual_rejection(session, opportunity)
         session.commit()
+        if source == "panel":
+            return _panel_response(request, session, opportunity, _tab(tab), filters)
         return _company_rows(request, session, opportunity, _tab(tab), filters)
 
     @app.post("/opportunities/{opportunity_id}/notes", response_class=HTMLResponse)
@@ -317,9 +348,10 @@ def create_app(
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
         title: Annotated[str, Form()] = "",
+        q: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title)
+        filters = Filters(country, company, title, q)
         # Penalties and history are per company, so the whole queue is re-rendered.
         opportunity = _get_opportunity(session, opportunity_id)
         try:
@@ -334,6 +366,8 @@ def create_app(
         if source == "page":  # the vacancy page: show the new state
             context = {"o": opportunity, "states": _manual_states()}
             return templates.TemplateResponse(request, "_page_state.html", context)
+        if source == "panel":
+            return _panel_response(request, session, opportunity, _tab(tab), filters)
         return _company_rows(request, session, opportunity, _tab(tab), filters)
 
     @app.post("/notes/{note_id}/delete", response_class=HTMLResponse)
@@ -345,8 +379,9 @@ def create_app(
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
         title: Annotated[str, Form()] = "",
+        q: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title)
+        filters = Filters(country, company, title, q)
         note = session.get(OpportunityNote, note_id)
         if note is None:
             raise HTTPException(status_code=404, detail="Note not found")
@@ -625,6 +660,31 @@ def _get_opportunity(session: Session, opportunity_id: int) -> Opportunity:
     if opportunity is None:
         raise HTTPException(status_code=404, detail="Opportunity not found")
     return opportunity
+
+
+def _panel_response(
+    request: Request, session: Session, opportunity: Opportunity, tab: str, filters: Filters
+) -> HTMLResponse:
+    """The panel redrawn for this vacancy, and the list items of its company out of band
+    (updated, or deleted when they left the tab), and the tab counts (#158)."""
+    session.refresh(opportunity)
+    states = TABS[tab][1]
+    rejected = latest_rejections(session)
+
+    def visible(o: Opportunity) -> bool:
+        in_tab = states is None or o.state in states
+        return in_tab and filters.matches(o.location, o.company.name, o.title)
+
+    context = _row_context(session, opportunity, rejected) | _claude_context(
+        session, opportunity.id
+    )
+    context |= _tabs_context(session, tab, filters) | {"mode": "panel"}
+    company = session.scalars(
+        select(Opportunity).where(Opportunity.company_id == opportunity.company_id)
+    ).all()
+    context["items_shown"] = [_row_context(session, o, rejected) for o in company if visible(o)]
+    context["items_gone"] = [o.id for o in company if not visible(o)]
+    return templates.TemplateResponse(request, "_panel_and_items.html", context)
 
 
 def _company_rows(

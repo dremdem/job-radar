@@ -91,31 +91,37 @@ def test_duplicates_are_dropped_and_at_most_three():
 
 def test_one_tap_ignore_from_the_row(client, session):
     o = add_vacancy(session, title="Senior Python Developer", text="Fluent German is required.")
-    row = client.get("/").text
-    assert "Ignore: language: German" in row
+    assert "ignore? language: German" in client.get("/").text
+    assert "Ignore: language: German" in client.get(f"/opportunities/{o.id}/panel").text
     response = client.post(
         f"/opportunities/{o.id}/notes",
-        data={"action": "ignore", "kind": "language", "detail": "German", "comment": ""},
+        data={
+            "action": "ignore",
+            "kind": "language",
+            "detail": "German",
+            "comment": "",
+            "from": "panel",
+        },
     )
     assert response.status_code == 200
     session.refresh(o)
     assert o.state is OpportunityState.IGNORE
-    assert "language: German" in client.get("/?tab=ignored").text
+    assert "language: German" in client.get(f"/opportunities/{o.id}").text
 
 
 def test_reason_chips_and_work_format_reason(client, session):
     o = add_vacancy(session, title="Python Developer", text="Remote.")
     o.location = "Lucknow, India"
     session.commit()
-    row = client.get("/").text
-    assert 'class="chip"' in row and ">Location: India<" in row and ">Seniority<" in row
+    panel = client.get(f"/opportunities/{o.id}/panel").text
+    assert 'class="chip"' in panel and ">Location: India<" in panel and ">Seniority<" in panel
     client.post(f"/opportunities/{o.id}/notes", data={"action": "ignore", "kind": "work_format"})
-    assert "hybrid / on-site" in client.get("/?tab=ignored").text
+    assert "hybrid / on-site" in client.get(f"/opportunities/{o.id}").text
     client.post(
         f"/opportunities/{o.id}/notes",
         data={"action": "ignore", "kind": "stack", "detail": "Azure"},
     )
-    assert "stack: Azure" in client.get("/?tab=ignored").text
+    assert "stack: Azure" in client.get(f"/opportunities/{o.id}").text
 
 
 def test_claude_names_its_ignore_reason():

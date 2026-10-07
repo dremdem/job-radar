@@ -72,23 +72,27 @@ def test_queue_shows_details_and_sorts_by_score(client, session):
 
     text = client.get("/").text
     assert text.index("High match") < text.index("Low match")
-    assert "Worldwide (Remote)" in text
-    assert "Easy Apply" in text
-    assert "+ Python" in text and "\u2212 Frontend" in text
-    assert 'href="https://www.linkedin.com/jobs/view/42/"' in text
-    assert "verify manually" in text
+    assert "Worldwide (Remote)" in text and 'class="item-score score-hi">9.0<' in text
+    page = client.get(f"/opportunities/{high.id}").text
+    assert "Easy Apply" in page
+    assert "+ Python" in page and "\u2212 Frontend" in page
+    assert 'href="https://www.linkedin.com/jobs/view/42/"' in page
+    assert "verify manually" in page
 
 
 def test_reject_flags_all_company_opportunities(client, session):
     one = add_opportunity(session, title="Python Engineer", company="Globex", score=9)
-    add_opportunity(session, title="Backend Engineer", company="Globex", score=8)
-    add_opportunity(session, title="Other role", company="Initech", score=5)
+    two = add_opportunity(session, title="Backend Engineer", company="Globex", score=8)
+    other = add_opportunity(session, title="Other role", company="Initech", score=5)
 
-    response = client.post(f"/opportunities/{one.id}/rejected")
+    response = client.post(
+        f"/opportunities/{one.id}/rejected", data={"from": "panel", "tab": "review"}
+    )
     assert response.status_code == 200
     text = response.text
-    # Both Globex rows are flagged, Initech is not.
-    assert text.count("rejected ·") == 2
+    # Both Globex items are redrawn and flagged, Initech is not touched.
+    assert text.count("rejected · ") == 2
+    assert f'id="opportunity-{two.id}"' in text and f'id="opportunity-{other.id}"' not in text
     # Penalised score is shown (9 - 5 = 4.0), not the intrinsic 9.
     assert "4.0" in text
     assert "Rejected by Globex" in text
@@ -131,42 +135,25 @@ def test_queue_shows_company_history(client, session):
         )
     )
     session.commit()
-    text = client.get("/").text
+    text = client.get(f"/opportunities/{known.id}/panel").text
     assert "contacted · 1" in text
     assert "already applied 2026-03-12" in text
+    assert "Company history" in text and "2026-03-12 · <b>" in text
 
 
 def test_queue_says_no_contacts(client, session):
-    add_opportunity(session, title="Fresh company role")
-    assert "no contacts found" in client.get("/").text
+    o = add_opportunity(session, title="Fresh company role")
+    assert "no contacts found" in client.get(f"/opportunities/{o.id}/panel").text
 
 
 def test_queue_rows_have_state_buttons(client, session):
     opportunity = add_opportunity(session)
-    text = client.get("/").text
+    text = client.get(f"/opportunities/{opportunity.id}/panel?tab=review").text
     assert f'hx-post="/opportunities/{opportunity.id}/state"' in text
-    for state in ("interested", "ignore", "applied"):
-        assert f'hx-vals=\'{{"state": "{state}", "tab": "review"}}\'' in text
-
-
-def test_history_is_expanded_and_can_be_toggled(client, session):
-    from datetime import UTC, datetime
-
-    from job_radar.models import Application, ApplicationReview, ApplicationSource
-
-    known = add_opportunity(session)
-    session.add(
-        Application(
-            company_id=known.company_id,
-            applied_at=datetime(2026, 3, 12, tzinfo=UTC),
-            source=ApplicationSource.LINKEDIN,
-            review=ApplicationReview.CONFIRMED,
-        )
-    )
-    session.commit()
-    text = client.get("/").text
-    assert '<details class="history small" open>' in text
-    assert 'id="expand-all"' in text and 'id="collapse-all"' in text
+    for state, key in (("interested", "i"), ("ignore", "x"), ("applied", "a")):
+        assert f'hx-vals=\'{{"state": "{state}", "from": "panel"}}\'' in text
+        assert f'data-state-key="{key}"' in text
+    assert 'hx-target="#detail"' in text and 'hx-include=".col-filter"' in text
 
 
 def test_public_search_jobs_are_marked(client, session):
@@ -182,7 +169,7 @@ def test_public_search_jobs_are_marked(client, session):
         opportunity=o,
     )
     session.commit()
-    assert '<span class="badge">public search</span>' in client.get("/").text
+    assert '<span class="badge">public search</span>' in client.get(f"/opportunities/{o.id}").text
 
 
 def test_ignore_with_reason_from_the_queue(client, session):
@@ -193,8 +180,7 @@ def test_ignore_with_reason_from_the_queue(client, session):
     other = add_opportunity(session, title="Another role")
     other.score = 8.0
     session.commit()
-    text = client.get("/").text
-    assert 'name="detail" value="India"' in text
+    assert 'name="detail" value="India"' in client.get(f"/opportunities/{o.id}/panel").text
 
     response = client.post(
         f"/opportunities/{o.id}/notes",
@@ -203,29 +189,32 @@ def test_ignore_with_reason_from_the_queue(client, session):
             "kind": "only_location",
             "detail": "India",
             "comment": "residents",
+            "from": "panel",
+            "tab": "review",
         },
     )
     assert response.status_code == 200
     session.refresh(o)
     assert o.state is OpportunityState.IGNORE
     assert "only India · residents" in response.text
-    # The other vacancy of the same company now carries the risk and a lower score.
-    assert "Last time Acme hired only in India" in response.text
-    assert ">6.5<" in response.text
+    # The other vacancy of the same company now carries a lower score in the list...
+    assert f'id="opportunity-{other.id}"' in response.text and ">6.5<" in response.text
+    # ...and the risk on its own page.
+    assert "Last time Acme hired only in India" in client.get(f"/opportunities/{other.id}").text
 
     note = session.query(OpportunityNote).one()
-    after = client.post(f"/notes/{note.id}/delete").text
-    assert "Last time Acme hired only in India" not in after
+    client.post(f"/notes/{note.id}/delete")
+    assert "Last time Acme hired only in India" not in client.get(f"/opportunities/{other.id}").text
 
 
 def test_add_note_from_the_queue(client, session):
     o = add_opportunity(session)
     response = client.post(
         f"/opportunities/{o.id}/notes",
-        data={"action": "note", "kind": "note", "comment": "ask about EOR"},
+        data={"action": "note", "kind": "note", "comment": "ask about EOR", "from": "panel"},
     )
     assert response.status_code == 200
-    assert "ask about EOR" in response.text
+    assert "ask about EOR" in response.text and 'class="detail' in response.text
 
 
 def test_empty_note_is_rejected(client, session):
@@ -240,9 +229,9 @@ def test_queue_shows_language_risk(client, session):
     o = add_opportunity(session, title="Desarrollador Python Senior")
     o.score = 8.0
     session.commit()
-    text = client.get("/").text
+    assert ">0.0<" in client.get("/").text
+    text = client.get(f"/opportunities/{o.id}/panel").text
     assert "Title in Spanish: the job likely needs Spanish" in text
-    assert ">0.0<" in text
     assert '<option value="language">' in text
 
 
@@ -275,10 +264,11 @@ def test_queue_shows_python_check_from_description(client, session):
         )
         add_snapshot(session, record, text)
     session.commit()
-    text = client.get("/").text
+    text = client.get(f"/opportunities/{good.id}/panel").text
     assert "Python in description (x1; also FastAPI)" in text
     assert "Strong Python 3.10+" in text  # the quote
-    assert "No Python in description" in text and ">5.0<" in text
+    bad_text = client.get(f"/opportunities/{bad.id}/panel").text
+    assert "No Python in description" in bad_text and "Why 5.0" in bad_text
 
 
 def test_settings_offers_no_python_rule(client):
@@ -296,7 +286,7 @@ def test_himalayas_jobs_are_attributed(client, session):
     )
     add_snapshot(session, record, "Python and Django.")
     session.commit()
-    text = client.get("/").text
+    text = client.get(f"/opportunities/{o.id}/panel").text
     assert '<span class="badge">via Himalayas</span>' in text
     assert f'href="{url}"' in text and ">open on himalayas.app<" in text
 
@@ -312,10 +302,11 @@ def test_queue_rows_carry_phone_card_hooks(client, session):
     o.score_reasons = [{"sign": "+", "text": "Python"}]
     session.commit()
     text = client.get("/").text
-    assert "@media (max-width: 720px)" in text
-    assert 'class="cell-title"' in text and 'data-label="Score"' in text
-    assert '<details class="why"' in text and "Why 7.5" in text
+    # On a phone the list takes the full width and an item opens the vacancy page.
+    assert "@media (max-width: 991px)" in text
+    assert f'<a class="item" id="opportunity-{o.id}" href="/opportunities/{o.id}"' in text
     page = client.get(f"/opportunities/{o.id}").text
+    assert "Why 7.5" in page
     assert f'hx-post="/opportunities/{o.id}/state"' in page
     response = client.post(
         f"/opportunities/{o.id}/state", data={"state": "interested", "from": "page"}
@@ -341,19 +332,14 @@ def test_applications_rows_have_labels(client, session):
 def test_bootstrap_look(client, session):
     o = add_opportunity(session)
     text = client.get("/").text
-    assert "bootstrap@5.3" in text and "bsTheme" in text
+    assert "bootstrap@5.3" in text and "bsTheme" in text and '"dark"' in text
+    assert "IBM+Plex+Sans" in text
     assert 'class="navbar' in text and 'class="nav-link active"' in text
-    assert "btn btn-sm btn-outline-danger" in text  # ignore
-    assert "btn btn-sm btn-outline-success" in text  # interested
     assert 'class="tabs nav nav-pills' in text  # tabs
+    panel = client.get(f"/opportunities/{o.id}/panel").text
+    assert "btn-outline-success" in panel and "<kbd>I</kbd>" in panel
     page = client.get(f"/opportunities/{o.id}").text
     assert "btn btn-sm btn-outline-danger" in page
-    assert 'class="nav-link active"' not in page or 'href="/" class="nav-link active"' in text
-
-
-def test_actions_name_their_vacancy(client, session):
-    add_opportunity(session, title="Senior Backend Developer")
-    assert '<div class="actions-for small">▸ Senior Backend Developer</div>' in client.get("/").text
 
 
 def test_reason_redraws_only_the_company_rows(client, session):
@@ -364,19 +350,26 @@ def test_reason_redraws_only_the_company_rows(client, session):
     session.commit()
     response = client.post(
         f"/opportunities/{o.id}/notes",
-        data={"action": "ignore", "kind": "only_location", "detail": "India", "tab": "review"},
+        data={
+            "action": "ignore",
+            "kind": "only_location",
+            "detail": "India",
+            "tab": "review",
+            "from": "panel",
+        },
     ).text
-    assert 'id="queue"' not in response  # the queue itself is not re-rendered
-    assert f'id="opportunity-{o.id}"' not in response  # it left To review
+    assert 'id="queue"' not in response  # the list itself is not re-rendered
+    assert f'<a id="opportunity-{o.id}" hx-swap-oob="delete">' in response  # it left To review
     assert f'id="opportunity-{sibling.id}"' in response and 'hx-swap-oob="outerHTML"' in response
-    assert "Last time Globex hired only in India" in response
     assert f'id="opportunity-{other.id}"' not in response
     assert 'id="tabs"' in response
 
 
 def test_rejected_redraws_rows_not_the_queue(client, session):
     o = add_opportunity(session, title="Python Engineer", company="Globex", score=9)
-    response = client.post(f"/opportunities/{o.id}/rejected", data={"tab": "review"}).text
+    response = client.post(
+        f"/opportunities/{o.id}/rejected", data={"tab": "review", "from": "panel"}
+    ).text
     assert 'id="queue"' not in response and f'id="opportunity-{o.id}"' in response
     assert "un-reject" in response
 

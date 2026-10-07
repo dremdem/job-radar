@@ -1,0 +1,5 @@
+{% include "_detail.html" %}
+{# The company's list items: history and penalties are per company (#138, #158). #}
+{% for row in items_shown %}{% with o = row.o, eff_score = row.eff_score, claude = row.claude, suggestions = row.suggestions, description = row.description, country = row.country, rejected_at = row.rejected_at, oob_row = true %}{% include "_item.html" %}{% endwith %}{% endfor %}
+{% for id in items_gone %}<a id="opportunity-{{ id }}" hx-swap-oob="delete"></a>{% endfor %}
+{% with oob = true %}{% include "_tabs.html" %}{% endwith %}

@@ -1,30 +1,6 @@
 <div id="queue">
-{% include "_tabs.html" %}
-{% set filter_attrs = 'hx-get="/" hx-trigger="input changed delay:250ms, search" hx-include=".col-filter" hx-target="#queue-body" hx-select="#queue-body" hx-select-oob="#tabs" hx-swap="outerHTML" hx-push-url="true"' %}
-<p class="claude-bar small d-flex flex-wrap gap-2 align-items-center">
-  <button type="button" class="btn btn-sm btn-outline-secondary" id="claude-select" data-claude-action="select">Select ≥ 6.5</button>
-  <button type="button" class="btn btn-sm btn-outline-secondary" id="claude-clear" data-claude-action="clear">Clear</button>
-  <button type="button" class="btn btn-sm btn-primary" id="claude-analyze" data-claude-action="analyze">Analyze with Claude</button>
-  {% include "_claude_status.html" %}
-</p>
-<table class="table align-top">
-  <thead>
-    <tr><th>Title</th><th>Country</th><th>Company</th><th>Score</th><th>State</th><th></th></tr>
-    <tr class="filter-row">
-      <th><input type="hidden" class="col-filter" name="tab" value="{{ tab }}">
-        <input type="search" class="col-filter form-control form-control-sm" name="title" value="{{ filters.title }}" placeholder="filter title" autocomplete="off" aria-label="Filter by title" {{ filter_attrs | safe }}>
-        {% if filters.title or filters.country or filters.company %}<a class="small" href="/?tab={{ tab }}">clear filters</a>{% endif %}</th>
-      <th><input type="search" class="col-filter form-control form-control-sm" name="country" value="{{ filters.country }}" placeholder="filter country" autocomplete="off" aria-label="Filter by country" {{ filter_attrs | safe }}></th>
-      <th><input type="search" class="col-filter form-control form-control-sm" name="company" value="{{ filters.company }}" placeholder="filter company" autocomplete="off" aria-label="Filter by company" {{ filter_attrs | safe }}></th>
-      <th></th><th></th><th></th>
-    </tr>
-  </thead>
-  <tbody id="queue-body">
-    {% for row in rows %}
-    {% with o = row.o, rejected_at = row.rejected_at, eff_score = row.eff_score, history = row.history, history_count = row.history_count, applied_before = row.applied_before, extra_reasons = row.extra_reasons, country = row.country, reason_kinds = row.reason_kinds, python_quote = row.python_quote, description = row.description, claude = row.claude, chat_count = row.chat_count, suggestions = row.suggestions, stack_hint = row.stack_hint %}{% include "_row.html" %}{% endwith %}
-    {% else %}
-    <tr><td colspan="6" class="muted">Nothing here.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+  <div id="queue-body" class="items">
+    {% for row in rows %}{% with o = row.o, eff_score = row.eff_score, claude = row.claude, suggestions = row.suggestions, description = row.description, country = row.country, rejected_at = row.rejected_at %}{% include "_item.html" %}{% endwith %}
+    {% else %}<p class="muted p-3 mb-0">Nothing here.</p>{% endfor %}
+  </div>
 </div>

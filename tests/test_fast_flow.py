@@ -25,10 +25,10 @@ def vacancy(
 
 
 def test_row_shows_the_description_collapsed(client, session):
-    vacancy(session, description="About the job\nWe use Python and FastAPI.\nRemote.")
-    text = client.get("/").text
-    assert 'data-description="description-' in text
-    assert "We use <mark>Python</mark> and FastAPI." in text
+    o = vacancy(session, description="About the job\nWe use Python and FastAPI.\nRemote.")
+    assert 'data-has-description="1"' in client.get("/").text
+    panel = client.get(f"/opportunities/{o.id}/panel").text
+    assert 'class="desc-text' in panel and "We use <mark>Python</mark> and FastAPI." in panel
 
 
 def test_no_description_block_without_a_description(client, session):
@@ -67,7 +67,8 @@ def test_single_row_endpoint_unknown(client):
     assert client.get("/opportunities/999/row").status_code == 404
 
 
-def test_queue_listens_and_capture_page_signals_and_closes(client):
+def test_queue_listens_and_capture_page_signals_and_closes(client, session):
+    vacancy(session)
     queue = client.get("/").text
     capture = client.get("/capture").text
     assert 'BroadcastChannel("job-radar")' in queue and "/row?" in queue
@@ -76,10 +77,6 @@ def test_queue_listens_and_capture_page_signals_and_closes(client):
 
 def test_description_opens_in_a_modal_with_python_highlighted(client, session):
     o = vacancy(session, description="About the job\nWe use Python & <b>FastAPI</b>.\npython3 too.")
-    text = client.get("/").text
-    assert '<dialog id="description-dialog"' in text
-    assert f'data-description="description-{o.id}"' in text  # the row's button
-    assert f'<template id="description-{o.id}">' in text
+    text = client.get(f"/opportunities/{o.id}/panel").text
     assert "<mark>Python</mark>" in text and "<mark>python</mark>3" in text
     assert "&lt;b&gt;FastAPI&lt;/b&gt;" in text  # the text is escaped, only <mark> is markup
-    assert '<details class="description' not in text  # the old inline block is gone

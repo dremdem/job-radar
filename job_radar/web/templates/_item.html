@@ -1,0 +1,26 @@
+{# One vacancy in the inbox list (#158). Flat names: o, eff_score, claude, suggestions, description, country, rejected_at. #}
+{% set score_band = "hi" if eff_score is not none and eff_score >= 8 else ("mid" if eff_score is not none and eff_score >= 6 else "lo") %}
+{% if claude and claude.state == "done" and claude.result %}
+  {% set line, line_cls = "Claude: " ~ claude.result.verdict ~ " · " ~ claude.result.match ~ "%", "line-" ~ claude.result.verdict %}
+{% elif claude and claude.state in ("queued", "running") %}
+  {% set line, line_cls = "Claude: " ~ ("analyzing…" if claude.state == "running" else "queued"), "line-muted" %}
+{% elif rejected_at %}
+  {% set line, line_cls = "rejected · " ~ rejected_at.strftime("%Y-%m-%d"), "line-skip" %}
+{% elif o.auto_ignore_reason %}
+  {% set line, line_cls = "auto-ignored: " ~ o.auto_ignore_reason, "line-muted" %}
+{% elif suggestions %}
+  {% set line, line_cls = "ignore? " ~ suggestions[0].label, "line-ignore" %}
+{% elif not description %}
+  {% set line, line_cls = "no description", "line-muted" %}
+{% else %}
+  {% set line, line_cls = "not analyzed", "line-muted" %}
+{% endif %}
+<a class="item" id="opportunity-{{ o.id }}" href="/opportunities/{{ o.id }}"
+   data-score="{{ eff_score if eff_score is not none else '' }}" data-has-description="{{ 1 if description else 0 }}" data-claude="{{ claude.state if claude else '' }}"{% if oob_row %} hx-swap-oob="outerHTML"{% endif %}>
+  <span class="item-score score-{{ score_band }}">{{ "%.1f"|format(eff_score) if eff_score is not none else "—" }}</span>
+  <span class="item-main">
+    <span class="item-title">{{ o.title }}</span>
+    <span class="item-meta">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if tab == "all" %} · {{ o.state.value }}{% endif %}</span>
+    <span class="item-line {{ line_cls }}">{{ line }}</span>
+  </span>
+</a>

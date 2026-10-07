@@ -155,12 +155,12 @@ def test_ai_rule_is_off_by_default(session):
 
 
 def test_queue_shows_ai_reason_and_lowers_score(client, session):
-    add_vacancy(session)
+    o = add_vacancy(session)
     analyze_pending(session, FakeModel([UK_ANSWER]))
-    text = client.get("/").text
-    assert "AI: only for UK — “The applicant must be based in the UK" in text
     # 8.0 - 2.5; no Python bonus, the title already says Python.
-    assert ">5.5<" in text
+    assert ">5.5<" in client.get("/").text
+    text = client.get(f"/opportunities/{o.id}/panel").text
+    assert "AI: only for UK — “The applicant must be based in the UK" in text
 
 
 def test_settings_offer_the_ai_rule(client, session):

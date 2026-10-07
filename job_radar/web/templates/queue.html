@@ -1,11 +1,32 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Review queue</h2>
 {% if has_any %}
-<p class="small">Company history:
-  <button id="expand-all" type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleHistory(true)">Expand all</button>
-  <button id="collapse-all" type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleHistory(false)">Collapse all</button>
-</p>
+<div class="inbox">
+  <div class="inbox-top">
+    {% include "_tabs.html" %}
+    <div class="inbox-tools">
+      <input type="hidden" class="col-filter" name="tab" value="{{ tab }}">
+      {% for name in ("country", "company", "title") %}{% if filters[name] %}
+      <input type="hidden" class="col-filter" name="{{ name }}" value="{{ filters[name] }}">{% endif %}{% endfor %}
+      <input type="search" class="col-filter form-control form-control-sm inbox-search" name="q" value="{{ filters.q }}"
+             placeholder="Search title, company, country  ( / )" autocomplete="off" aria-label="Search vacancies"
+             hx-get="/" hx-trigger="input changed delay:250ms, search" hx-include=".col-filter" hx-target="#queue-body"
+             hx-select="#queue-body" hx-select-oob="#tabs" hx-swap="outerHTML" hx-push-url="true">
+      <button type="button" class="btn btn-sm btn-outline-primary" id="analyze-top" title="Queue every vacancy here with score ≥ 6.5, a description and no analysis yet">Analyze ≥ 6.5</button>
+      {% include "_claude_status.html" %}
+    </div>
+  </div>
+  <div class="inbox-body">
+    <section class="inbox-list" aria-label="Vacancies">
+      <div class="list-head"><span>Sorted by score</span><span class="kbd-hint">J / K to move</span></div>
+      {% include "_queue.html" %}
+    </section>
+    <section id="detail" class="inbox-detail" aria-live="polite">
+      <p class="muted">Pick a vacancy on the left.</p>
+    </section>
+  </div>
+</div>
+<p id="arrivals" class="small" hidden></p>
 <script>
   // Remember this queue's URL (tab, filters) so the vacancy page can come back to it (#150).
   (function () {
@@ -14,84 +35,140 @@
     document.addEventListener("htmx:pushedIntoHistory", keep);
     document.addEventListener("htmx:replacedInHistory", keep);
   })();
-  // The row you last clicked stays highlighted, so you find it after reading the vacancy
-  // in another tab. Remembered in this browser only; see docs/queue.md#current-row.
+  // The inbox (#158): select a vacancy, show it in the panel, move on after a decision.
   (function () {
     var KEY = "jr-current-row";
+    var wide = window.matchMedia("(min-width: 992px)");
+    var nextAfter = null;
+    function items() { return Array.from(document.querySelectorAll("#queue-body .item")); }
+    function selected() { return document.querySelector("#queue-body .item.selected"); }
     function remembered() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
-    function show(id) {
-      document.querySelectorAll("tr.current").forEach(function (r) { r.classList.remove("current"); });
-      var row = id && document.getElementById(id);
-      if (row) row.classList.add("current");
-      return row;
+    function tab() { var t = document.querySelector('input.col-filter[name="tab"]'); return t ? t.value : "review"; }
+    function mark(item) {
+      items().forEach(function (i) { i.classList.toggle("selected", i === item); });
+      if (!item) return;
+      try { localStorage.setItem(KEY, item.id); } catch (e) {}
+      item.scrollIntoView({block: "nearest"});
     }
-    function pick(event) {
-      var row = event.target.closest && event.target.closest('tr[id^="opportunity-"]');
-      if (!row) return;
-      try { localStorage.setItem(KEY, row.id); } catch (e) {}
-      show(row.id);
+    function open(item) {
+      if (!item) return;
+      mark(item);
+      if (!wide.matches || !window.htmx) return;
+      htmx.ajax("GET", "/opportunities/" + item.id.split("-")[1] + "/panel?tab=" + encodeURIComponent(tab()),
+                {target: "#detail", swap: "innerHTML"});
     }
-    document.addEventListener("click", pick);
-    document.addEventListener("auxclick", pick);  // middle click opens the link in a new tab
-    document.addEventListener("htmx:afterSwap", function () { show(remembered()); });
-    document.addEventListener("DOMContentLoaded", function () { show(remembered()); });
-    // A saved description changes the score, so after a reload the row may sit elsewhere in the
-    // list: bring it into view. The browser's own scroll restoration would undo this (#76).
-    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-    window.addEventListener("load", function () {
-      var row = show(remembered());
-      if (row) row.scrollIntoView({block: "center"});
+    window.jrOpenItem = open;
+    document.addEventListener("click", function (event) {
+      var item = event.target.closest && event.target.closest("#queue-body .item");
+      if (!item) return;
+      if (wide.matches && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.button === 0) {
+        event.preventDefault();
+        open(item);
+      } else {
+        mark(item);  // the phone opens the page; remember where you were
+      }
     });
-  })();
-  // jr-keep-scroll: actions that re-render the whole queue (rejected, reasons, notes) must not
-  // move the page; state buttons replace only their row (#70).
-  (function () {
-    var kept = null;
-    document.addEventListener("htmx:beforeSwap", function (e) {
-      if (e.detail.target && e.detail.target.id === "queue") kept = window.scrollY;
+    // A decision in the panel: remember the next item; open it if this one left the list.
+    document.addEventListener("htmx:beforeRequest", function (event) {
+      var inPanel = event.target.closest && event.target.closest("#detail");
+      var path = event.detail.requestConfig && event.detail.requestConfig.path || "";
+      if (!inPanel || !/\/(state|notes|rejected)$/.test(path)) return;
+      var current = selected();
+      if (!current) return;
+      var next = current.nextElementSibling || current.previousElementSibling;
+      nextAfter = {from: current.id, to: next && next.id};
     });
     document.addEventListener("htmx:afterSettle", function () {
-      if (kept !== null) { window.scrollTo(0, kept); kept = null; }
+      if (!nextAfter) return;
+      var gone = !document.getElementById(nextAfter.from);
+      var to = nextAfter.to && document.getElementById(nextAfter.to);
+      nextAfter = null;
+      if (gone) { if (to) open(to); else document.getElementById("detail").innerHTML = '<p class="muted">Nothing left in this tab.</p>'; }
+      else mark(document.getElementById(selected() ? selected().id : ""));
     });
-  })();
-  // Works on rows re-rendered by HTMX too: it looks the lists up on every click.
-  function toggleHistory(open) {
-    document.querySelectorAll("details.history").forEach((d) => { d.open = open; });
-  }
-</script>
-{% include "_queue.html" %}
-{% else %}
-<p class="muted">No opportunities yet. Import some with <code>job-radar sync &lt;source&gt;</code>.</p>
-{% endif %}
-<p id="arrivals" class="small" hidden></p>
-<dialog id="description-dialog" aria-label="Vacancy description">
-  <button type="button" class="dialog-close" aria-label="Close">×</button>
-  <div class="dialog-body"></div>
-</dialog>
-<script>
-  // Read a description in a large window: the row's button copies its <template> in.
-  (function () {
-    var dialog = document.getElementById("description-dialog");
-    var body = dialog.querySelector(".dialog-body");
-    document.addEventListener("click", function (event) {
-      var button = event.target.closest && event.target.closest("button[data-description]");
-      if (button) {
-        var source = document.getElementById(button.dataset.description);
-        if (!source) return;
-        body.replaceChildren(source.content.cloneNode(true));
-        dialog.showModal();
-        body.scrollTop = 0;
+    // After filtering, keep the selection if the item is still listed.
+    document.addEventListener("htmx:afterSwap", function (event) {
+      if (event.target && event.target.id === "queue-body") {
+        var item = document.getElementById(remembered() || "");
+        if (item) item.classList.add("selected");
+      }
+    });
+    // Keyboard: J/K move, I/X/A decide, Enter opens the page, / searches.
+    document.addEventListener("keydown", function (event) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      var tag = (event.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || event.target.isContentEditable) {
+        if (event.key === "Escape") event.target.blur();
         return;
       }
-      // A click on the dark backdrop (outside the window) closes it.
-      if (event.target === dialog) dialog.close();
+      var list = items(), current = selected(), i = current ? list.indexOf(current) : -1;
+      var key = event.key.toLowerCase();
+      if (key === "j" || key === "k") {
+        var to = list[Math.max(0, Math.min(list.length - 1, i + (key === "j" ? 1 : -1)))];
+        if (to) { event.preventDefault(); open(to); }
+      } else if (key === "i" || key === "x" || key === "a") {
+        var button = document.querySelector('#detail [data-state-key="' + key + '"]:not([disabled])');
+        if (button) { event.preventDefault(); if (window.htmx) htmx.process(button); button.click(); }  // a fresh panel may not be processed yet
+      } else if (key === "enter" && current) {
+        location.href = current.getAttribute("href");
+      } else if (key === "/") {
+        var search = document.querySelector(".inbox-search");
+        if (search) { event.preventDefault(); search.focus(); }
+      }
     });
-    dialog.querySelector(".dialog-close").addEventListener("click", function () { dialog.close(); });
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+    window.addEventListener("load", function () {
+      var item = document.getElementById(remembered() || "") || (wide.matches ? items()[0] : null);
+      if (item && wide.matches) open(item); else if (item) mark(item);
+    });
   })();
-</script>
-<script>
-  // Live updates from the Capture tab (bookmarklet): redraw the rows it changed, and say
-  // when new vacancies arrived. Same local app, so a BroadcastChannel reaches this tab.
+  // Analyze ≥ 6.5 and live updates from the Claude queue (docs/claude.md).
+  (function () {
+    var seen = null;
+    function redraw(id) {
+      var item = document.getElementById("opportunity-" + id);
+      if (!item || !window.htmx) return;
+      var query = new URLSearchParams(location.search).toString();
+      htmx.ajax("GET", "/opportunities/" + id + "/row?" + query, {target: "#opportunity-" + id, swap: "outerHTML"}).then(function () {
+        var again = document.getElementById("opportunity-" + id);
+        var panel = document.querySelector("#detail .detail");
+        if (again && panel && panel.dataset.opportunity === String(id)) window.jrOpenItem(again);
+      });
+    }
+    window.jrClaudeQueued = function (id) {
+      if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+      redraw(id);
+      htmx.ajax("GET", "/claude/status", {target: "#claude-status", swap: "outerHTML"});
+    };
+    document.getElementById("analyze-top").addEventListener("click", function () {
+      var ids = Array.from(document.querySelectorAll("#queue-body .item")).filter(function (i) {
+        return i.dataset.hasDescription === "1" && !i.dataset.claude && parseFloat(i.dataset.score) >= 6.5;
+      }).map(function (i) { return i.id.split("-")[1]; });
+      if (!ids.length) return;
+      if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+      htmx.ajax("POST", "/claude/analyze", {target: "#claude-status", swap: "outerHTML", values: {ids: ids}})
+        .then(function () { ids.forEach(redraw); });
+    });
+    function check() {
+      var status = document.getElementById("claude-status");
+      if (!status) return;
+      var recent = (status.dataset.recent || "").split(",").filter(Boolean);
+      if (seen === null) { seen = new Set(recent); return; }
+      recent.forEach(function (id) {
+        if (seen.has(id)) return;
+        seen.add(id);
+        redraw(id);
+        var item = document.getElementById("opportunity-" + id);
+        var title = item ? item.querySelector(".item-title").textContent.trim().slice(0, 80) : "vacancy " + id;
+        if ("Notification" in window && Notification.permission === "granted") new Notification("Claude analysis done", {body: title});
+      });
+    }
+    document.body.addEventListener("htmx:afterSettle", function (event) {
+      if (event.target && event.target.id === "claude-status") check();
+    });
+    check();
+  })();
+  // Live updates from the Capture tab (bookmarklet): redraw the items it changed.
   (function () {
     if (!("BroadcastChannel" in window)) return;
     var channel = new BroadcastChannel("job-radar");
@@ -101,9 +178,12 @@
       if (data.type !== "captured") return;
       var query = new URLSearchParams(location.search).toString();
       (data.opportunity_ids || []).forEach(function (id) {
-        var row = document.getElementById("opportunity-" + id);
-        if (row && window.htmx) {
-          htmx.ajax("GET", "/opportunities/" + id + "/row?" + query, {target: "#opportunity-" + id, swap: "outerHTML"});
+        var item = document.getElementById("opportunity-" + id);
+        if (item && window.htmx) {
+          htmx.ajax("GET", "/opportunities/" + id + "/row?" + query, {target: "#opportunity-" + id, swap: "outerHTML"}).then(function () {
+            var panel = document.querySelector("#detail .detail");
+            if (panel && panel.dataset.opportunity === String(id)) window.jrOpenItem(document.getElementById("opportunity-" + id));
+          });
         } else {
           arrived += 1;
         }
@@ -118,91 +198,7 @@
     };
   })();
 </script>
-<div id="pick-bar" class="pick-bar" hidden>
-  <span><b id="pick-count">0</b> selected</span>
-  <button type="button" class="btn btn-sm btn-primary" data-claude-action="analyze">Analyze with Claude</button>
-  <button type="button" class="btn btn-sm btn-outline-secondary" data-claude-action="select" title="Select every row with score ≥ 6.5">≥ 6.5</button>
-  <button type="button" class="btn btn-sm btn-outline-secondary" data-claude-action="clear" title="Clear the selection" aria-label="Clear">✕</button>
-</div>
-<script>
-  // Claude deep analysis (docs/claude.md): pick rows, queue them, and redraw each row when
-  // its analysis is done. The status span polls itself while anything is pending. A row has
-  // two boxes (title on desktop, Select toggle on the phone, #123); they stay in sync.
-  (function () {
-    var seen = null;
-    function picks() {
-      return Array.from(new Set(Array.from(document.querySelectorAll(".claude-pick:checked")).map(function (c) { return c.value; })));
-    }
-    function setPick(id, on) {
-      document.querySelectorAll('.claude-pick[value="' + id + '"]').forEach(function (c) { c.checked = on; });
-    }
-    function updateBar() {
-      var n = picks().length, bar = document.getElementById("pick-bar");
-      if (!bar) return;
-      bar.hidden = n === 0;
-      document.getElementById("pick-count").textContent = n;
-      document.body.classList.toggle("has-pick-bar", n > 0);
-    }
-    document.addEventListener("change", function (event) {
-      if (!event.target.classList.contains("claude-pick")) return;
-      setPick(event.target.value, event.target.checked);
-      updateBar();
-    });
-    document.addEventListener("click", function (event) {
-      var button = event.target.closest("[data-claude-action]");
-      if (!button) return;
-      var action = button.dataset.claudeAction;
-      if (action === "select") {
-        document.querySelectorAll("#queue-body tr[data-score]").forEach(function (row) {
-          var box = row.querySelector(".claude-pick");
-          if (box && row.dataset.hasDescription === "1" && parseFloat(row.dataset.score) >= 6.5) setPick(box.value, true);
-        });
-      } else if (action === "clear") {
-        document.querySelectorAll(".claude-pick").forEach(function (c) { c.checked = false; });
-      } else if (action === "analyze") {
-        var ids = picks();
-        if (!ids.length) return;
-        askNotifications();
-        htmx.ajax("POST", "/claude/analyze", {target: "#claude-status", swap: "outerHTML", values: {ids: ids}})
-          .then(function () { ids.forEach(redraw); });
-        document.querySelectorAll(".claude-pick").forEach(function (c) { c.checked = false; });
-      }
-      updateBar();
-    });
-    function askNotifications() {
-      if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
-    }
-    function redraw(id) {
-      var row = document.getElementById("opportunity-" + id);
-      if (!row || !window.htmx) return;
-      var query = new URLSearchParams(location.search).toString();
-      htmx.ajax("GET", "/opportunities/" + id + "/row?" + query, {target: "#opportunity-" + id, swap: "outerHTML"});
-    }
-    // The card's Claude button queued one vacancy: redraw it and start the status polling.
-    window.jrClaudeQueued = function (id) {
-      askNotifications();
-      redraw(id);
-      htmx.ajax("GET", "/claude/status", {target: "#claude-status", swap: "outerHTML"});
-    };
-    function check() {
-      var status = document.getElementById("claude-status");
-      if (!status) return;
-      var recent = (status.dataset.recent || "").split(",").filter(Boolean);
-      if (seen === null) { seen = new Set(recent); return; }  // already finished before this page
-      recent.forEach(function (id) {
-        if (seen.has(id)) return;
-        seen.add(id);
-        redraw(id);
-        var row = document.getElementById("opportunity-" + id);
-        var title = row ? row.querySelector("td a, td").textContent.trim().slice(0, 80) : "vacancy " + id;
-        if ("Notification" in window && Notification.permission === "granted") new Notification("Claude analysis done", {body: title});
-      });
-    }
-    document.body.addEventListener("htmx:afterSettle", function (event) {
-      if (event.target && event.target.id === "claude-status") check();
-      updateBar();
-    });
-    check();
-  })();
-</script>
+{% else %}
+<p class="muted">No opportunities yet. Import some with <code>job-radar sync &lt;source&gt;</code>.</p>
+{% endif %}
 {% endblock %}

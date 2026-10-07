@@ -1,11 +1,11 @@
 {# One-tap reasons (#117): suggestions from the checks, then reason chips. `target` and `extra` set by the includer. #}
-{% set target = target or "#queue" %}
+{% set target = target or "#queue" %}{% set swap = swap or "outerHTML" %}
 {% if suggestions %}
 <div class="suggest">
   {% for s in suggestions %}
   <button class="btn btn-sm btn-outline-danger btn-suggest" hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter"
           hx-vals='{{ {"action": "ignore", "kind": s.kind.value, "detail": s.detail or "", "comment": s.comment, "tab": tab, "from": page_from or ""} | tojson }}'
-          hx-target="{{ target }}" hx-swap="outerHTML" title="Ignore with this reason">Ignore: {{ s.label }}</button>
+          hx-target="{{ target }}" hx-swap="{{ swap }}" title="Ignore with this reason">Ignore: {{ s.label }}</button>
   {% endfor %}
 </div>
 {% endif %}
@@ -24,12 +24,12 @@
   {% for kind, detail, label in chips if label %}
   <button class="chip" hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter, #comment-{{ o.id }}"
           hx-vals='{{ {"action": "ignore", "kind": kind, "detail": detail, "tab": tab, "from": page_from or ""} | tojson }}'
-          hx-target="{{ target }}" hx-swap="outerHTML">{{ label }}</button>
+          hx-target="{{ target }}" hx-swap="{{ swap }}">{{ label }}</button>
   {% endfor %}
   <input id="comment-{{ o.id }}" name="comment" class="form-control form-control-sm d-inline-block w-auto" placeholder="comment (optional)" size="18">
   <details class="note-form">
     <summary class="fold">more…</summary>
-    <form hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter" hx-target="{{ target }}" hx-swap="outerHTML">
+    <form hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter" hx-target="{{ target }}" hx-swap="{{ swap }}">
       <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="from" value="{{ page_from or '' }}">
       <select name="kind" class="form-select form-select-sm d-inline-block w-auto">
         {% for k in reason_kinds %}<option value="{{ k.value }}">{{ "only (location)" if k.value == "only_location" else k.value | replace("_", " ") }}</option>{% endfor %}

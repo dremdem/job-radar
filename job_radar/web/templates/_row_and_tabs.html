@@ -1,4 +1,4 @@
-{% if show_row %}{% include "_row.html" %}{% endif %}
-{# Same-company rows: their history and penalties changed too (#138). #}
-{% for row in company_rows or [] %}{% with o = row.o, rejected_at = row.rejected_at, eff_score = row.eff_score, history = row.history, history_count = row.history_count, applied_before = row.applied_before, extra_reasons = row.extra_reasons, country = row.country, reason_kinds = row.reason_kinds, python_quote = row.python_quote, description = row.description, claude = row.claude, chat_count = row.chat_count, suggestions = row.suggestions, stack_hint = row.stack_hint, oob_row = true %}{% include "_row.html" %}{% endwith %}{% endfor %}
+{% if show_row %}{% include "_item.html" %}{% endif %}
+{# Same-company items: their history and penalties changed too (#138). #}
+{% for row in company_rows or [] %}{% with o = row.o, eff_score = row.eff_score, claude = row.claude, suggestions = row.suggestions, description = row.description, country = row.country, rejected_at = row.rejected_at, oob_row = true %}{% include "_item.html" %}{% endwith %}{% endfor %}
 {% with oob = true %}{% include "_tabs.html" %}{% endwith %}

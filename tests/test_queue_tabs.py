@@ -58,7 +58,10 @@ def test_processed_row_leaves_the_tab_at_once(client, session):
 def test_state_buttons_target_their_own_row(client, session):
     rows = seed(session)
     text = client.get("/").text
-    assert f'hx-target="#opportunity-{rows["new"].id}"' in text
+    # Items are links; decisions live in the panel, which redraws itself and the list.
+    assert f'<a class="item" id="opportunity-{rows["new"].id}"' in text
+    panel = client.get(f"/opportunities/{rows['new'].id}/panel").text
+    assert 'hx-target="#detail"' in panel
 
 
 def test_row_staying_in_the_tab_comes_back_alone(client, session):
@@ -74,7 +77,8 @@ def test_row_staying_in_the_tab_comes_back_alone(client, session):
 def test_full_rerenders_keep_the_scroll_position(client, session):
     seed(session)
     text = client.get("/").text
-    assert "jr-keep-scroll" in text
+    # The list scrolls on its own; the selected item is brought into view.
+    assert 'class="inbox-list"' in text and "scrollIntoView" in text
 
 
 def test_all_tab_keeps_the_row_and_updates_counts(client, session):
@@ -91,25 +95,20 @@ def test_all_tab_keeps_the_row_and_updates_counts(client, session):
 def test_buttons_carry_the_current_tab(client, session):
     rows = seed(session)
     text = client.get("/?tab=interested").text
-    assert f'hx-post="/opportunities/{rows["interested"].id}/state"' in text
-    assert '"tab": "interested"' in text
-    assert 'name="tab" value="interested"' in text
+    assert 'class="col-filter" name="tab" value="interested"' in text
+    assert f'id="opportunity-{rows["interested"].id}"' in text
+    # The panel opens with the list's tab, so a decision redraws the right tab.
+    assert "/panel?tab=" in text
+    response = client.post(
+        f"/opportunities/{rows['interested'].id}/state",
+        data={"state": "ignore", "from": "panel", "tab": "interested"},
+    ).text
+    assert f'<a id="opportunity-{rows["interested"].id}" hx-swap-oob="delete">' in response
 
 
 def test_empty_tab_message(client, session):
     add(session, "Fresh role")
     assert "Nothing here" in client.get("/?tab=applied").text
-
-
-def test_country_has_its_own_column(client, session):
-    o = add(session, "India role")
-    o.location = "Lucknow, Uttar Pradesh, India"
-    add(session, "No location role")
-    session.commit()
-    text = client.get("/").text
-    assert "<th>Country</th>" in text
-    assert 'data-label="Country">India</td>' in text
-    assert 'data-label="Country">—</td>' in text
 
 
 def seed_places(session):
@@ -155,6 +154,8 @@ def test_tab_links_keep_filters(client, session):
     text = client.get("/?company=tricon&country=india").text
     assert 'href="/?tab=interested&amp;country=india&amp;company=tricon"' in text
     assert 'name="company" value="tricon"' in text and 'name="country" value="india"' in text
+    text = client.get("/?q=tricon").text
+    assert 'href="/?tab=interested&amp;q=tricon"' in text
 
 
 def test_buttons_keep_filters(client, session):
@@ -169,29 +170,20 @@ def test_buttons_keep_filters(client, session):
     assert "To review (0)" in response.text
 
 
-def test_filters_sit_in_the_table_header(client, session):
-    seed_places(session)
-    text = client.get("/?company=tricon").text
-    thead = text[text.index("<thead>") : text.index("</thead>")]
-    assert 'name="country"' in thead and 'name="company" value="tricon"' in thead
-    assert 'hx-target="#queue-body"' in thead and 'hx-select-oob="#tabs"' in thead
-    assert 'id="filters"' not in text  # the old form above the tabs is gone
-
-
 def test_header_stays_when_nothing_matches(client, session):
     seed_places(session)
-    text = client.get("/?company=nobody-at-all").text
-    assert "<thead>" in text and 'name="company" value="nobody-at-all"' in text
-    assert "Nothing here" in text
+    text = client.get("/?q=nobody-at-all").text
+    assert 'name="q" value="nobody-at-all"' in text
+    assert 'id="queue-body"' in text and "Nothing here" in text
 
 
 def test_queue_highlights_the_row_you_opened(client, session):
     add(session, "Fresh role")
     text = client.get("/").text
-    assert "tr.current" in text  # style for the highlighted row
+    assert ".item.selected" in text  # style for the selected item
     assert "jr-current-row" in text  # remembered in localStorage
-    assert "htmx:afterSwap" in text and "auxclick" in text
-    assert "scrollIntoView" in text  # after a reload the row may have moved: bring it into view
+    assert "htmx:afterSwap" in text
+    assert "scrollIntoView" in text  # after a reload the item may have moved: bring it into view
 
 
 def test_filter_by_title(client, session):
@@ -208,3 +200,19 @@ def test_title_combines_with_other_filters_and_is_kept(client, session):
     assert "Backend India" in text and "Backend London" not in text
     assert 'name="title" value="backend"' in text
     assert 'href="/?tab=review&amp;title=backend&amp;country=india"' in text
+
+
+def test_search_box_matches_title_company_and_place(client, session):
+    seed_places(session)
+    text = client.get("/?tab=all&q=india").text
+    assert "Backend India" in text and "Backend London" not in text
+    assert 'name="q" value="india"' in text
+    assert 'hx-target="#queue-body"' in text and 'hx-select-oob="#tabs"' in text
+
+
+def test_keyboard_and_next_after_a_decision(client, session):
+    add(session, "Fresh role")
+    text = client.get("/").text
+    assert 'key === "j"' in text and 'key === "k"' in text
+    assert "data-state-key" in text  # I / X / A press the panel's buttons
+    assert "nextElementSibling" in text  # after a decision the next vacancy opens
