@@ -216,3 +216,11 @@ def test_keyboard_and_next_after_a_decision(client, session):
     assert 'key === "j"' in text and 'key === "k"' in text
     assert "data-state-key" in text  # I / X / A press the panel's buttons
     assert "nextElementSibling" in text  # after a decision the next vacancy opens
+
+
+def test_long_item_text_wraps_instead_of_being_cut(client, session):
+    add(session, "Fresh role", company="Logjec HR/Payroll Consultancy & Recruitment")
+    text = client.get("/").text
+    css = {line.split("{")[0].strip(): line for line in text.splitlines() if ".item-" in line}
+    for name in (".item-title", ".item-meta"):
+        assert "ellipsis" not in css[name] and "nowrap" not in css[name]

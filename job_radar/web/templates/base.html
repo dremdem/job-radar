@@ -34,8 +34,8 @@
     .item.selected { border-left-color: #3D7BFF; background: #18202B; }
     .item-score { flex: 0 0 38px; font-family: "IBM Plex Mono", monospace; font-size: 16px; }
     .item-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-    .item-title { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .item-meta { font-size: 13px; color: #A9B0BC; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item-title { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }  /* wrap, never cut (#160) */
+    .item-meta { font-size: 13px; color: #A9B0BC; overflow-wrap: anywhere; }
     .item-line { font-size: 12px; }
     .score-hi { color: #7FD3A2; } .score-mid { color: #E6C46A; } .score-lo { color: #F29A8A; }
     .line-apply { color: #7FD3A2; } .line-maybe { color: #E6C46A; } .line-skip, .line-ignore { color: #F29A8A; } .line-muted { color: var(--muted); }
