@@ -127,13 +127,11 @@ def test_worker_failure_is_stored(session, tmp_path):
     assert claude.enqueue(session, [o.id]) == 1
 
 
-def test_vacancy_without_description_fails_without_calling_claude(session, tmp_path):
+def test_vacancy_without_description_is_never_sent_to_claude(session, tmp_path):
     o = vacancy(session, text=None)
-    claude.enqueue(session, [o.id])
+    assert claude.enqueue(session, [o.id]) == 0
     runner = FakeRunner([])
-    worker(session, runner, tmp_path).run_once()
-    session.expire_all()
-    assert claude.latest(session, o.id).error == "no description saved for this vacancy"
+    assert worker(session, runner, tmp_path).run_once() is False
     assert runner.calls == []
 
 
@@ -440,3 +438,25 @@ def test_chat_has_quick_prompts(client, session):
     letter_en = dict(QUICK_PROMPTS)["Cover letter (EN)"]
     assert "in English" in letter_en and "do not invent" in letter_en.lower()
     assert "на русском" in dict(QUICK_PROMPTS)["Сопроводительное (RU)"]
+
+
+def test_vacancies_without_description_are_not_queued(client, session):
+    with_text = vacancy(session, title="With text")
+    without = vacancy(session, title="No text", text=None)
+    assert claude.enqueue(session, [with_text.id, without.id]) == 1
+    assert claude.latest(session, without.id) is None
+    status = client.post("/claude/analyze", data={"ids": [without.id]}).text
+    assert "1 skipped: no description" in status
+    row = client.get(f"/opportunities/{without.id}/row").text
+    assert "✨ Claude" not in row and "no description" in row
+    assert 'data-has-description="0"' in row
+
+
+def test_finished_row_can_run_again(client, session):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    w = client.app.state.claude_worker
+    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
+    w.run_once()
+    row = client.get(f"/opportunities/{o.id}/row").text
+    assert "↻ again" in row and f'hx-post="/opportunities/{o.id}/claude"' in row

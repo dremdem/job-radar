@@ -148,7 +148,7 @@
       if (action === "select") {
         document.querySelectorAll("#queue-body tr[data-score]").forEach(function (row) {
           var box = row.querySelector(".claude-pick");
-          if (box && parseFloat(row.dataset.score) >= 6.5) setPick(box.value, true);
+          if (box && row.dataset.hasDescription === "1" && parseFloat(row.dataset.score) >= 6.5) setPick(box.value, true);
         });
       } else if (action === "clear") {
         document.querySelectorAll(".claude-pick").forEach(function (c) { c.checked = false; });

@@ -1,7 +1,7 @@
 {% set s = claude_status %}
 <span id="claude-status" class="small" data-pending="{{ s.pending }}" data-recent="{{ s.recent | join(',') }}"
   {% if s.pending %}hx-get="/claude/status" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
-  {% if added is not none %}{{ added }} queued · {% endif %}
+  {% if added is not none %}{{ added }} queued · {% endif %}{% if skipped %}<span class="neg">{{ skipped }} skipped: no description</span> · {% endif %}
   {% if worker_off %}<span class="neg">Claude worker is off (JOB_RADAR_CLAUDE_WORKER=false) · </span>{% endif %}
   {% if s.pending %}<b>Claude:</b> {{ s.running }} running, {{ s.queued }} queued{% if s.capped %} · <span class="neg">daily limit {{ s.daily_cap }} reached, the rest waits until tomorrow</span>{% endif %}
   {% else %}<span class="muted">Claude: idle · {{ s.done_today }} / {{ s.daily_cap }} today</span>{% endif %}

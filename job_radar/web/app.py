@@ -391,8 +391,9 @@ def create_app(
         request: Request, session: SessionDep, ids: Annotated[list[int] | None, Form()] = None
     ) -> HTMLResponse:
         added = claude.enqueue(session, ids or [])
+        skipped = claude.without_description(session, ids or [])
         request.app.state.claude_worker.wake()
-        context = {
+        context = {"skipped": skipped} | {
             "claude_status": claude.status(session),
             "added": added,
             "worker_off": not request.app.state.claude_worker_on,

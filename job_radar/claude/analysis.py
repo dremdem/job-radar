@@ -56,11 +56,13 @@ def latest(session: Session, opportunity_id: int) -> ClaudeAnalysis | None:
 
 
 def enqueue(session: Session, opportunity_ids: list[int]) -> int:
-    """Queue the vacancies that are not queued or running already. Returns how many."""
+    """Queue the vacancies that are not queued or running already and have a description
+    (there is nothing to analyze without one, #146). Returns how many were queued."""
     model = load_claude_settings(session).model
     added = 0
     for opportunity_id in dict.fromkeys(opportunity_ids):
-        if session.get(Opportunity, opportunity_id) is None:
+        opportunity = session.get(Opportunity, opportunity_id)
+        if opportunity is None or not latest_description(opportunity):
             continue
         current = latest(session, opportunity_id)
         if current is not None and current.state in PENDING:
@@ -73,6 +75,12 @@ def enqueue(session: Session, opportunity_ids: list[int]) -> int:
         added += 1
     session.commit()
     return added
+
+
+def without_description(session: Session, opportunity_ids: list[int]) -> int:
+    """How many of these vacancies have no description (and so are not queued)."""
+    found = (session.get(Opportunity, i) for i in dict.fromkeys(opportunity_ids))
+    return sum(1 for o in found if o is not None and not latest_description(o))
 
 
 def latest_done(session: Session, opportunity_id: int) -> ClaudeAnalysis | None:
