@@ -51,6 +51,7 @@ from ..notes import (
     location_penalty,
 )
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
+from ..skills import build_report
 from ..stack import LISTS, Profile, current_profile, load_profile, save_profile
 from ..suggestions import suggest
 from .sync_job import Runner, SyncJob
@@ -422,6 +423,40 @@ def create_app(
         claude.save_claude_settings(session, ClaudeSettings(model, daily_cap, language))
         context = _settings_context(session, settings) | {"message": "Claude settings saved."}
         return templates.TemplateResponse(request, "settings.html", context)
+
+    @app.get("/skills", response_class=HTMLResponse)
+    def skills_page(
+        request: Request, session: SessionDep, days: int = 0, scope: str = "open"
+    ) -> HTMLResponse:
+        everything = scope == "all"
+        report = build_report(
+            session, load_profile(settings.profile), days=days or None, everything=everything
+        )
+        context = {"report": report, "days": days, "scope": scope, "message": ""}
+        return templates.TemplateResponse(request, "skills.html", context)
+
+    @app.post("/skills/level", response_class=HTMLResponse)
+    def skills_level(
+        request: Request,
+        session: SessionDep,
+        name: Annotated[str, Form()],
+        level: Annotated[str, Form()],
+        days: Annotated[int, Form()] = 0,
+        scope: Annotated[str, Form()] = "open",
+    ) -> HTMLResponse:
+        if level not in ("known", "learnable", "blockers") or not name.strip():
+            raise HTTPException(status_code=422, detail="Unknown level")
+        profile = load_profile(settings.profile) or Profile()
+        lists = {k: [x for x in getattr(profile, k) if x.lower() != name.strip().lower()]
+                 for k in ("known", "learnable", "blockers")}  # fmt: skip
+        lists[level].append(name.strip())
+        save_profile(settings.profile, Profile(**lists, rules=profile.rules))
+        report = build_report(
+            session, load_profile(settings.profile), days=days or None, everything=scope == "all"
+        )
+        message = f"{name.strip()} is now {level.rstrip('s')} in your profile."
+        context = {"report": report, "days": days, "scope": scope, "message": message}
+        return templates.TemplateResponse(request, "skills.html", context)
 
     @app.get("/profile", response_class=HTMLResponse)
     def profile_page(request: Request) -> HTMLResponse:

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Skills · Job Radar{% endblock %}
+{% block content %}
+<h2>Skills gap</h2>
+<p class="small muted">Technologies the vacancies require and your profile does not know, from Claude's analyses and the local stack check. <b>Would unlock</b>: vacancies where it is the only missing must-have and nothing else blocks. Details: docs/skills.md.</p>
+{% if message %}<p><b>{{ message }}</b></p>{% endif %}
+<form method="get" action="/skills" class="small d-flex flex-wrap gap-2 align-items-center mb-3">
+  <label>Period <select name="days" class="form-select form-select-sm d-inline-block w-auto" onchange="this.form.submit()">
+    {% for value, label in [(30, "30 days"), (90, "90 days"), (0, "all")] %}<option value="{{ value }}" {% if days == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select></label>
+  <label>Count <select name="scope" class="form-select form-select-sm d-inline-block w-auto" onchange="this.form.submit()">
+    <option value="open" {% if scope != "all" %}selected{% endif %}>vacancies still open</option>
+    <option value="all" {% if scope == "all" %}selected{% endif %}>all analysed (market demand)</option>
+  </select></label>
+  <span class="muted">{{ report.vacancies }} vacancies with gaps</span>
+</form>
+{% if report.best[1] %}
+<div class="card mb-3"><div class="card-body small">
+  <b>Best to learn</b>
+  <ul class="mb-0">
+    {% for k in (1, 2, 3) %}{% if report.best[k] | length == k %}<li>{{ report.best[k] | join(" + ") }} → <b>{{ report.best_unlocks[k] }}</b> vacancies unlocked</li>{% endif %}{% endfor %}
+  </ul>
+</div></div>
+{% endif %}
+<table class="table align-top skills">
+  <thead><tr><th>Technology</th><th>Must-have</th><th>Nice</th><th>Would unlock</th><th>Avg score</th><th>In profile</th><th></th></tr></thead>
+  <tbody>
+  {% for r in report.rows %}
+  <tr>
+    <td><details><summary class="fold"><b>{{ r.name }}</b></summary>
+      <ul class="small mb-1">{% for e in r.examples[:8] %}<li><a href="/opportunities/{{ e.opportunity_id }}">{{ e.title }}</a> · {{ e.company }}{% if e.quote %} <span class="muted">“{{ e.quote | truncate(120, true, "…") }}”</span>{% endif %}</li>{% endfor %}
+      {% if r.examples | length > 8 %}<li class="muted">… {{ r.examples | length - 8 }} more</li>{% endif %}</ul>
+    </details></td>
+    <td data-label="Must-have">{{ r.must }}</td>
+    <td data-label="Nice">{{ r.nice }}</td>
+    <td data-label="Would unlock"><b>{{ r.unlock }}</b></td>
+    <td data-label="Avg score">{{ r.avg_score if r.avg_score is not none else "—" }}</td>
+    <td data-label="In profile">{{ "not listed" if r.level == "unknown" else r.level }}</td>
+    <td class="text-nowrap">
+      {% for level, label in [("known", "known"), ("learnable", "learnable"), ("blockers", "blocker")] %}
+      <form method="post" action="/skills/level" class="d-inline"><input type="hidden" name="name" value="{{ r.name }}"><input type="hidden" name="days" value="{{ days }}"><input type="hidden" name="scope" value="{{ scope }}">
+        <button class="btn btn-sm btn-outline-secondary" name="level" value="{{ level }}" {% if r.level == level.rstrip("s") or (level == "known" and r.level == "known") %}disabled{% endif %}>{{ label }}</button></form>
+      {% endfor %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="muted">No gaps found yet: analyze vacancies with Claude or run Sync for the local stack check.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if report.non_tech %}
+<h3>Not technologies</h3>
+<p class="small muted">Degree, years, leadership, language, domain: shown for the record, not something to learn in days.</p>
+<ul class="small">{% for name, n in report.non_tech.most_common(15) %}<li>{{ name }} — {{ n }}</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}

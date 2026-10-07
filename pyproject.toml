@@ -66,5 +66,7 @@ dev = [
 "tests/test_suggestions.py" = ["RUF001"]
 "tests/test_hh_digests.py" = ["RUF001"]
 "tests/test_hh_capture.py" = ["RUF001"]
+"tests/test_skills.py" = ["RUF001"]
+"job_radar/skills.py" = ["RUF001"]
 "job_radar/hh/digests.py" = ["RUF001"]
 "job_radar/claude/prompt.py" = ["RUF001"]

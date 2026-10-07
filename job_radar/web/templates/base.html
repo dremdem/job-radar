@@ -148,6 +148,11 @@
       #queue-body .cell-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
       #queue-body .cell-actions .note-form { flex-basis: 100%; }
       .title-pick { display: none; }
+      table.skills td { padding: 2px 0; border: none; }
+      table.skills tr { border-bottom: 1px solid var(--bs-border-color); padding: 6px 0; }
+      table.skills td[data-label] { display: inline-block; width: auto; margin-right: 12px; }
+      table.skills td[data-label]::before { content: attr(data-label) ": "; color: var(--bs-secondary-color); }
+      table.skills td.text-nowrap { white-space: normal !important; }
       summary.fold { min-height: 40px; padding: 6px 8px; }
       summary.fold-claude { min-height: 48px; background: var(--bs-tertiary-bg); }
       .select-toggle { display: inline-flex; align-items: center; min-height: 40px; }
@@ -177,7 +182,7 @@
   <nav class="navbar navbar-expand border-bottom mb-3 flex-wrap gap-2">
     <a class="navbar-brand fw-bold" href="/">Job Radar</a>
     <div class="navbar-nav flex-wrap">
-      {% for href, label in [("/", "Queue"), ("/applications", "Applications"), ("/capture", "Capture"), ("/settings", "Settings"), ("/profile", "Profile")] %}
+      {% for href, label in [("/", "Queue"), ("/applications", "Applications"), ("/capture", "Capture"), ("/skills", "Skills"), ("/settings", "Settings"), ("/profile", "Profile")] %}
       <a href="{{ href }}" class="nav-link{% if path == href or (href == '/' and path.startswith('/opportunities')) %} active{% endif %}">{{ label }}</a>
       {% endfor %}
     </div>
