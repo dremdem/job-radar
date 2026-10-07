@@ -1,5 +1,6 @@
 {% set icons = {"waiting": "·", "running": "…", "done": "✓", "off": "off", "failed": "✗"} %}
-<span id="sync-status" class="small"{% if job.state == "running" %} hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+{% set finished = job.state in ("done", "failed") %}
+<span id="sync-status" class="small"{% if job.state == "running" %} hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}{% if finished and job.finished_at %} data-finished="{{ job.finished_at.isoformat() }}"{% endif %}>
   {% if job.state == "running" %}
     <b>Sync running…</b>
   {% elif job.state == "done" %}
@@ -7,16 +8,20 @@
   {% elif job.state == "failed" %}
     <b>Sync failed:</b> {{ job.error }}
   {% endif %}
-  {% if job.steps and job.state != "idle" %}
+  {% if finished %}<button type="button" class="link sync-dismiss" title="Hide until the next sync" aria-label="Hide">✕</button>{% endif %}
+  {% if job.state != "idle" and (job.steps or job.lines) %}
+  {# While running the steps are open; when it is over they fold into "details" (#147). #}
+  <details class="sync-log"{% if not finished %} open{% endif %}><summary>details</summary>
+  {% if job.steps %}
   <ul class="sync-steps">
     {% for s in job.steps %}<li class="step-{{ s.state }}"><span class="step-icon">{{ icons[s.state] }}</span> {{ s.label }}{% if s.summary %} <span class="muted" title="{{ s.summary }}">— {{ s.summary | truncate(110, true, "…") }}</span>{% endif %}</li>
     {% endfor %}
   </ul>
   {% endif %}
-  {% if job.lines and job.state != "idle" %}
-  <details class="sync-log"><summary>details</summary>
+  {% if job.lines %}
     <pre>{% for line in job.lines[-40:] %}{{ line }}
 {% endfor %}</pre>
+  {% endif %}
   </details>
   {% endif %}
 </span>

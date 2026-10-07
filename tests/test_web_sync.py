@@ -93,3 +93,15 @@ def test_sync_error_is_shown(engine, database_url):
 
 def test_status_before_any_sync(client):
     assert client.get("/sync/status").status_code == 200
+
+
+def test_finished_status_folds_and_can_be_dismissed(engine, database_url):
+    def runner(echo, on_steps):
+        echo("telegram: 2 new posts")
+
+    with make_client(database_url, runner) as client:
+        client.post("/sync")
+        text = wait_done(client)
+    assert "data-finished=" in text and 'class="link sync-dismiss"' in text
+    assert '<details class="sync-log">' in text  # folded, not open
+    assert "jr-sync-dismissed" in client.get("/").text

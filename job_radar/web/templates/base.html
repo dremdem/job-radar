@@ -186,6 +186,26 @@
   <div><span id="sync-status" class="small" hx-get="/sync/status" hx-trigger="load" hx-swap="outerHTML"></span></div>
   {% block content %}{% endblock %}
 <script>
+  // A finished sync can be dismissed until the next one; the browser remembers which (#147).
+  (function () {
+    var KEY = "jr-sync-dismissed";
+    function apply(el) {
+      if (!el || !el.dataset.finished) return;
+      var dismissed = null;
+      try { dismissed = localStorage.getItem(KEY); } catch (e) {}
+      el.hidden = dismissed === el.dataset.finished;
+    }
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".sync-dismiss");
+      if (!button) return;
+      var el = document.getElementById("sync-status");
+      try { localStorage.setItem(KEY, el.dataset.finished); } catch (e) {}
+      el.hidden = true;
+    });
+    document.body.addEventListener("htmx:afterSettle", function () { apply(document.getElementById("sync-status")); });
+  })();
+</script>
+<script>
   // On a phone, long parts of each row start folded (#111); desktop keeps them open.
   (function () {
     var phone = window.matchMedia("(max-width: 720px)");
