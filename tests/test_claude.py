@@ -460,3 +460,19 @@ def test_finished_row_can_run_again(client, session):
     w.run_once()
     row = client.get(f"/opportunities/{o.id}/row").text
     assert "↻ again" in row and f'hx-post="/opportunities/{o.id}/claude"' in row
+
+
+def test_answers_have_a_copy_button(client, session):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    w = client.app.state.claude_worker
+    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
+    w.run_once()
+    claude.ask(session, o.id, "Cover letter please")
+    w.runner = FakeRunner([Reply("Dear team,\n<b>Alex</b>", None, "s", None)])
+    w.run_once()
+    page = client.get(f"/opportunities/{o.id}").text
+    assert (
+        page.count('class="btn btn-sm btn-outline-secondary mt-1 copy-answer"') == 1
+    )  # answers only
+    assert '<textarea class="msg-raw" hidden>Dear team,\n&lt;b&gt;Alex&lt;/b&gt;</textarea>' in page

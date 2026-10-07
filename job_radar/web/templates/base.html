@@ -186,6 +186,22 @@
   <div><span id="sync-status" class="small" hx-get="/sync/status" hx-trigger="load" hx-swap="outerHTML"></span></div>
   {% block content %}{% endblock %}
 <script>
+  // Copy a Claude answer in one tap (#152); http on a LAN address has no Clipboard API.
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest(".copy-answer");
+    if (!button) return;
+    var text = button.parentElement.querySelector(".msg-raw").value;
+    function done() { var label = button.textContent; button.textContent = "Copied ✓"; setTimeout(function () { button.textContent = label; }, 1500); }
+    function fallback() {
+      var area = document.createElement("textarea");
+      area.value = text; area.style.position = "fixed"; area.style.opacity = "0";
+      document.body.appendChild(area); area.select();
+      try { document.execCommand("copy"); done(); } finally { area.remove(); }
+    }
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+  });
+</script>
+<script>
   // A finished sync can be dismissed until the next one; the browser remembers which (#147).
   (function () {
     var KEY = "jr-sync-dismissed";
