@@ -224,3 +224,25 @@ def test_long_item_text_wraps_instead_of_being_cut(client, session):
     css = {line.split("{")[0].strip(): line for line in text.splitlines() if ".item-" in line}
     for name in (".item-title", ".item-meta"):
         assert "ellipsis" not in css[name] and "nowrap" not in css[name]
+
+
+def test_capture_update_leaves_a_notice_when_the_vacancy_left_the_tab(client, session):
+    o = add(session, "Senior Java Developer", company="Globex")
+    o.state = OpportunityState.AUTO_IGNORE
+    o.auto_ignore_reason = "title: java"
+    session.commit()
+    row = client.get(f"/opportunities/{o.id}/row?tab=review&notify=1").text
+    assert 'class="item"' not in row  # it left To review
+    assert 'hx-swap-oob="beforeend:#notices"' in row
+    assert "Senior Java Developer" in row and "Globex" in row
+    assert "moved to <b>Auto-ignored</b>" in row and "title: java" in row
+    assert f'href="/opportunities/{o.id}"' in row and ">Close<" in row
+    # Without notify (Claude updates) and while still in the tab: no notice.
+    assert "#notices" not in client.get(f"/opportunities/{o.id}/row?tab=review").text
+    assert "#notices" not in client.get(f"/opportunities/{o.id}/row?tab=auto&notify=1").text
+
+
+def test_queue_has_the_notice_area_and_asks_for_notices_after_capture(client, session):
+    add(session, "Fresh role")
+    text = client.get("/").text
+    assert 'id="notices"' in text and "notify=1" in text

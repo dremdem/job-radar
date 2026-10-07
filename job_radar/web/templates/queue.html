@@ -26,6 +26,7 @@
     </section>
   </div>
 </div>
+<div id="notices" class="notices" aria-live="assertive"></div>
 <p id="arrivals" class="small" hidden></p>
 <script>
   // Remember this queue's URL (tab, filters) so the vacancy page can come back to it (#150).
@@ -52,6 +53,7 @@
     }
     function open(item) {
       if (!item) return;
+      window.jrGap = null;
       mark(item);
       if (!wide.matches || !window.htmx) return;
       htmx.ajax("GET", "/opportunities/" + item.id.split("-")[1] + "/panel?tab=" + encodeURIComponent(tab()),
@@ -103,6 +105,11 @@
       }
       var list = items(), current = selected(), i = current ? list.indexOf(current) : -1;
       var key = event.key.toLowerCase();
+      if ((key === "j" || key === "k") && !current && window.jrGap) {
+        // The shown vacancy left the list after a capture: continue from its old place (#162).
+        var near = document.getElementById(key === "j" ? window.jrGap.next : window.jrGap.prev);
+        if (near) { event.preventDefault(); open(near); return; }
+      }
       if (key === "j" || key === "k") {
         var to = list[Math.max(0, Math.min(list.length - 1, i + (key === "j" ? 1 : -1)))];
         if (to) { event.preventDefault(); open(to); }
@@ -180,9 +187,18 @@
       (data.opportunity_ids || []).forEach(function (id) {
         var item = document.getElementById("opportunity-" + id);
         if (item && window.htmx) {
-          htmx.ajax("GET", "/opportunities/" + id + "/row?" + query, {target: "#opportunity-" + id, swap: "outerHTML"}).then(function () {
+          var wasSelected = item.classList.contains("selected");
+          var next = item.nextElementSibling, prev = item.previousElementSibling;
+          var asked = query ? query + "&notify=1" : "notify=1";  // a notice if it leaves the tab (#162)
+          htmx.ajax("GET", "/opportunities/" + id + "/row?" + asked, {target: "#opportunity-" + id, swap: "outerHTML"}).then(function () {
+            var again = document.getElementById("opportunity-" + id);
             var panel = document.querySelector("#detail .detail");
-            if (panel && panel.dataset.opportunity === String(id)) window.jrOpenItem(document.getElementById("opportunity-" + id));
+            var shown = panel && panel.dataset.opportunity === String(id);
+            if (again) { if (shown) window.jrOpenItem(again); return; }
+            if (!wasSelected && !shown) return;
+            // It left the list: keep it in the panel, J / K go on from its old place.
+            window.jrGap = {next: next && next.id, prev: prev && prev.id};
+            if (shown) htmx.ajax("GET", "/opportunities/" + id + "/panel?tab=" + encodeURIComponent(new URLSearchParams(location.search).get("tab") || "review"), {target: "#detail", swap: "innerHTML"});
           });
         } else {
           arrived += 1;

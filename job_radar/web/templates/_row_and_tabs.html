@@ -2,3 +2,10 @@
 {# Same-company items: their history and penalties changed too (#138). #}
 {% for row in company_rows or [] %}{% with o = row.o, eff_score = row.eff_score, claude = row.claude, suggestions = row.suggestions, description = row.description, country = row.country, rejected_at = row.rejected_at, oob_row = true %}{% include "_item.html" %}{% endwith %}{% endfor %}
 {% with oob = true %}{% include "_tabs.html" %}{% endwith %}
+{% if moved_to %}
+<div hx-swap-oob="beforeend:#notices"><div class="notice" role="alert">
+  <div><b>{{ o.title }}</b> · {{ o.company.name }} — moved to <b>{{ moved_to }}</b>{% if o.auto_ignore_reason %}: {{ o.auto_ignore_reason }}{% endif %}.
+    <a href="/opportunities/{{ o.id }}">Open the vacancy</a></div>
+  <button type="button" class="btn btn-sm btn-outline-light" onclick="this.closest('.notice').remove()">Close</button>
+</div></div>
+{% endif %}

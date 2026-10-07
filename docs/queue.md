@@ -52,6 +52,8 @@ The vacancy you open stays selected and is remembered in this browser (localStor
 
 **Back from a vacancy page.** **← Queue** on the vacancy page returns to the queue you came from, with the same tab and filters (remembered for this browser tab), and selects the vacancy you opened (#150).
 
+**After the bookmarklet (#162).** When the [bookmarklet](linkedin-capture.md) saves a description, the open queue tab redraws that vacancy. If the vacancy left the tab, for example the auto-ignore rules moved it to **Auto-ignored**, a notice appears at the top of the page: title, company, the tab it moved to, the reason, and a link to the vacancy. It stays until you press **Close**. The panel keeps showing that vacancy, and **J / K** continue from its old place in the list.
+
 ## Description checks
 
 When a vacancy has its description (sent by the [bookmarklet](linkedin-capture.md) from the vacancy page), the queue checks it for **Python**:

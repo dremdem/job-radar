@@ -251,6 +251,7 @@ def create_app(
         company: str = "",
         title: str = "",
         q: str = "",
+        notify: bool = False,
     ) -> HTMLResponse:
         # One row for live updates (e.g. a description saved by the bookmarklet in another tab).
         tab, filters = _tab(tab), Filters(country, company, title, q)
@@ -261,6 +262,11 @@ def create_app(
         context["show_row"] = in_tab and filters.matches(
             opportunity.location, opportunity.company.name, opportunity.title
         )
+        # After a capture: say where a vacancy went when it left this tab (#162).
+        if notify and not in_tab:
+            context["moved_to"] = next(
+                label for label, states in TABS.values() if states and opportunity.state in states
+            )
         return templates.TemplateResponse(request, "_row_and_tabs.html", context)
 
     @app.get("/opportunities/{opportunity_id}/panel", response_class=HTMLResponse)

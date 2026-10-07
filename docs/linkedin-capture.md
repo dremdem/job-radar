@@ -14,7 +14,7 @@ What it does not do: open pages, click, scroll, log in, or send any request to L
 - **Search results** (from an alert's "See all jobs", or any LinkedIn job search): scroll the list to the end of the first page (~25 jobs; LinkedIn only fills cards you scrolled to), then click **→ Job Radar**. Every job card on the page is sent.
 - **One vacancy** (`/jobs/view/<id>` or a search with a job open on the right): click **→ Job Radar**; its full description is sent too, so the vacancy loses the *verify manually* badge.
 
-A new tab opens on `/capture` and shows what was received: jobs on the page, new ones, already known ones, descriptions saved. When everything went fine it **closes itself** after a moment; it stays open when something could not be read. Meanwhile an open queue tab **updates the affected rows by itself** (a saved description shows the Python check and the text right away), and says when new vacancies arrived so you can reload.
+A new tab opens on `/capture` and shows what was received: jobs on the page, new ones, already known ones, descriptions saved. When everything went fine it **closes itself** after a moment; it stays open when something could not be read. Meanwhile an open queue tab **updates the affected rows by itself** (a saved description shows the Python check and the text right away), shows a notice that stays until closed when a vacancy left the tab (e.g. auto-ignored, see [queue.md](queue.md#current-item)), and says when new vacancies arrived so you can reload.
 
 ## How it works
 
