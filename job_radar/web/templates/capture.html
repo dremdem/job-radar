@@ -1,15 +1,31 @@
 {% extends "base.html" %}
 {% block title %}Capture · Job Radar{% endblock %}
 {% block content %}
-<h2>Send a LinkedIn page to Job Radar</h2>
+<div class="page-head">
+  <div>
+    <h1>Capture</h1>
+    <p class="page-sub">Send a LinkedIn or hh.ru page you opened to Job Radar. The bookmark only reads that page; it never clicks, scrolls or sends requests to the site. Details: docs/linkedin-capture.md.</p>
+  </div>
+</div>
+<div class="stack">
 <div id="result" class="small"></div>
-<p>Drag this link to your bookmarks bar: <a class="badge" href="{{ bookmarklet }}">→ Job Radar</a></p>
-<ol class="small">
-  <li>Open a LinkedIn job search (e.g. an alert's “See all jobs”) and <b>scroll the list to the end of the first page</b>, or open one vacancy.</li>
-  <li>Click <b>→ Job Radar</b> in the bookmarks bar. A tab opens here and shows what was received.</li>
-</ol>
-<p class="small">If a page comes back “unreadable”: also drag <a class="badge" href="{{ debug_bookmarklet }}">→ Job Radar (debug)</a>, open the same LinkedIn page, click it once. It saves the page's HTML <b>locally</b> in <code>data/capture_debug/</code> so the parser can be fixed; nothing is sent anywhere else.</p>
-<p class="muted small">The bookmark only reads the page you opened; it never clicks, scrolls or sends requests to LinkedIn. Details: docs/linkedin-capture.md.</p>
+<section class="panel-card">
+  <div class="card-label">Set up once</div>
+  <p class="mb-2">Drag this button to your bookmarks bar:</p>
+  <a class="bookmarklet" href="{{ bookmarklet }}">→ Job Radar</a>
+</section>
+<section class="panel-card">
+  <div class="card-label">Each time</div>
+  <ol class="mb-0">
+    <li>Open a LinkedIn job search (e.g. an alert's “See all jobs”) and <b>scroll the list to the end of the first page</b>, or open one vacancy. On hh.ru, open a vacancy page.</li>
+    <li>Click <b>→ Job Radar</b> in the bookmarks bar. A tab opens here, shows what was received and closes itself.</li>
+  </ol>
+</section>
+<section class="panel-card small">
+  <div class="card-label">If a page comes back “unreadable”</div>
+  <p class="mb-2">Also drag <a class="bookmarklet bookmarklet-debug" href="{{ debug_bookmarklet }}">→ Job Radar (debug)</a>, open the same page, click it once. It saves the page's HTML <b>locally</b> in <code>data/capture_debug/</code> so the parser can be fixed; nothing is sent anywhere else.</p>
+</section>
+</div>
 <script>
   (function () {
     var raw = location.hash.slice(1);

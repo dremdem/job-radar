@@ -1,10 +1,10 @@
-<div id="applications">
+<div id="applications" class="stack">
 {% macro row(i, actions) %}
 <tr>
-  <td data-label="Date">{{ i.a.applied_at.strftime("%Y-%m-%d") }}</td>
+  <td class="mono" data-label="Date">{{ i.a.applied_at.strftime("%Y-%m-%d") }}</td>
   <td data-label="Company" class="cell-company">{{ i.a.company.name }}</td>
   <td data-label="Role">{{ i.a.role or "unknown role" }}</td>
-  <td class="state" data-label="Status">{{ i.status }}</td>
+  <td class="state" data-label="Status"><span class="pill pill-{{ i.status | replace(' ', '-') }}">{{ i.status }}</span></td>
   <td class="muted small" data-label="Source">{{ i.a.source.value }}{% if i.gmail %} · <a href="{{ i.gmail }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}</td>
   {% if actions %}
   <td class="actions">
@@ -20,18 +20,24 @@
 <p class="muted">No applications yet. Import them with <code>job-radar import applications</code>.</p>
 {% else %}
 {% if suggested %}
-<h2>To review ({{ suggested | length }})</h2>
-<p class="muted small">Found by rules in ATS emails. Confirm the real ones, dismiss the rest.
-  <button class="btn btn-sm btn-outline-success" hx-post="/applications/confirm-all" hx-include="#applications-filter" hx-target="#applications" hx-swap="outerHTML">confirm all</button></p>
-<table class="table align-top">
-  <thead><tr><th>Date</th><th>Company</th><th>Role</th><th>Status</th><th>Source</th><th></th></tr></thead>
-  <tbody>{% for i in suggested %}{{ row(i, true) }}{% endfor %}</tbody>
-</table>
+<section>
+  <div class="section-head">
+    <h2 class="section-title">To review ({{ suggested | length }})</h2>
+    <button class="btn btn-sm btn-outline-success" hx-post="/applications/confirm-all" hx-include="#applications-filter" hx-target="#applications" hx-swap="outerHTML">confirm all</button>
+  </div>
+  <p class="muted small">Found by rules in ATS emails. Confirm the real ones, dismiss the rest.</p>
+  <div class="table-wrap"><table class="table data-table align-top">
+    <thead><tr><th>Date</th><th>Company</th><th>Role</th><th>Status</th><th>Source</th><th></th></tr></thead>
+    <tbody>{% for i in suggested %}{{ row(i, true) }}{% endfor %}</tbody>
+  </table></div>
+</section>
 {% endif %}
-<h2>History ({{ confirmed | length }})</h2>
-<table class="table align-top">
-  <thead><tr><th>Date</th><th>Company</th><th>Role</th><th>Status</th><th>Source</th></tr></thead>
-  <tbody>{% for i in confirmed %}{{ row(i, false) }}{% endfor %}</tbody>
-</table>
+<section>
+  <div class="section-head"><h2 class="section-title">History ({{ confirmed | length }})</h2></div>
+  <div class="table-wrap"><table class="table data-table align-top">
+    <thead><tr><th>Date</th><th>Company</th><th>Role</th><th>Status</th><th>Source</th></tr></thead>
+    <tbody>{% for i in confirmed %}{{ row(i, false) }}{% endfor %}</tbody>
+  </table></div>
+</section>
 {% endif %}
 </div>

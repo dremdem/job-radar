@@ -1,40 +1,54 @@
 {% extends "base.html" %}
-{% block title %}Settings · Job Radar<h2>Claude</h2>
-<p class="small muted">Deep analysis of vacancies you pick in the queue, with Claude Code on your subscription (no API key). Details: docs/claude.md.</p>
-<form method="post" action="/settings/claude" class="small">
-  <p><label>Model <select name="model" class="form-select form-select-sm d-inline-block w-auto">{% for m in models %}<option value="{{ m }}" {% if claude.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label></p>
-  <p><label>Analyses per day <input type="number" name="daily_cap" value="{{ claude.daily_cap }}" min="0" max="500" style="width: 5em"></label> <span class="muted">(the rest wait in the queue until tomorrow)</span></p>
-  <p><label>Explanations in <select name="language" class="form-select form-select-sm d-inline-block w-auto">{% for l in languages %}<option value="{{ l }}" {% if claude.language == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label></p>
-  <p class="muted">CV: {% if cv_path %}<code>{{ cv_path }}</code>{% else %}not set — add <code>JOB_RADAR_CV_PATH</code> to <code>.env</code>{% endif %}</p>
-  <p><button type="submit" class="btn btn-primary btn-sm">Save</button></p>
-</form>
-{% endblock %}
+{% block title %}Settings · Job Radar{% endblock %}
 {% block content %}
-<h2>Auto-ignore</h2>
-{% if message %}<p><b>{{ message }}</b> <a href="/">Open the queue</a></p>{% endif %}
-<p class="small muted">A matching new vacancy goes to the <a href="/?tab=auto">Auto-ignored</a> tab with the reason, not to To review. Your own states are never changed. Details: docs/settings.md.</p>
-<form method="post" action="/settings" class="small">
-  <p><label><input type="checkbox" class="form-check-input me-1" name="rejected" {% if rules.rejected %}checked{% endif %}> The company rejected you</label></p>
-  <p><label><input type="checkbox" class="form-check-input me-1" name="applied" {% if rules.applied %}checked{% endif %}> You already applied to the company</label></p>
-  <p><label><input type="checkbox" class="form-check-input me-1" name="ignored" {% if rules.ignored %}checked{% endif %}> You already ignored another vacancy of the company</label></p>
-  <p><label><input type="checkbox" class="form-check-input me-1" name="no_python" {% if rules.no_python %}checked{% endif %}> The description has no Python (only vacancies with a saved description)</label></p>
-  <p><label><input type="checkbox" class="form-check-input me-1" name="hybrid" {% if rules.hybrid %}checked{% endif %}> “Hybrid” or “on-site” in the title or location</label></p>
-  <p><label><input type="checkbox" class="form-check-input me-1" name="language" {% if rules.language %}checked{% endif %}> The title or description is not in English (or Russian)</label></p>
-  <p><label><input type="checkbox" class="form-check-input me-1" name="ai_location" {% if rules.ai_location %}checked{% endif %}> AI: the description says hybrid / on-site or only some countries (local model, see docs/ai.md)</label></p>
-  <p><label>Look back <input type="number" name="days" value="{{ rules.days }}" min="1" max="3650" style="width: 5em"> days</label>
-    <span class="muted">(rejections, applications and ignores older than this do not count)</span></p>
-  <p><button type="submit" class="btn btn-primary btn-sm">Save</button></p>
-</form>
-<form method="post" action="/settings/apply" class="small">
-  <p><button type="submit" class="btn btn-primary btn-sm">Apply to To review now</button> <span class="muted">runs the saved rules over the vacancies currently in To review</span></p>
-</form>
-<h2>Claude</h2>
-<p class="small muted">Deep analysis of vacancies you pick in the queue, with Claude Code on your subscription (no API key). Details: docs/claude.md.</p>
-<form method="post" action="/settings/claude" class="small">
-  <p><label>Model <select name="model" class="form-select form-select-sm d-inline-block w-auto">{% for m in models %}<option value="{{ m }}" {% if claude.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label></p>
-  <p><label>Analyses per day <input type="number" name="daily_cap" value="{{ claude.daily_cap }}" min="0" max="500" style="width: 5em"></label> <span class="muted">(the rest wait in the queue until tomorrow)</span></p>
-  <p><label>Explanations in <select name="language" class="form-select form-select-sm d-inline-block w-auto">{% for l in languages %}<option value="{{ l }}" {% if claude.language == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label></p>
-  <p class="muted">CV: {% if cv_path %}<code>{{ cv_path }}</code>{% else %}not set — add <code>JOB_RADAR_CV_PATH</code> to <code>.env</code>{% endif %}</p>
-  <p><button type="submit" class="btn btn-primary btn-sm">Save</button></p>
-</form>
+<div class="page-head">
+  <div>
+    <h1>Settings</h1>
+    <p class="page-sub">Rules that keep obvious misses out of To review, and how Claude analyses vacancies. Details: docs/settings.md, docs/claude.md.</p>
+  </div>
+</div>
+{% if message %}<p class="notice-inline"><b>{{ message }}</b> <a href="/">Open the queue</a></p>{% endif %}
+<div class="stack">
+<section class="panel-card">
+  <h2 class="section-title">Auto-ignore</h2>
+  <p class="small muted">A matching new vacancy goes to the <a href="/?tab=auto">Auto-ignored</a> tab with the reason, not to To review. Your own states are never changed.</p>
+  <form method="post" action="/settings">
+    <div class="check-list">
+      {% for name, label in [
+        ("rejected", "The company rejected you"),
+        ("applied", "You already applied to the company"),
+        ("ignored", "You already ignored another vacancy of the company"),
+        ("no_python", "The description has no Python (only vacancies with a saved description)"),
+        ("hybrid", "“Hybrid” or “on-site” in the title or location"),
+        ("language", "The title or description is not in English (or Russian)"),
+        ("ai_location", "AI: the description says hybrid / on-site or only some countries (local model, see docs/ai.md)"),
+      ] %}
+      <label class="form-check"><input type="checkbox" class="form-check-input" name="{{ name }}" {% if rules[name] %}checked{% endif %}> {{ label }}</label>
+      {% endfor %}
+    </div>
+    <div class="form-row">
+      <label class="d-flex align-items-center gap-2">Look back <input type="number" class="form-control form-control-sm num-input" name="days" value="{{ rules.days }}" min="1" max="3650"> days</label>
+      <span class="small muted">rejections, applications and ignores older than this do not count</span>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+  </form>
+  <form method="post" action="/settings/apply" class="form-row mb-0">
+    <button type="submit" class="btn btn-outline-primary btn-sm">Apply to To review now</button>
+    <span class="small muted">runs the saved rules over the vacancies currently in To review</span>
+  </form>
+</section>
+<section class="panel-card">
+  <h2 class="section-title">Claude</h2>
+  <p class="small muted">Deep analysis of vacancies you pick in the queue, with Claude Code on your subscription (no API key).</p>
+  <form method="post" action="/settings/claude">
+    <div class="form-grid">
+      <label>Model <select name="model" class="form-select form-select-sm">{% for m in models %}<option value="{{ m }}" {% if claude.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label>
+      <label>Analyses per day <input type="number" class="form-control form-control-sm" name="daily_cap" value="{{ claude.daily_cap }}" min="0" max="500"></label>
+      <label>Explanations in <select name="language" class="form-select form-select-sm">{% for l in languages %}<option value="{{ l }}" {% if claude.language == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+    </div>
+    <p class="small muted">The rest wait in the queue until tomorrow. CV: {% if cv_path %}<code>{{ cv_path }}</code>{% else %}not set — add <code>JOB_RADAR_CV_PATH</code> to <code>.env</code>{% endif %}</p>
+    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+  </form>
+</section>
+</div>
 {% endblock %}

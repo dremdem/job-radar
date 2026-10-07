@@ -401,3 +401,21 @@ def test_panel_links_are_big_buttons(client, session):
     assert f'href="/opportunities/{o.id}">Full page →' in links
     assert "Full page" not in client.get(f"/opportunities/{o.id}").text  # already on it
     assert 'key === "o"' in client.get("/").text
+
+
+def test_other_pages_share_the_inbox_look(client, session):
+    for path, title in (
+        ("/applications", "Applications"),
+        ("/skills", "Skills gap"),
+        ("/settings", "Settings"),
+        ("/profile", "Profile"),
+        ("/capture", "Capture"),
+    ):
+        text = client.get(path).text
+        assert f'<div class="page-head">\n  <div>\n    <h1>{title}</h1>' in text, path
+        assert 'class="page-sub"' in text, path
+    settings = client.get("/settings").text
+    # The title block used to hold a copy of the Claude form.
+    assert "<title>Settings · Job Radar</title>" in settings
+    assert settings.count('action="/settings/claude"') == 1
+    assert 'class="bookmarklet"' in client.get("/capture").text

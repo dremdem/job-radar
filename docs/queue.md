@@ -115,3 +115,5 @@ Since #158 the UI is dark: ground #101318, accent #3D7BFF, IBM Plex Sans with Pl
 - ignore and reasons to ignore are red;
 - applied is blue;
 - the main actions are filled.
+
+The other pages (Applications, Skills, Settings, Profile, Capture) use the same parts since #168: a page header with a short explanation, content in dark cards, tables with small uppercase headers and Plex Mono for dates and numbers, and status pills (applied blue, rejected red, interview or offer green). On a phone, table rows become cards.

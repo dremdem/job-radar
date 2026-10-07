@@ -1,13 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Applications · Job Radar{% endblock %}
 {% block content %}
-<p class="small">
-  <label>Company
-    <input id="applications-filter" class="form-control form-control-sm d-inline-block w-auto" type="search" name="company" value="{{ company }}" placeholder="filter" autocomplete="off"
+<div class="page-head">
+  <div>
+    <h1>Applications</h1>
+    <p class="page-sub">Where you applied, from mail and imports. Confirm what the rules found in ATS emails, dismiss the rest.</p>
+  </div>
+  <div class="page-tools">
+    <input id="applications-filter" class="form-control form-control-sm inbox-search" type="search" name="company" value="{{ company }}"
+           placeholder="Filter by company" aria-label="Filter by company" autocomplete="off"
            hx-get="/applications" hx-trigger="input changed delay:250ms, search" hx-target="#applications"
            hx-select="#applications" hx-swap="outerHTML" hx-push-url="true">
-  </label>
-  {% if company %}<a href="/applications">clear</a>{% endif %}
-</p>
+    {% if company %}<a href="/applications">clear</a>{% endif %}
+  </div>
+</div>
 {% include "_applications.html" %}
 {% endblock %}
