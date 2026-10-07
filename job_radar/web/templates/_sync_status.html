@@ -4,7 +4,7 @@
   {% if job.state == "running" %}
     <b>Sync running…</b>
   {% elif job.state == "done" %}
-    <b>Sync done</b> {{ job.finished_at.strftime("%H:%M") if job.finished_at else "" }}{% if job.failed_steps %} · <span class="neg">{{ job.failed_steps | length }} step{{ "s" if job.failed_steps | length > 1 }} failed</span>{% endif %} · <a href="/">reload</a>
+    <b>Sync done</b> {{ (job.finished_at | local("%H:%M")) if job.finished_at else "" }}{% if job.failed_steps %} · <span class="neg">{{ job.failed_steps | length }} step{{ "s" if job.failed_steps | length > 1 }} failed</span>{% endif %} · <a href="/">reload</a>
   {% elif job.state == "failed" %}
     <b>Sync failed:</b> {{ job.error }}
   {% endif %}

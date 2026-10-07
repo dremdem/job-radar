@@ -5,7 +5,7 @@
 {% elif claude and claude.state in ("queued", "running") %}
   {% set line, line_cls = "Claude: " ~ ("analyzing…" if claude.state == "running" else "queued"), "line-muted" %}
 {% elif rejected_at %}
-  {% set line, line_cls = "rejected · " ~ rejected_at.strftime("%Y-%m-%d"), "line-skip" %}
+  {% set line, line_cls = "rejected · " ~ (rejected_at | local("%Y-%m-%d")), "line-skip" %}
 {% elif o.auto_ignore_reason %}
   {% set line, line_cls = "auto-ignored: " ~ o.auto_ignore_reason, "line-muted" %}
 {% elif suggestions %}

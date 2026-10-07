@@ -20,9 +20,9 @@
         {% if o.source_records | selectattr("source_type.value", "equalto", "himalayas") | list %}<span class="badge">via Himalayas</span>{% endif %}
         {% if not has_description %}<span class="badge warn">verify manually</span>{% endif %}
         {% if o.auto_ignore_reason %}<span class="badge warn">auto-ignored: {{ o.auto_ignore_reason }}</span>{% endif %}
-        {% if rejected_at %}<span class="badge reject">rejected {{ rejected_at.strftime("%Y-%m-%d") }}</span>{% endif %}
+        {% if rejected_at %}<span class="badge reject">rejected {{ (rejected_at | local("%Y-%m-%d")) }}</span>{% endif %}
         {% if history_count %}<span class="badge">contacted · {{ history_count }}</span>{% endif %}
-        {% if applied_before %}<span class="badge warn">already applied {{ applied_before.strftime("%Y-%m-%d") }}</span>{% endif %}
+        {% if applied_before %}<span class="badge warn">already applied {{ (applied_before | local("%Y-%m-%d")) }}</span>{% endif %}
       </div>
     </div>
     {% if panel %}
@@ -56,7 +56,7 @@
     <ul class="reasons">
       {% for r in extra_reasons %}<li class="{{ 'pos' if r.sign == '+' else 'neg' }}">{{ '+' if r.sign == '+' else '−' }} {{ r.text }}</li>{% endfor %}
       {% if python_quote %}<li class="muted quote">“{{ python_quote }}”</li>{% endif %}
-      {% if rejected_at %}<li class="neg">− Rejected by {{ o.company.name }} on {{ rejected_at.strftime("%Y-%m-%d") }}</li>{% endif %}
+      {% if rejected_at %}<li class="neg">− Rejected by {{ o.company.name }} on {{ (rejected_at | local("%Y-%m-%d")) }}</li>{% endif %}
       {% for r in o.score_reasons %}<li class="{{ 'pos' if r.sign == '+' else 'neg' }}">{{ '+' if r.sign == '+' else '−' }} {{ r.text }}</li>{% endfor %}
     </ul>
   </section>
@@ -74,7 +74,7 @@
     <div class="card-label">Company history</div>
     {% if history %}
     <ul class="small mb-0">
-      {% for e in history %}<li>{{ e.at.strftime("%Y-%m-%d") }} · <b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}</li>{% endfor %}
+      {% for e in history %}<li>{{ (e.at | local("%Y-%m-%d")) }} · <b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}</li>{% endfor %}
       {% if history_count > history | length %}<li class="muted">… {{ history_count - history | length }} more</li>{% endif %}
     </ul>
     {% else %}<p class="muted small mb-0">no contacts found</p>{% endif %}

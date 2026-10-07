@@ -1,7 +1,7 @@
 <div id="applications" class="stack">
 {% macro row(i, actions) %}
 <tr>
-  <td class="mono" data-label="Date">{{ i.a.applied_at.strftime("%Y-%m-%d") }}</td>
+  <td class="mono" data-label="Date">{{ (i.a.applied_at | local("%Y-%m-%d")) }}</td>
   <td data-label="Company" class="cell-company">{{ i.a.company.name }}</td>
   <td data-label="Role">{{ i.a.role or "unknown role" }}</td>
   <td class="state" data-label="Status"><span class="pill pill-{{ i.status | replace(' ', '-') }}">{{ i.status }}</span></td>

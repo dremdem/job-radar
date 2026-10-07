@@ -3,7 +3,7 @@ import re
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlencode
@@ -86,6 +86,18 @@ def chat_markup(text: str) -> Markup:
 
 
 templates.env.filters["chat_markup"] = chat_markup
+
+
+def local_time(value: datetime | None, fmt: str, tz: tzinfo | None = None) -> str:
+    """A stored UTC time (naive from SQLite, or aware) in the machine's local zone (#170)."""
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(tz).strftime(fmt)
+
+
+templates.env.filters["local"] = local_time
 
 # Queue order: undecided first, then the ones worth a look.
 _STATE_ORDER = [

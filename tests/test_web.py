@@ -419,3 +419,16 @@ def test_other_pages_share_the_inbox_look(client, session):
     assert "<title>Settings · Job Radar</title>" in settings
     assert settings.count('action="/settings/claude"') == 1
     assert 'class="bookmarklet"' in client.get("/capture").text
+
+
+def test_times_are_shown_in_local_time():
+    from datetime import UTC, datetime, timedelta, timezone
+
+    from job_radar.web.app import local_time
+
+    bangkok = timezone(timedelta(hours=7))
+    # Stored as UTC, naive (SQLite) or aware: shown in the machine's zone.
+    assert local_time(datetime(2026, 10, 7, 16, 36), "%H:%M", tz=bangkok) == "23:36"
+    assert local_time(datetime(2026, 10, 7, 16, 36, tzinfo=UTC), "%H:%M", tz=bangkok) == "23:36"
+    assert local_time(datetime(2026, 10, 7, 20, 0), "%Y-%m-%d", tz=bangkok) == "2026-10-08"
+    assert local_time(None, "%H:%M") == ""
