@@ -379,3 +379,10 @@ def test_rejected_redraws_rows_not_the_queue(client, session):
     response = client.post(f"/opportunities/{o.id}/rejected", data={"tab": "review"}).text
     assert 'id="queue"' not in response and f'id="opportunity-{o.id}"' in response
     assert "un-reject" in response
+
+
+def test_vacancy_page_goes_back_to_the_queue_it_came_from(client, session):
+    o = add_opportunity(session)
+    assert "jr-queue-url" in client.get("/?tab=interested").text
+    page = client.get(f"/opportunities/{o.id}").text
+    assert 'id="back-to-queue"' in page and "jr-queue-url" in page

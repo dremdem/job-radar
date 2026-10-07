@@ -2,7 +2,15 @@
 {% block title %}{{ o.title }} · Job Radar{% endblock %}
 {% block content %}
 {% set links = o.source_records | selectattr("url") | list %}
-<p class="small"><a href="/">← Queue</a></p>
+<p class="small"><a href="/" id="back-to-queue">← Queue</a></p>
+<script>
+  // Back to the tab and filters you came from (#150); the row is found by the current-row logic.
+  (function () {
+    var url = null;
+    try { url = sessionStorage.getItem("jr-queue-url"); } catch (e) {}
+    if (url) document.getElementById("back-to-queue").href = url;
+  })();
+</script>
 <h2>{{ o.title }}</h2>
 <p>{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if o.salary %} · {{ o.salary }}{% endif %} · <b>{{ o.state.value }}</b>{% if eff_score is not none %} · score {{ "%.1f"|format(eff_score) }}{% endif %}</p>
 {% include "_page_state.html" %}

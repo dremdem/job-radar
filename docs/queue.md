@@ -25,6 +25,8 @@ The rows update while you type; the field keeps focus, and the header with the f
 
 Clicking a row — the vacancy link (also with the middle mouse button) or anywhere in the row — highlights it until you click another one. Open a vacancy in a new tab, study it, come back: the row you left from is marked. The choice is remembered in this browser (localStorage), so it survives a reload and the queue re-rendering after buttons and filters. After a reload the page **scrolls to the highlighted row**: a saved description changes the score, so the row may have moved in the list.
 
+**Back from a vacancy page.** **← Queue** on the vacancy page (**page →**) returns to the queue you came from, with the same tab and filters (remembered for this browser tab), and scrolls to the vacancy you opened (#150).
+
 ## Description checks
 
 When a vacancy has its description (sent by the [bookmarklet](linkedin-capture.md) from the vacancy page), the queue checks it for **Python**:

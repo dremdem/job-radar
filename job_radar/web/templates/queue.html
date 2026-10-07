@@ -7,6 +7,13 @@
   <button id="collapse-all" type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleHistory(false)">Collapse all</button>
 </p>
 <script>
+  // Remember this queue's URL (tab, filters) so the vacancy page can come back to it (#150).
+  (function () {
+    function keep() { try { sessionStorage.setItem("jr-queue-url", location.pathname + location.search); } catch (e) {} }
+    keep();
+    document.addEventListener("htmx:pushedIntoHistory", keep);
+    document.addEventListener("htmx:replacedInHistory", keep);
+  })();
   // The row you last clicked stays highlighted, so you find it after reading the vacancy
   // in another tab. Remembered in this browser only; see docs/queue.md#current-row.
   (function () {
