@@ -188,6 +188,7 @@ def _merge(session: Session, keep: Opportunity, dup: Opportunity) -> None:
         Application,
         ClaudeAnalysis,
         ClaudeMessage,
+        CompanyEvent,
         DescriptionAnalysis,
         OpportunityNote,
         Rejection,
@@ -203,6 +204,7 @@ def _merge(session: Session, keep: Opportunity, dup: Opportunity) -> None:
         DescriptionAnalysis,
         ClaudeAnalysis,
         ClaudeMessage,
+        CompanyEvent,
     ):
         session.execute(
             update(model).where(model.opportunity_id == dup.id).values(opportunity_id=keep.id)

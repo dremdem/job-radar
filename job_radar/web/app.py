@@ -9,14 +9,14 @@ from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import Body, Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .. import applications as apps
-from .. import pipeline
+from .. import manual, pipeline
 from ..ai.analysis import latest_analysis, recheck_stack
 from ..ai.analysis import risks as ai_risks
 from ..auto_ignore import Rules, apply_to_review, load_rules, save_rules
@@ -36,6 +36,7 @@ from ..models import (
     Application,
     ApplicationReview,
     Company,
+    CompanyEvent,
     EmailMessage,
     JobSnapshot,
     NoteKind,
@@ -99,6 +100,8 @@ def local_time(value: datetime | None, fmt: str, tz: tzinfo | None = None) -> st
 
 
 templates.env.filters["local"] = local_time
+templates.env.globals["EVENT_KINDS"] = manual.EVENT_KINDS
+templates.env.globals["today"] = lambda: datetime.now().strftime("%Y-%m-%d")
 
 # Queue order: undecided first, then the ones worth a look.
 _STATE_ORDER = [
@@ -446,6 +449,100 @@ def create_app(
         opportunity = _get_opportunity(session, note.opportunity_id)
         delete_note(session, note_id)
         return _company_rows(request, session, opportunity, _tab(tab), filters)
+
+    def _after_manual(
+        request: Request,
+        session: Session,
+        opportunity: Opportunity,
+        source: str,
+        tab: str,
+        filters: Filters,
+    ) -> HTMLResponse:
+        if source == "panel":
+            return _panel_response(request, session, opportunity, _tab(tab), filters)
+        # The vacancy page: reload it, the history and the state changed.
+        return HTMLResponse("", headers={"HX-Refresh": "true"})
+
+    @app.post("/opportunities/{opportunity_id}/events", response_class=HTMLResponse)
+    def add_opportunity_event(
+        request: Request,
+        opportunity_id: int,
+        session: SessionDep,
+        kind: Annotated[str, Form()],
+        at: Annotated[str, Form()] = "",
+        comment: Annotated[str, Form()] = "",
+        tab: Annotated[str, Form()] = DEFAULT_TAB,
+        country: Annotated[str, Form()] = "",
+        company: Annotated[str, Form()] = "",
+        title: Annotated[str, Form()] = "",
+        q: Annotated[str, Form()] = "",
+        desc: Annotated[str, Form()] = "",
+        per: Annotated[str, Form()] = "",
+        source: Annotated[str, Form(alias="from")] = "",
+    ) -> HTMLResponse:
+        # An event that is not in the mail: a call, an interview, an offer (#182).
+        filters = Filters(country, company, title, q, desc, per)
+        opportunity = _get_opportunity(session, opportunity_id)
+        try:
+            day = datetime.strptime(at, "%Y-%m-%d") if at else datetime.now()
+            when = day.replace(hour=12).astimezone(UTC)  # the date you picked, local noon
+            manual.add_event(session, opportunity, kind, when, comment)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        return _after_manual(request, session, opportunity, source, tab, filters)
+
+    @app.post("/events/{event_id}/delete", response_class=HTMLResponse)
+    def remove_event(
+        request: Request,
+        event_id: int,
+        session: SessionDep,
+        tab: Annotated[str, Form()] = DEFAULT_TAB,
+        country: Annotated[str, Form()] = "",
+        company: Annotated[str, Form()] = "",
+        title: Annotated[str, Form()] = "",
+        q: Annotated[str, Form()] = "",
+        desc: Annotated[str, Form()] = "",
+        per: Annotated[str, Form()] = "",
+        source: Annotated[str, Form(alias="from")] = "",
+    ) -> HTMLResponse:
+        filters = Filters(country, company, title, q, desc, per)
+        event = session.get(CompanyEvent, event_id)
+        if event is None or event.opportunity_id is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        opportunity = _get_opportunity(session, event.opportunity_id)
+        manual.delete_event(session, event_id)
+        return _after_manual(request, session, opportunity, source, tab, filters)
+
+    @app.post("/opportunities", response_class=HTMLResponse)
+    def add_vacancy(
+        request: Request,
+        session: SessionDep,
+        title: Annotated[str, Form()] = "",
+        company: Annotated[str, Form()] = "",
+        link: Annotated[str, Form()] = "",
+        location: Annotated[str, Form()] = "",
+        state: Annotated[str, Form()] = "new",
+        comment: Annotated[str, Form()] = "",
+    ) -> HTMLResponse:
+        # A vacancy found outside the sources (#182).
+        try:
+            opportunity = manual.add_vacancy(
+                session,
+                title=title,
+                company=company,
+                link=link,
+                location=location,
+                state=OpportunityState(state),
+                comment=comment,
+            )
+        except ValueError as e:
+            if request.headers.get("HX-Request"):  # show it in the dialog
+                return HTMLResponse(f'<p class="neg mb-2">{escape(str(e))}</p>')
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        url = f"/opportunities/{opportunity.id}"
+        if request.headers.get("HX-Request"):
+            return HTMLResponse("", headers={"HX-Redirect": url})
+        return RedirectResponse(url, status_code=303)
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request, session: SessionDep) -> HTMLResponse:

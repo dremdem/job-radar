@@ -30,6 +30,7 @@ class SourceType(enum.StrEnum):
     HH = "hh"  # hh.ru vacancy, external_id = its id (docs/hh.md)
     HIMALAYAS = "himalayas"
     TELEGRAM = "telegram"
+    MANUAL = "manual"  # added by hand; external_id = the link, or "manual:<n>" (#182)
 
 
 class OpportunityState(enum.StrEnum):
@@ -252,6 +253,21 @@ class OpportunityNote(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     company: Mapped[Company] = relationship()
+
+
+class CompanyEvent(Base):
+    """Something that happened with a company and is not in the mail: a call, an interview,
+    a recruiter on Telegram. Added by hand (#182)."""
+
+    __tablename__ = "company_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))  # see manual.EVENT_KINDS
+    at: Mapped[datetime]
+    comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
 class AppSetting(Base):

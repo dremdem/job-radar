@@ -14,6 +14,7 @@
              placeholder="Search title, company, country  ( / )" autocomplete="off" aria-label="Search vacancies"
              hx-get="/" hx-trigger="input changed delay:250ms, search" hx-include=".col-filter" hx-target="#queue-body"
              hx-select="#queue-body" hx-select-oob="#tabs" hx-swap="outerHTML" hx-push-url="true">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="add-vacancy" title="Add a vacancy found elsewhere">+ Add</button>
       <button type="button" class="btn btn-sm btn-outline-primary" id="analyze-top" title="Queue vacancies here for Claude: pick the minimum score">Analyze…</button>
       {% include "_claude_status.html" %}
     </div>
@@ -34,6 +35,24 @@
   </div>
 </div>
 <div id="notices" class="notices" aria-live="assertive"></div>
+<dialog id="add-dialog" class="jr-dialog" aria-labelledby="add-title">{# a vacancy found elsewhere (#182) #}
+  <form hx-post="/opportunities" hx-target="#add-error" hx-swap="innerHTML" class="add-form">
+    <h2 id="add-title" class="section-title mb-3">Add a vacancy</h2>
+    <label>Title <input name="title" required class="form-control form-control-sm"></label>
+    <label>Company <input name="company" required class="form-control form-control-sm"></label>
+    <label>Link <input name="link" type="url" placeholder="LinkedIn, hh.ru or any page" class="form-control form-control-sm"></label>
+    <label>Location <input name="location" placeholder="e.g. Remote, Germany" class="form-control form-control-sm"></label>
+    <label>State <select name="state" class="form-select form-select-sm">
+      <option value="new">To review</option><option value="interested">Interested</option><option value="applied">Applied</option>
+    </select></label>
+    <label>Comment <input name="comment" maxlength="300" placeholder="where you found it, what you sent" class="form-control form-control-sm"></label>
+    <div id="add-error"></div>
+    <div class="d-flex gap-2 justify-content-end">
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-sm btn-primary">Add</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="analyze-dialog" class="jr-dialog" aria-labelledby="analyze-title">
   <form method="dialog" id="analyze-form">
     <h2 id="analyze-title" class="section-title">Analyze with Claude</h2>
@@ -248,6 +267,13 @@
     minInput.addEventListener("change", function () {
       try { localStorage.setItem(MIN_KEY, minInput.value); } catch (e) {}
       preview();
+    });
+    document.getElementById("add-vacancy").addEventListener("click", function () {
+      var d = document.getElementById("add-dialog");
+      d.querySelector("form").reset();
+      document.getElementById("add-error").textContent = "";
+      d.showModal();
+      d.querySelector('input[name="title"]').focus();
     });
     document.getElementById("analyze-cancel").addEventListener("click", function () { dialog.close(); });
     document.getElementById("analyze-form").addEventListener("submit", function () {

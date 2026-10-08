@@ -17,6 +17,7 @@ from .models import (
     Application,
     ApplicationReview,
     Company,
+    CompanyEvent,
     EmailDirection,
     EmailMessage,
     NoteKind,
@@ -276,6 +277,7 @@ class HistoryEvent:
     gmail_url: str | None
     probable: bool = False
     note_id: int | None = None  # reasons and notes can be deleted from the history
+    event_id: int | None = None  # so can events added by hand (#182)
 
 
 def gmail_url(thread_id: str | None) -> str | None:
@@ -327,6 +329,8 @@ def company_history(session: Session, company_id: int) -> list[HistoryEvent]:
         events.append(
             HistoryEvent(_as_utc(note.created_at), kind, describe(note), None, note_id=note.id)
         )
+    for ev in session.scalars(select(CompanyEvent).where(CompanyEvent.company_id == company_id)):
+        events.append(HistoryEvent(_as_utc(ev.at), ev.kind, ev.comment or "", None, event_id=ev.id))
     return sorted(events, key=lambda ev: ev.at, reverse=True)
 
 
