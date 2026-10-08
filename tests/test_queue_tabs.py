@@ -255,3 +255,40 @@ def test_the_panel_decides_what_is_current_and_clears_after_the_last(client, ses
     assert 'document.querySelector("#detail .detail")' in text and "shownItem()" in text
     assert "Nothing left in this tab." in text and "localStorage.removeItem(KEY)" in text
     assert "#queue-body:not(:has(.item, p))::after" in text
+
+
+def describe(session, o, text="We use Python."):
+    from job_radar.dedup import add_snapshot, upsert_source_record
+    from job_radar.models import SourceType
+
+    record = upsert_source_record(
+        session,
+        source_type=SourceType.LINKEDIN_CAPTURE,
+        external_id=str(o.id),
+        url=None,
+        opportunity=o,
+    )
+    add_snapshot(session, record, text)
+    session.commit()
+
+
+def test_filter_by_description(client, session):
+    bare = add(session, "Bare role")
+    full = add(session, "Full role")
+    describe(session, full)
+    text = client.get("/?desc=none").text
+    assert f'id="opportunity-{bare.id}"' in text and f'id="opportunity-{full.id}"' not in text
+    assert "To review (1)" in text
+    assert 'class="col-filter" name="desc" value="none"' in text
+    assert 'href="/?tab=interested&amp;desc=none"' in text  # tab links keep it
+    text = client.get("/?desc=has").text
+    assert f'id="opportunity-{full.id}"' in text and f'id="opportunity-{bare.id}"' not in text
+    # The switch itself: three links, the current one marked.
+    assert ">No description<" in text and ">With description<" in text
+    assert 'aria-current="true"' in text
+    # A decision in the panel keeps the view: the other item is not drawn into it.
+    response = client.post(
+        f"/opportunities/{full.id}/state",
+        data={"state": "interested", "from": "panel", "tab": "review", "desc": "has"},
+    ).text
+    assert "To review (0)" in response

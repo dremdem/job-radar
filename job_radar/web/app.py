@@ -2,7 +2,7 @@ import json
 import re
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import Annotated
@@ -37,6 +37,7 @@ from ..models import (
     ApplicationReview,
     Company,
     EmailMessage,
+    JobSnapshot,
     NoteKind,
     Opportunity,
     OpportunityNote,
@@ -129,18 +130,34 @@ class Filters:
     company: str = ""
     title: str = ""
     q: str = ""  # the inbox search box: title, company or location (#158)
+    desc: str = ""  # "none" / "has": vacancies without / with a saved description (#176)
 
-    def matches(self, location: str | None, company: str, title: str = "") -> bool:
+    def matches(
+        self,
+        location: str | None,
+        company: str,
+        title: str = "",
+        described: bool | None = None,
+    ) -> bool:
         def has(needle: str, text: str | None) -> bool:
             return needle.strip().casefold() in (text or "").casefold()
 
         anywhere = " ".join((title, company, location or ""))
+        wanted = {"none": False, "has": True}.get(self.desc)
         return (
             has(self.country, location)
             and has(self.company, company)
             and has(self.title, title)
             and has(self.q, anywhere)
+            and (wanted is None or described is None or described == wanted)
         )
+
+    def matches_opportunity(self, o: Opportunity) -> bool:
+        described = any(r.snapshots for r in o.source_records)
+        return self.matches(o.location, o.company.name, o.title, described)
+
+    def with_desc(self, desc: str) -> "Filters":
+        return replace(self, desc=desc)
 
     def href(self, tab: str) -> str:
         pairs = (
@@ -148,6 +165,7 @@ class Filters:
             ("title", self.title),
             ("country", self.country),
             ("company", self.company),
+            ("desc", self.desc),
         )
         return "/?" + urlencode({"tab": tab} | {k: v for k, v in pairs if v})
 
@@ -216,8 +234,9 @@ def create_app(
         company: str = "",
         title: str = "",
         q: str = "",
+        desc: str = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q)
+        filters = Filters(country, company, title, q, desc)
         return templates.TemplateResponse(
             request, "queue.html", _queue_context(session, _tab(tab), filters)
         )
@@ -233,9 +252,10 @@ def create_app(
         company: Annotated[str, Form()] = "",
         title: Annotated[str, Form()] = "",
         q: Annotated[str, Form()] = "",
+        desc: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q)
+        filters = Filters(country, company, title, q, desc)
         tab = _tab(tab)
         opportunity = _get_opportunity(session, opportunity_id)
         opportunity.state = state
@@ -263,17 +283,16 @@ def create_app(
         company: str = "",
         title: str = "",
         q: str = "",
+        desc: str = "",
         notify: bool = False,
     ) -> HTMLResponse:
         # One row for live updates (e.g. a description saved by the bookmarklet in another tab).
-        tab, filters = _tab(tab), Filters(country, company, title, q)
+        tab, filters = _tab(tab), Filters(country, company, title, q, desc)
         opportunity = _get_opportunity(session, opportunity_id)
         states = TABS[tab][1]
         context = _row_context(session, opportunity) | _tabs_context(session, tab, filters)
         in_tab = states is None or opportunity.state in states
-        context["show_row"] = in_tab and filters.matches(
-            opportunity.location, opportunity.company.name, opportunity.title
-        )
+        context["show_row"] = in_tab and filters.matches_opportunity(opportunity)
         # After a capture: say where a vacancy went when it left this tab (#162).
         if notify and not in_tab:
             context["moved_to"] = next(
@@ -342,9 +361,10 @@ def create_app(
         company: Annotated[str, Form()] = "",
         title: Annotated[str, Form()] = "",
         q: Annotated[str, Form()] = "",
+        desc: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q)
+        filters = Filters(country, company, title, q, desc)
         # Rejection is per company: redraw this row and its company's other rows only (#138).
         opportunity = _get_opportunity(session, opportunity_id)
         toggle_manual_rejection(session, opportunity)
@@ -367,9 +387,10 @@ def create_app(
         company: Annotated[str, Form()] = "",
         title: Annotated[str, Form()] = "",
         q: Annotated[str, Form()] = "",
+        desc: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q)
+        filters = Filters(country, company, title, q, desc)
         # Penalties and history are per company, so the whole queue is re-rendered.
         opportunity = _get_opportunity(session, opportunity_id)
         try:
@@ -398,8 +419,9 @@ def create_app(
         company: Annotated[str, Form()] = "",
         title: Annotated[str, Form()] = "",
         q: Annotated[str, Form()] = "",
+        desc: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q)
+        filters = Filters(country, company, title, q, desc)
         note = session.get(OpportunityNote, note_id)
         if note is None:
             raise HTTPException(status_code=404, detail="Note not found")
@@ -691,7 +713,7 @@ def _panel_response(
 
     def visible(o: Opportunity) -> bool:
         in_tab = states is None or o.state in states
-        return in_tab and filters.matches(o.location, o.company.name, o.title)
+        return in_tab and filters.matches_opportunity(o)
 
     context = _row_context(session, opportunity, rejected) | _claude_context(
         session, opportunity.id
@@ -716,7 +738,7 @@ def _company_rows(
 
     def visible(o: Opportunity) -> bool:
         in_tab = states is None or o.state in states
-        return in_tab and filters.matches(o.location, o.company.name, o.title)
+        return in_tab and filters.matches_opportunity(o)
 
     context = _row_context(session, opportunity, rejected) | _tabs_context(session, tab, filters)
     context["show_row"] = visible(opportunity)
@@ -821,12 +843,15 @@ def _tabs_context(session: Session, tab: str, filters: Filters | None = None) ->
     filters = filters or Filters()
     counts: dict[OpportunityState, int] = {}
     rows = session.execute(
-        select(Opportunity.state, Opportunity.location, Company.name, Opportunity.title).join(
-            Opportunity.company
-        )
+        select(
+            Opportunity.id, Opportunity.state, Opportunity.location, Company.name, Opportunity.title
+        ).join(Opportunity.company)
     ).all()
-    for state, location, company, title in rows:
-        if filters.matches(location, company, title):
+    described = set(
+        session.scalars(select(SourceRecord.opportunity_id).join(JobSnapshot).distinct())
+    )
+    for oid, state, location, company, title in rows:
+        if filters.matches(location, company, title, oid in described):
             counts[state] = counts.get(state, 0) + 1
     tabs = [
         (
@@ -846,9 +871,7 @@ def _queue_context(
     filters = filters or Filters()
     rejected = latest_rejections(session)
     opportunities = [
-        o
-        for o in _load_opportunities(session, TABS[tab][1])
-        if filters.matches(o.location, o.company.name, o.title)
+        o for o in _load_opportunities(session, TABS[tab][1]) if filters.matches_opportunity(o)
     ]
     rows = [_row_context(session, o, rejected) for o in opportunities]
     rows.sort(key=_queue_order)

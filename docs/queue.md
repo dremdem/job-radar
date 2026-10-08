@@ -49,6 +49,8 @@ The search box matches the title, the company and the location, ignoring case an
 
 Filters are kept in the URL (`/?tab=review&title=python`), survive switching tabs, and the tab counts show how many vacancies match.
 
+**Description (#176).** Above the list: **All · No description · With description**. A two-step routine: first **No description**, open each vacancy you do not ignore outright and click the bookmarklet (the item leaves this view once its description is saved); then **With description** and **Analyze…** for the rest. The switch is kept with the tab, the search and your decisions, and the tab counts follow it.
+
 ## Current item
 
 The vacancy you open stays selected and is remembered in this browser (localStorage). After a reload, or coming back from the vacancy page, it is opened again and scrolled into view.
