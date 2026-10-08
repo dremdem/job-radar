@@ -10,8 +10,8 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .applications import ATS_DOMAINS, _ats_company, _split_sender
-from .dedup import get_or_create_company
+from .applications import ATS_DOMAINS, _ats_company, _split_sender, ats_subject_company
+from .dedup import get_or_create_company, normalize_company_name
 from .linkedin.rejections import _REJECTION
 from .models import (
     Application,
@@ -89,6 +89,27 @@ class ContactStats:
 def _link(email: EmailMessage, company_id: int, match: str) -> None:
     email.company_id = company_id
     email.company_match = match
+
+
+def _undo_ats_domains(session: Session, emails: list[EmailMessage]) -> int:
+    """An ATS sender domain names no company (#178): forget it where it was learned, and move
+    its mail to the employer named in the subject when that is another company."""
+    learned: dict[int, set[str]] = {}
+    for company in session.scalars(select(Company)):
+        ats = {d for d in company.domains or [] if _is_ats(d)}
+        if ats:
+            company.domains = [d for d in company.domains if d not in ats]
+            learned[company.id] = ats
+    moved = 0
+    for e in emails:
+        if e.company_id not in learned or _domain(e.from_addr) not in learned[e.company_id]:
+            continue
+        name = ats_subject_company(e.subject)
+        current = session.get(Company, e.company_id)
+        if name and normalize_company_name(name) != current.normalized_name:
+            _link(e, get_or_create_company(session, name).id, EXACT)
+            moved += 1
+    return moved
 
 
 def _propagate_threads(emails: list[EmailMessage]) -> int:
@@ -176,6 +197,7 @@ def link_and_label(session: Session) -> ContactStats:
     """Link unlinked mail to companies and label linked mail without an event. Idempotent."""
     stats = ContactStats()
     emails = session.scalars(select(EmailMessage)).all()
+    _undo_ats_domains(session, emails)
 
     for e in emails:
         # Links set by the application/rejection import come from the email itself.

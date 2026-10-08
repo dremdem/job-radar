@@ -9,6 +9,7 @@ from job_radar.models import (
     Application,
     ApplicationReview,
     ApplicationSource,
+    Company,
     EmailDirection,
     EmailMessage,
     Rejection,
@@ -277,3 +278,59 @@ def test_name_match_confirmed_by_sender_domain_is_exact_and_learns_domain(sessio
     assert engine.domains == ["northwind.com"]
     assert (later.company_id, later.company_match) == (engine.id, "exact")
     assert elsewhere.company_match == "probable"
+
+
+def test_hibob_is_an_ats_and_wrong_domain_links_are_undone(session):
+    # #178: hibob.com was learned as eCarsTrade's domain, so every HiBob mail went there.
+    ecars = get_or_create_company(session, "eCarsTrade")
+    ecars.domains = ["hibob.com"]
+    bob = '"No-reply (via Bob)" <no-reply@hibob.com>'
+    own = add_email(
+        session,
+        "own",
+        from_addr=bob,
+        subject="Your application was received",
+        company=ecars,
+        event="other",
+    )
+    pure = add_email(
+        session,
+        "p",
+        from_addr=bob,
+        subject="Your application at Pure App was received",
+        company=ecars,
+        event="other",
+    )
+    zepz = add_email(
+        session,
+        "z",
+        from_addr=bob,
+        subject="You're All Set! Your Zepz Application for \u200cBackend Software Engineer"
+        " (Python)\u200c is In!",
+        company=ecars,
+        event="other",
+    )
+    zepz2 = add_email(
+        session,
+        "z2",
+        from_addr=bob,
+        subject="Update on Your Application for the \u200cBackend Software Engineer"
+        " (Python) Role at Zepz\u200c",
+        company=ecars,
+        event="other",
+    )
+    altery = add_email(
+        session,
+        "a",
+        from_addr='"Polina P. (via Bob)" <notifications@hibob.com>',
+        subject="Interview for the ‌‌‌Agentic Product Engineer‌‌‌‌ at Altery‌",
+    )
+    link_and_label(session)
+    session.refresh(ecars)
+    assert "hibob.com" not in (ecars.domains or [])
+    names = {}
+    for e in (own, pure, zepz, zepz2, altery):
+        session.refresh(e)
+        company = session.get(Company, e.company_id) if e.company_id else None
+        names[e.gmail_message_id] = company.name if company else None
+    assert names == {"own": "eCarsTrade", "p": "Pure App", "z": "Zepz", "z2": "Zepz", "a": None}

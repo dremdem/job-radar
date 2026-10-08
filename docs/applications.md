@@ -7,7 +7,7 @@ Past applications reconstructed from Gmail (#15), so the queue can say "you alre
 | Source | Recognized by | Company | Role | Review |
 |---|---|---|---|---|
 | LinkedIn | `jobs-noreply@linkedin.com`, subject `…your application was sent to <company>` | subject | body: first line after the heading; LinkedIn job id from the "View job" link | **confirmed** (LinkedIn states it as a fact) |
-| ATS confirmation | sender domain of an applicant tracking system (Workable, Ashby, Lever, Greenhouse, Teamtailor, SmartRecruiters, Workday, JazzHR/applytojob, Recruitee, BambooHR, Personio, Breezy, Jobvite, iCIMS) **and** subject/snippet saying the application was received ("Thank you for applying", "we received your application", …) | sender display name, else subject ("applying to X", "… at X"), else ATS subdomain (`northwind.teamtailor-mail.com`) | subject/snippet when present ("applying to the <role> position", "<role> - <company>", "… — <role> at <company>") | **suggested** (heuristic; confirm or dismiss) |
+| ATS confirmation | sender domain of an applicant tracking system (Workable, Ashby, Lever, Greenhouse, Teamtailor, SmartRecruiters, Workday, JazzHR/applytojob, Recruitee, BambooHR, Personio, Breezy, Jobvite, iCIMS, HiBob) **and** subject/snippet saying the application was received ("Thank you for applying", "we received your application", …) | sender display name, else subject ("applying to X", "… at X"), else ATS subdomain (`northwind.teamtailor-mail.com`) | subject/snippet when present ("applying to the <role> position", "<role> - <company>", "… — <role> at <company>") | **suggested** (heuristic; confirm or dismiss) |
 
 | hh.ru | a rejection or "position closed" notice from `noreply@hh.ru` (hh.ru sends nothing when you apply) | body: `Компания: …` | body: `Вакансия: …` | **confirmed**; date = the notice's date, see [hh.md](hh.md) |
 
@@ -55,6 +55,8 @@ Before applying, the queue shows what already happened with the company (#14): a
 | The email is an application confirmation, a rejection or LinkedIn's "application was viewed by <company>" (company from its subject / sender) | `exact` |
 | Another message in the same Gmail thread is linked (your replies, the recruiter's follow-ups) | `exact` |
 | Sender domain is a known domain of the company, learned from exactly linked mail (free-mail and ATS domains are never learned) | `exact` |
+
+**ATS domains name no company (#178).** HiBob (`hibob.com`, "… (via Bob)") sends mail for many employers. Before it was on the ATS list it was learned as eCarsTrade's domain, and every HiBob mail went to eCarsTrade. Now an ATS domain found among a company's learned domains is dropped, and its mail moves to the employer named in the subject ("Your application at Pure App was received", "Your Zepz Application for …", "… Role at Zepz"); mail whose subject names no employer stays where it was.
 | The company name appears as whole words in the subject; only names of at least two words or 6+ characters, to avoid "Rain" or "Known" matching everywhere | `probable`; `exact` when the sender's own domain carries the name (`anna@northwind.com`), and then the domain is learned |
 
 ## What an email is

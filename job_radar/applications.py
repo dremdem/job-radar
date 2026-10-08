@@ -50,12 +50,13 @@ ATS_DOMAINS = (
     "breezy.hr",
     "jobvite.com",
     "icims.com",
+    "hibob.com",  # "… (via Bob)": many employers send through it (#178)
 )
 # Subdomain labels that name the ATS region/product, not the company.
 _GENERIC_LABELS = {"us", "eu", "candidates", "inbound", "hire", "mail", "email", "jobs", "app"}
 _GENERIC_NAMES = re.compile(
     r"^(no-?reply|notifications?|workable|greenhouse|lever|ashby|teamtailor|smartrecruiters"
-    r"|workday|jazzhr|recruitee|bamboohr|personio|breezy|jobvite|icims)$",
+    r"|workday|jazzhr|recruitee|bamboohr|personio|breezy|jobvite|icims|bob|hibob)$",
     re.IGNORECASE,
 )
 _NAME_PREFIX = re.compile(r"^(careers|jobs|recruiting|talent)\s*(@|at)\s*", re.IGNORECASE)
@@ -83,6 +84,11 @@ _CONFIRMATION = re.compile(
     re.IGNORECASE,
 )
 _SUBJECT_COMPANY = [
+    # HiBob: "Your application at Pure App was received", "Your Zepz Application for …" (#178).
+    re.compile(
+        r"your application at (?P<c>.+?)(?: was received| [\u2013\u2014-] |$)", re.IGNORECASE
+    ),
+    re.compile(r"\byour (?P<c>[^!.|,]+?) application for\b", re.IGNORECASE),
     # "application to <x>" usually names the role, so only "applying/applied to <company>".
     re.compile(r"(?:applying|applied) (?:to|at|with) (?P<c>[^!.|,]+)", re.IGNORECASE),
     re.compile(r" at (?P<c>[^!.|]+?)\s*!?$", re.IGNORECASE),
@@ -129,10 +135,21 @@ def _linkedin_details(html: str | None, text: str | None) -> tuple[str | None, s
     return None, None
 
 
-def _ats_company(display: str, domain: str, subject: str) -> str | None:
+_ZERO_WIDTH = re.compile("[\u200b-\u200d\u2060\ufeff]")
+
+
+def ats_subject_company(subject: str) -> str | None:
+    """The employer named in an ATS mail's subject, or None."""
+    subject = _ZERO_WIDTH.sub("", subject).strip()
     for pattern in _SUBJECT_COMPANY:
         if match := pattern.search(subject):
             return re.sub(r"^join\s+", "", match["c"].strip(), flags=re.IGNORECASE)
+    return None
+
+
+def _ats_company(display: str, domain: str, subject: str) -> str | None:
+    if name := ats_subject_company(subject):
+        return name
     name = _ATS_WRAPPER.sub("", display.strip().strip('"'))
     name = _NAME_PREFIX.sub("", name)
     name = _NAME_SEPARATOR.split(name)[-1]
