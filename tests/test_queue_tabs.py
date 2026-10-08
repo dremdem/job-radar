@@ -207,7 +207,7 @@ def test_search_box_matches_title_company_and_place(client, session):
     text = client.get("/?tab=all&q=india").text
     assert "Backend India" in text and "Backend London" not in text
     assert 'name="q" value="india"' in text
-    assert 'hx-target="#queue-body"' in text and 'hx-select-oob="#tabs"' in text
+    assert 'hx-target="#queue-body"' in text and 'hx-select-oob="#tabs,#desc-switch"' in text
 
 
 def test_keyboard_and_next_after_a_decision(client, session):
@@ -313,3 +313,12 @@ def test_queue_is_paged(client, session):
     # 50 by default; a page past the end shows the last one.
     assert client.get("/").text.count('class="item"') == 30
     assert "26\u201330 of 30" in client.get("/?per=25&page=9").text
+
+
+def test_search_redraws_the_description_switch(client, session):
+    add(session, "Fresh role")
+    text = client.get("/?q=altery").text
+    # The switch links carry the search, so a new search must redraw them like the tabs.
+    assert 'hx-select-oob="#tabs,#desc-switch"' in text
+    assert '<nav id="desc-switch"' in text
+    assert 'href="/?tab=review&amp;q=altery&amp;desc=none"' in text
