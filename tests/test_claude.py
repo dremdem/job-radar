@@ -466,3 +466,16 @@ def test_answers_have_a_copy_button(client, session):
         page.count('class="btn btn-sm btn-outline-secondary mt-1 copy-answer"') == 1
     )  # answers only
     assert '<textarea class="msg-raw" hidden>Dear team,\n&lt;b&gt;Alex&lt;/b&gt;</textarea>' in page
+
+
+def test_analyze_says_what_it_queued(client, session):
+    vacancy(session)
+    text = client.get("/").text
+    assert 'id="analyze-top"' in text and ">Analyze…</button>" in text
+    # A dialog with an editable minimum score, a preview and Start.
+    assert '<dialog id="analyze-dialog"' in text and '<select id="analyze-min"' in text
+    assert '<option value="1.0">' in text and '<option value="6.5" selected>' in text
+    assert '<option value="10.0">' in text and '<option value="7.0">' in text
+    assert "jr-analyze-min" in text and 'id="analyze-start"' in text
+    assert 'document.querySelector("dialog[open]")' in text  # no I/X/A behind the dialog
+    assert "without a description" in text and '" queued"' in text and "setTimeout" in text

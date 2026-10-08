@@ -13,7 +13,7 @@ The main page (`/`) lists opportunities in tabs:
 
 **Layout (#158): an inbox.**
 
-- **Header:** the tabs (each with its count), a search box, **Analyze ≥ 6.5**, **Sync** and the Claude status.
+- **Header:** the tabs (each with its count), a search box, **Analyze…**, **Sync** and the Claude status.
 - **Left: the list.** One compact item per vacancy: the score, colour-coded (green from 8, amber from 6, red below), the title, company · location, and one line that says the most useful thing. That is Claude's verdict ("Claude: apply · 82%"), a suggested reason to ignore ("ignore? only India"), "no description" or "not analyzed".
 - **Right: the panel** of the selected vacancy. It has the same content as its own page (**page →**):
   - the state buttons, the one-tap reasons to ignore and the reason chips ([applications.md](applications.md#reasons-and-notes));
@@ -25,7 +25,7 @@ The main page (`/`) lists opportunities in tabs:
 
 **The country** is the last part of the location ("Lucknow, Uttar Pradesh, India" → India, "Germany (Remote)" → Germany).
 
-**Analyze ≥ 6.5** queues every vacancy in the list with a score of 6.5 or more, a description and no Claude analysis yet.
+**Analyze…** opens a dialog with **Score from**, a list from 1.0 to 10.0 in steps of 0.5 (6.5 by default; the value you set is remembered in this browser). It shows how many vacancies of the list qualify — a description, that score or more, no Claude analysis yet — and lists them, or, when none does, why: how many lack a description, score lower or are already analysed. **Start** queues them, and a notice lists what went to the Claude queue; it hides by itself after 10 seconds or with **Close** (#174).
 
 ## Triage and keyboard
 

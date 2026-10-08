@@ -12,7 +12,7 @@
              placeholder="Search title, company, country  ( / )" autocomplete="off" aria-label="Search vacancies"
              hx-get="/" hx-trigger="input changed delay:250ms, search" hx-include=".col-filter" hx-target="#queue-body"
              hx-select="#queue-body" hx-select-oob="#tabs" hx-swap="outerHTML" hx-push-url="true">
-      <button type="button" class="btn btn-sm btn-outline-primary" id="analyze-top" title="Queue every vacancy here with score ≥ 6.5, a description and no analysis yet">Analyze ≥ 6.5</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" id="analyze-top" title="Queue vacancies here for Claude: pick the minimum score">Analyze…</button>
       {% include "_claude_status.html" %}
     </div>
   </div>
@@ -27,6 +27,21 @@
   </div>
 </div>
 <div id="notices" class="notices" aria-live="assertive"></div>
+<dialog id="analyze-dialog" class="jr-dialog" aria-labelledby="analyze-title">
+  <form method="dialog" id="analyze-form">
+    <h2 id="analyze-title" class="section-title">Analyze with Claude</h2>
+    <label class="form-row mb-2">Score from <select id="analyze-min" class="form-select form-select-sm w-auto">
+      {% for n in range(2, 21) %}{% set v = "%.1f" | format(n / 2) %}<option value="{{ v }}"{% if v == "6.5" %} selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select></label>
+    <p class="small muted mb-2">Vacancies in this list with a description and no analysis yet.</p>
+    <p id="analyze-preview" class="mb-2"></p>
+    <ul id="analyze-list" class="small mb-3"></ul>
+    <div class="d-flex gap-2 justify-content-end">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="analyze-cancel">Cancel</button>
+      <button type="submit" class="btn btn-sm btn-primary" id="analyze-start">Start</button>
+    </div>
+  </form>
+</dialog>
 <p id="arrivals" class="small" hidden></p>
 <script>
   // Remember this queue's URL (tab, filters) so the vacancy page can come back to it (#150).
@@ -118,6 +133,7 @@
     // Keyboard: J/K move, I/X/A decide, Enter opens the page, / searches.
     document.addEventListener("keydown", function (event) {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (document.querySelector("dialog[open]")) return;  // keys belong to the open dialog
       var tag = (event.target.tagName || "").toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select" || event.target.isContentEditable) {
         if (event.key === "Escape") event.target.blur();
@@ -170,11 +186,69 @@
       redraw(id);
       htmx.ajax("GET", "/claude/status", {target: "#claude-status", swap: "outerHTML"});
     };
+    // A notice that says what Analyze did (#174); it hides by itself.
+    function notice(title, lines) {
+      var box = document.createElement("div");
+      box.className = "notice";
+      box.setAttribute("role", "status");
+      var text = document.createElement("div");
+      var b = document.createElement("b"); b.textContent = title; text.appendChild(b);
+      lines.forEach(function (line) { var d = document.createElement("div"); d.className = "small"; d.textContent = line; text.appendChild(d); });
+      var close = document.createElement("button");
+      close.type = "button"; close.className = "btn btn-sm btn-outline-light"; close.textContent = "Close";
+      close.onclick = function () { box.remove(); };
+      box.appendChild(text); box.appendChild(close);
+      document.getElementById("notices").appendChild(box);
+      setTimeout(function () { box.remove(); }, 10000);
+    }
+    // Analyze… (#174): pick the minimum score in a dialog, see what qualifies, start.
+    var MIN_KEY = "jr-analyze-min";
+    var dialog = document.getElementById("analyze-dialog"), minInput = document.getElementById("analyze-min");
+    function minScore() { var v = parseFloat(minInput.value); return isNaN(v) ? 6.5 : v; }
+    function candidates() {
+      var all = Array.from(document.querySelectorAll("#queue-body .item")), min = minScore();
+      var picked = all.filter(function (i) {
+        return i.dataset.hasDescription === "1" && !i.dataset.claude && parseFloat(i.dataset.score) >= min;
+      });
+      return {all: all, picked: picked};
+    }
+    function preview() {
+      var c = candidates(), list = document.getElementById("analyze-list");
+      document.getElementById("analyze-preview").textContent = c.picked.length
+        ? c.picked.length + (c.picked.length === 1 ? " vacancy" : " vacancies") + " will go to the Claude queue:"
+        : "Nothing qualifies.";
+      list.textContent = "";
+      var lines = c.picked.length ? c.picked.slice(0, 8).map(function (i) {
+        return i.querySelector(".item-score").textContent.trim() + " · " + i.querySelector(".item-title").textContent.trim();
+      }) : [
+        c.all.filter(function (i) { return i.dataset.hasDescription !== "1"; }).length + " without a description (open the vacancy and click the bookmarklet)",
+        c.all.filter(function (i) { return !(parseFloat(i.dataset.score) >= minScore()); }).length + " with a score below " + minScore(),
+        c.all.filter(function (i) { return !!i.dataset.claude; }).length + " already analysed or in the queue",
+      ];
+      if (c.picked.length > 8) lines.push("… and " + (c.picked.length - 8) + " more");
+      lines.forEach(function (t) { var li = document.createElement("li"); li.textContent = t; list.appendChild(li); });
+      document.getElementById("analyze-start").disabled = !c.picked.length;
+    }
     document.getElementById("analyze-top").addEventListener("click", function () {
-      var ids = Array.from(document.querySelectorAll("#queue-body .item")).filter(function (i) {
-        return i.dataset.hasDescription === "1" && !i.dataset.claude && parseFloat(i.dataset.score) >= 6.5;
-      }).map(function (i) { return i.id.split("-")[1]; });
+      try {
+        var saved = localStorage.getItem(MIN_KEY);
+        if (saved && minInput.querySelector('option[value="' + saved + '"]')) minInput.value = saved;
+      } catch (e) {}
+      preview();
+      dialog.showModal();
+      minInput.focus();
+    });
+    minInput.addEventListener("change", function () {
+      try { localStorage.setItem(MIN_KEY, minInput.value); } catch (e) {}
+      preview();
+    });
+    document.getElementById("analyze-cancel").addEventListener("click", function () { dialog.close(); });
+    document.getElementById("analyze-form").addEventListener("submit", function () {
+      var picked = candidates().picked, ids = picked.map(function (i) { return i.id.split("-")[1]; });
       if (!ids.length) return;
+      var titles = picked.slice(0, 5).map(function (i) { return "· " + i.querySelector(".item-title").textContent.trim(); });
+      if (picked.length > 5) titles.push("… and " + (picked.length - 5) + " more");
+      notice("Claude: " + ids.length + (ids.length === 1 ? " vacancy" : " vacancies") + " queued", titles);
       if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
       htmx.ajax("POST", "/claude/analyze", {target: "#claude-status", swap: "outerHTML", values: {ids: ids}})
         .then(function () { ids.forEach(redraw); });
