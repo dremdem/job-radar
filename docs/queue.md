@@ -51,6 +51,8 @@ Filters are kept in the URL (`/?tab=review&title=python`), survive switching tab
 
 **Description (#176).** Above the list: **All · No description · With description**. A two-step routine: first **No description**, open each vacancy you do not ignore outright and click the bookmarklet (the item leaves this view once its description is saved); then **With description** and **Analyze…** for the rest. The switch is kept with the tab, the search and your decisions, and the tab counts follow it.
 
+**Pages (#180).** The list shows 50 vacancies at a time; at its bottom are **‹ Prev**, "51–100 of 726", **Next ›** and a choice of 25 / 50 / 100 / 200 per page (kept with the tab, the search and the description switch; a new tab or search starts at page 1). The whole tab is sorted first, by the score alone, and only the shown page gets the full details (company history, Claude, hints), so long tabs such as All or Ignored load in about a second. **J / K** and **Analyze…** work on the page you see.
+
 ## Current item
 
 The vacancy you open stays selected and is remembered in this browser (localStorage). After a reload, or coming back from the vacancy page, it is opened again and scrolled into view.

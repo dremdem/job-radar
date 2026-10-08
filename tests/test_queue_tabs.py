@@ -292,3 +292,24 @@ def test_filter_by_description(client, session):
         data={"state": "interested", "from": "panel", "tab": "review", "desc": "has"},
     ).text
     assert "To review (0)" in response
+
+
+def test_queue_is_paged(client, session):
+    for n in range(30):
+        o = add(session, f"Role {n:02d}")
+        o.score = n / 3
+    session.commit()
+    text = client.get("/?per=25").text
+    assert text.count('class="item"') == 25
+    assert "1\u201325 of 30" in text and 'href="/?tab=review&amp;per=25&amp;page=2"' in text
+    assert "Role 29" in text and "Role 04" not in text  # sorted by score before paging
+    page2 = client.get("/?per=25&page=2").text
+    assert page2.count('class="item"') == 5 and "26\u201330 of 30" in page2 and "Role 04" in page2
+    assert 'href="/?tab=review&amp;per=25&amp;page=1"' in page2
+    # Per page is kept in tab links and in the list's filters; a new tab starts at page 1.
+    assert 'href="/?tab=ignored&amp;per=25"' in page2
+    assert 'class="col-filter" name="per" value="25"' in page2
+    assert '<select class="form-select form-select-sm w-auto per-select"' in page2
+    # 50 by default; a page past the end shows the last one.
+    assert client.get("/").text.count('class="item"') == 30
+    assert "26\u201330 of 30" in client.get("/?per=25&page=9").text

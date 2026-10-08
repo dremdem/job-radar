@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 
 from markupsafe import Markup, escape
 
@@ -72,6 +73,7 @@ def lacks_python(title: str, description: str | None) -> bool:
     return bool(description) and not _PYTHON.search(title) and not _PYTHON.search(description)
 
 
+@lru_cache(maxsize=8192)  # pure text check, run for every vacancy in a list (#180)
 def python_risk(title: str, description: str | None) -> tuple[float, Reason] | None:
     """Score effect of Python in the description; None without a description or with Python
     already in the title."""

@@ -5,6 +5,7 @@ docs/applications.md#vacancy-language.
 """
 
 import re
+from functools import lru_cache
 
 from .scoring import Reason
 
@@ -167,6 +168,7 @@ def vacancy_language(title: str, description: str | None) -> str | None:
     return detect_text_language(description) or (required[0] if required else None)
 
 
+@lru_cache(maxsize=8192)  # pure text check, run for every vacancy in a list (#180)
 def language_risk(title: str, description: str | None = None) -> tuple[float, Reason] | None:
     if language := detect_title_language(title):
         return LANGUAGE_PENALTY, Reason(

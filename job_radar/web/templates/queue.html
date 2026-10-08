@@ -7,6 +7,7 @@
     <div class="inbox-tools">
       <input type="hidden" class="col-filter" name="tab" value="{{ tab }}">
       <input type="hidden" class="col-filter" name="desc" value="{{ filters.desc }}">
+      <input type="hidden" class="col-filter" name="per" value="{{ filters.per }}">
       {% for name in ("country", "company", "title") %}{% if filters[name] %}
       <input type="hidden" class="col-filter" name="{{ name }}" value="{{ filters[name] }}">{% endif %}{% endfor %}
       <input type="search" class="col-filter form-control form-control-sm inbox-search" name="q" value="{{ filters.q }}"

@@ -120,6 +120,8 @@ TABS: dict[str, tuple[str, list[OpportunityState] | None]] = {
     "all": ("All", None),
 }
 DEFAULT_TAB = "review"
+PER_PAGE = (25, 50, 100, 200)
+DEFAULT_PER_PAGE = 50
 
 
 @dataclass(frozen=True)
@@ -131,6 +133,7 @@ class Filters:
     title: str = ""
     q: str = ""  # the inbox search box: title, company or location (#158)
     desc: str = ""  # "none" / "has": vacancies without / with a saved description (#176)
+    per: str = ""  # vacancies per page, one of PER_PAGE; "" = the default (#180)
 
     def matches(
         self,
@@ -159,6 +162,13 @@ class Filters:
     def with_desc(self, desc: str) -> "Filters":
         return replace(self, desc=desc)
 
+    def with_per(self, per: int) -> "Filters":
+        return replace(self, per="" if per == DEFAULT_PER_PAGE else str(per))
+
+    @property
+    def per_page(self) -> int:
+        return int(self.per) if self.per in {str(n) for n in PER_PAGE} else DEFAULT_PER_PAGE
+
     def href(self, tab: str) -> str:
         pairs = (
             ("q", self.q),
@@ -166,6 +176,7 @@ class Filters:
             ("country", self.country),
             ("company", self.company),
             ("desc", self.desc),
+            ("per", self.per),
         )
         return "/?" + urlencode({"tab": tab} | {k: v for k, v in pairs if v})
 
@@ -235,10 +246,12 @@ def create_app(
         title: str = "",
         q: str = "",
         desc: str = "",
+        per: str = "",
+        page: int = 1,
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc)
+        filters = Filters(country, company, title, q, desc, per)
         return templates.TemplateResponse(
-            request, "queue.html", _queue_context(session, _tab(tab), filters)
+            request, "queue.html", _queue_context(session, _tab(tab), filters, page)
         )
 
     @app.post("/opportunities/{opportunity_id}/state", response_class=HTMLResponse)
@@ -253,9 +266,10 @@ def create_app(
         title: Annotated[str, Form()] = "",
         q: Annotated[str, Form()] = "",
         desc: Annotated[str, Form()] = "",
+        per: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc)
+        filters = Filters(country, company, title, q, desc, per)
         tab = _tab(tab)
         opportunity = _get_opportunity(session, opportunity_id)
         opportunity.state = state
@@ -284,10 +298,11 @@ def create_app(
         title: str = "",
         q: str = "",
         desc: str = "",
+        per: str = "",
         notify: bool = False,
     ) -> HTMLResponse:
         # One row for live updates (e.g. a description saved by the bookmarklet in another tab).
-        tab, filters = _tab(tab), Filters(country, company, title, q, desc)
+        tab, filters = _tab(tab), Filters(country, company, title, q, desc, per)
         opportunity = _get_opportunity(session, opportunity_id)
         states = TABS[tab][1]
         context = _row_context(session, opportunity) | _tabs_context(session, tab, filters)
@@ -362,9 +377,10 @@ def create_app(
         title: Annotated[str, Form()] = "",
         q: Annotated[str, Form()] = "",
         desc: Annotated[str, Form()] = "",
+        per: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc)
+        filters = Filters(country, company, title, q, desc, per)
         # Rejection is per company: redraw this row and its company's other rows only (#138).
         opportunity = _get_opportunity(session, opportunity_id)
         toggle_manual_rejection(session, opportunity)
@@ -388,9 +404,10 @@ def create_app(
         title: Annotated[str, Form()] = "",
         q: Annotated[str, Form()] = "",
         desc: Annotated[str, Form()] = "",
+        per: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc)
+        filters = Filters(country, company, title, q, desc, per)
         # Penalties and history are per company, so the whole queue is re-rendered.
         opportunity = _get_opportunity(session, opportunity_id)
         try:
@@ -420,8 +437,9 @@ def create_app(
         title: Annotated[str, Form()] = "",
         q: Annotated[str, Form()] = "",
         desc: Annotated[str, Form()] = "",
+        per: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc)
+        filters = Filters(country, company, title, q, desc, per)
         note = session.get(OpportunityNote, note_id)
         if note is None:
             raise HTTPException(status_code=404, detail="Note not found")
@@ -790,15 +808,13 @@ def _profile(session: Session) -> Profile | None:
     return current_profile(settings.profile) if settings else None
 
 
-def _row_context(session: Session, opportunity: Opportunity, rejected: dict | None = None) -> dict:
-    if rejected is None:
-        rejected = latest_rejections(session)
-    rejected_at = rejected.get(opportunity.company_id)
-    history = company_history(session, opportunity.company_id)
+def _score(
+    session: Session, opportunity: Opportunity, rejected_at: datetime | None
+) -> tuple[float | None, list, str | None]:
+    """The score shown and sorted by, its extra reasons, and the description used."""
     eff_score = effective_score(opportunity.score, rejected=rejected_at is not None)
     extra_reasons = []
     description = latest_description(opportunity)
-    python_check = check_python(description) if description else None
     effects = (
         location_penalty(session, opportunity),
         language_risk(opportunity.title, description),
@@ -812,6 +828,16 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         extra_reasons.append(reason)
         if eff_score is not None:
             eff_score = round(max(0.0, eff_score + points), 1)
+    return eff_score, extra_reasons, description
+
+
+def _row_context(session: Session, opportunity: Opportunity, rejected: dict | None = None) -> dict:
+    if rejected is None:
+        rejected = latest_rejections(session)
+    rejected_at = rejected.get(opportunity.company_id)
+    history = company_history(session, opportunity.company_id)
+    eff_score, extra_reasons, description = _score(session, opportunity, rejected_at)
+    python_check = check_python(description) if description else None
     applied = [e.at for e in history if e.kind == "applied"]
     return {
         "history": history[:HISTORY_SHOWN],
@@ -866,18 +892,40 @@ def _tabs_context(session: Session, tab: str, filters: Filters | None = None) ->
 
 
 def _queue_context(
-    session: Session, tab: str = DEFAULT_TAB, filters: Filters | None = None
+    session: Session, tab: str = DEFAULT_TAB, filters: Filters | None = None, page: int = 1
 ) -> dict:
     filters = filters or Filters()
     rejected = latest_rejections(session)
     opportunities = [
         o for o in _load_opportunities(session, TABS[tab][1]) if filters.matches_opportunity(o)
     ]
-    rows = [_row_context(session, o, rejected) for o in opportunities]
-    rows.sort(key=_queue_order)
+    # Sort by the score alone; the full row (history, Claude, hints) only for the page (#180).
+    keyed = [
+        {"o": o, "rejected_at": rejected.get(o.company_id)}
+        | {"eff_score": _score(session, o, rejected.get(o.company_id))[0]}
+        for o in opportunities
+    ]
+    keyed.sort(key=_queue_order)
+    per = filters.per_page
+    pages = max(1, -(-len(keyed) // per))
+    page = min(max(1, page), pages)
+    shown = keyed[(page - 1) * per : page * per]
+    rows = [_row_context(session, k["o"], rejected) for k in shown]
     context = _tabs_context(session, tab, filters)
-    # _queue.html includes _row.html per row; the buttons need the states in scope.
+    base = filters.href(tab)
+    pager = {
+        "page": page,
+        "pages": pages,
+        "first": (page - 1) * per + 1 if keyed else 0,
+        "last": (page - 1) * per + len(shown),
+        "count": len(keyed),
+        "prev": f"{base}&page={page - 1}" if page > 1 else None,
+        "next": f"{base}&page={page + 1}" if page < pages else None,
+        "per": per,
+        "per_options": PER_PAGE,
+    }
     return context | {
+        "pager": pager,
         "rows": rows,
         "has_any": context["total"] > 0,
         "states": _manual_states(),
