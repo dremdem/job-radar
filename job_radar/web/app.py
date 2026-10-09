@@ -973,9 +973,16 @@ def _tabs_context(session: Session, tab: str, filters: Filters | None = None) ->
     described = set(
         session.scalars(select(SourceRecord.opportunity_id).join(JobSnapshot).distinct())
     )
+    # Tab counts ignore the description switch; the switch counts the current tab (#186).
+    plain = filters.with_desc("")
+    in_tab = TABS[tab][1]
+    desc_counts = {"": 0, "none": 0, "has": 0}
     for oid, state, location, company, title in rows:
-        if filters.matches(location, company, title, oid in described):
+        if plain.matches(location, company, title):
             counts[state] = counts.get(state, 0) + 1
+            if in_tab is None or state in in_tab:
+                desc_counts[""] += 1
+                desc_counts["has" if oid in described else "none"] += 1
     tabs = [
         (
             key,
@@ -985,7 +992,13 @@ def _tabs_context(session: Session, tab: str, filters: Filters | None = None) ->
         )
         for key, (label, states) in TABS.items()
     ]
-    return {"tab": tab, "tabs": tabs, "total": len(rows), "filters": filters}
+    return {
+        "tab": tab,
+        "tabs": tabs,
+        "total": len(rows),
+        "filters": filters,
+        "desc_counts": desc_counts,
+    }
 
 
 def _queue_context(

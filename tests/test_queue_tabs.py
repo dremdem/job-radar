@@ -278,20 +278,22 @@ def test_filter_by_description(client, session):
     describe(session, full)
     text = client.get("/?desc=none").text
     assert f'id="opportunity-{bare.id}"' in text and f'id="opportunity-{full.id}"' not in text
-    assert "To review (1)" in text
+    assert "To review (2)" in text  # tab counts ignore the switch (#186)
+    assert ">No description (1)<" in text and ">With description (1)<" in text
+    assert ">All (2)<" in text
     assert 'class="col-filter" name="desc" value="none"' in text
     assert 'href="/?tab=interested&amp;desc=none"' in text  # tab links keep it
     text = client.get("/?desc=has").text
     assert f'id="opportunity-{full.id}"' in text and f'id="opportunity-{bare.id}"' not in text
     # The switch itself: three links, the current one marked.
-    assert ">No description<" in text and ">With description<" in text
+    assert ">No description (1)<" in text and ">With description (1)<" in text
     assert 'aria-current="true"' in text
     # A decision in the panel keeps the view: the other item is not drawn into it.
     response = client.post(
         f"/opportunities/{full.id}/state",
         data={"state": "interested", "from": "panel", "tab": "review", "desc": "has"},
     ).text
-    assert "To review (0)" in response
+    assert "To review (1)" in response
 
 
 def test_queue_is_paged(client, session):

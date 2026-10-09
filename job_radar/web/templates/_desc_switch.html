@@ -1,0 +1,6 @@
+{# Collect descriptions first, then analyze (#176); its own counts for the tab (#186). #}
+<nav id="desc-switch" class="desc-switch" aria-label="Description"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% for value, label in [("", "All"), ("none", "No description"), ("has", "With description")] %}
+  <a href="{{ filters.with_desc(value).href(tab) }}"{% if filters.desc == value %} class="active" aria-current="true"{% endif %}>{{ label }} ({{ desc_counts[value] }})</a>
+  {% endfor %}
+</nav>

@@ -22,11 +22,7 @@
   <div class="inbox-body">
     <section class="inbox-list" aria-label="Vacancies">
       <div class="list-head"><span>Sorted by score</span><span class="kbd-hint">J / K to move</span></div>
-      <nav id="desc-switch" class="desc-switch" aria-label="Description">{# collect descriptions first, then analyze (#176) #}
-        {% for value, label in [("", "All"), ("none", "No description"), ("has", "With description")] %}
-        <a href="{{ filters.with_desc(value).href(tab) }}"{% if filters.desc == value %} class="active" aria-current="true"{% endif %}>{{ label }}</a>
-        {% endfor %}
-      </nav>
+      {% include "_desc_switch.html" %}
       {% include "_queue.html" %}
     </section>
     <section id="detail" class="inbox-detail" aria-live="polite">
