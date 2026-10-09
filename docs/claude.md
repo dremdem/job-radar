@@ -87,3 +87,5 @@ Every vacancy has its own page, `/opportunities/<id>`: the **page →** link nex
   | Reply to recruiter (EN) | A short, polite reply to a recruiter's message (paste their message after the prompt) |
 
   The prompts live in `job_radar/claude/prompt.py` (`QUICK_PROMPTS`).
+
+Sending a message keeps the panel or the page where it is and the cursor in the text box: the redraws of the chat do not scroll (#188).

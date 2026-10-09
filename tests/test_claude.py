@@ -479,3 +479,11 @@ def test_analyze_says_what_it_queued(client, session):
     assert "jr-analyze-min" in text and 'id="analyze-start"' in text
     assert 'document.querySelector("dialog[open]")' in text  # no I/X/A behind the dialog
     assert "without a description" in text and '" queued"' in text and "setTimeout" in text
+
+
+def test_chat_redraws_do_not_move_the_page(client, session):
+    vacancy(session)
+    text = client.get("/").text
+    # Chrome's scroll anchoring jumped the panel away from the chat on every redraw (#188).
+    assert "html { overflow-anchor: none; }" in text
+    assert 'textarea[name=text]");' in text and "preventScroll: true" in text
