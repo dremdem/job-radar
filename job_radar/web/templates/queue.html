@@ -57,6 +57,7 @@
     </select></label>
     <p class="small muted mb-2">Vacancies in this list with a description and no analysis yet.</p>
     <p id="analyze-preview" class="mb-2"></p>
+    <p id="analyze-skipped" class="small muted mb-2"></p>
     <ul id="analyze-list" class="small mb-3"></ul>
     <div class="d-flex gap-2 justify-content-end">
       <button type="button" class="btn btn-sm btn-outline-secondary" id="analyze-cancel">Cancel</button>
@@ -250,6 +251,12 @@
       if (c.picked.length > 8) lines.push("… and " + (c.picked.length - 8) + " more");
       lines.forEach(function (t) { var li = document.createElement("li"); li.textContent = t; list.appendChild(li); });
       document.getElementById("analyze-start").disabled = !c.picked.length;
+      // Always say what stays out: a vacancy with an analysis (and so with a chat) is never re-run (#190).
+      var count = function (test) { return c.all.filter(test).length; };
+      document.getElementById("analyze-skipped").textContent = "Skipped: " +
+        count(function (i) { return !!i.dataset.claude; }) + " already analysed or with a chat · " +
+        count(function (i) { return !i.dataset.claude && i.dataset.hasDescription !== "1"; }) + " without a description · " +
+        count(function (i) { return !i.dataset.claude && i.dataset.hasDescription === "1" && !(parseFloat(i.dataset.score) >= minScore()); }) + " below " + minScore().toFixed(1);
     }
     document.getElementById("analyze-top").addEventListener("click", function () {
       try {

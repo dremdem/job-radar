@@ -478,6 +478,7 @@ def test_analyze_says_what_it_queued(client, session):
     assert '<option value="10.0">' in text and '<option value="7.0">' in text
     assert "jr-analyze-min" in text and 'id="analyze-start"' in text
     assert 'document.querySelector("dialog[open]")' in text  # no I/X/A behind the dialog
+    assert 'id="analyze-skipped"' in text and "already analysed or with a chat" in text
     assert "without a description" in text and '" queued"' in text and "setTimeout" in text
 
 

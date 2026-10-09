@@ -25,7 +25,7 @@ The main page (`/`) lists opportunities in tabs:
 
 **The country** is the last part of the location ("Lucknow, Uttar Pradesh, India" → India, "Germany (Remote)" → Germany).
 
-**Analyze…** opens a dialog with **Score from**, a list from 1.0 to 10.0 in steps of 0.5 (6.5 by default; the value you set is remembered in this browser). It shows how many vacancies of the list qualify — a description, that score or more, no Claude analysis yet — and lists them, or, when none does, why: how many lack a description, score lower or are already analysed. **Start** queues them, and a notice lists what went to the Claude queue; it hides by itself after 10 seconds or with **Close** (#174).
+**Analyze…** opens a dialog with **Score from**, a list from 1.0 to 10.0 in steps of 0.5 (6.5 by default; the value you set is remembered in this browser). It shows how many vacancies of the list qualify — a description, that score or more, no Claude analysis yet — and lists them, or, when none does, why: how many lack a description, score lower or are already analysed. A **Skipped** line always counts what stays out: already analysed (every vacancy with a Claude chat has an analysis, so it is never re-run; use **Analyze again** in its panel for that), without a description, below the score (#190). **Start** queues them, and a notice lists what went to the Claude queue; it hides by itself after 10 seconds or with **Close** (#174).
 
 ## Triage and keyboard
 
