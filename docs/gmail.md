@@ -13,11 +13,30 @@ Read-only import of job-related mail into `EmailMessage` (#12). Nothing is ever 
    - *Get started*: app name, support email, audience **External**;
    - *Audience → Test users*: add your Gmail address;
    - *Clients → Create client*: type **Desktop app**, download the JSON.
-   - Optional: *Audience → Publish app*. In *Testing* mode refresh tokens expire after 7 days; a published personal app only shows an "unverified app" warning at login.
+   - *Audience → Publish app*, see [Publishing the app](#publishing-the-app-193): in *Testing* mode refresh tokens expire after 7 days.
 3. Save the JSON as `secrets/gmail_client_secret.json` (git-ignored).
 4. Authorize: `uv run job-radar gmail auth`. A browser opens; after consent the token is written to `secrets/gmail_token.json` (mode 600).
 
 Scope: `https://www.googleapis.com/auth/gmail.readonly` only.
+
+## Publishing the app (#193)
+
+In *Testing* mode Google refresh tokens die after 7 days and sync stops with `invalid_grant: Token has been expired or revoked`. A published app keeps its token until you revoke it, change the password, or leave it unused for six months. Publishing a personal app needs no verification; you only see an "unverified app" warning at consent.
+
+Google asks for a homepage and a privacy policy before **Publish app** becomes active. This repository is private, so both live in the public repository [dremdem/job-radar-privacy](https://github.com/dremdem/job-radar-privacy) (GitHub Pages, no code or data):
+
+- homepage: `https://dremdem.github.io/job-radar-privacy/`
+- privacy policy: `https://dremdem.github.io/job-radar-privacy/privacy.html`
+
+Steps, in the project's **Google Auth Platform**:
+
+1. **Branding** (`https://console.cloud.google.com/auth/branding?project=<project-id>`):
+   - *App name*: `Job Radar`; *User support email*: your address;
+   - *App domain*: *Application home page* and *Application privacy policy link* as above (terms of service can stay empty);
+   - *Authorized domains*: add `dremdem.github.io`;
+   - *Developer contact information*: your address; **Save**.
+2. **Audience** (`…/auth/audience?project=<project-id>`): **Publish app** → **Confirm**. The status becomes *In production*. Do not submit for verification.
+3. Authorize once more (the old token was issued in Testing): `uv run job-radar gmail auth`. At "Google hasn't verified this app" choose **Advanced → Go to Job Radar (unsafe)** → **Continue**.
 
 ## Sync
 
