@@ -23,6 +23,25 @@ REASON_LABELS = {
     NoteKind.WORK_FORMAT: "hybrid / on-site",
     NoteKind.OTHER: "other",
 }
+# A picture per reason, so a list of ignores reads at a glance (#195).
+REASON_ICONS = {
+    NoteKind.ONLY_LOCATION: "\u2708\ufe0f",  # airplane: you would have to move
+    NoteKind.LANGUAGE: "\U0001f5e3\ufe0f",  # speaking head
+    NoteKind.STACK: "\U0001f9f0",  # toolbox
+    NoteKind.WORK_FORMAT: "\U0001f3e2",  # office building
+    NoteKind.SENIORITY: "\U0001f393",  # graduation cap
+    NoteKind.SALARY: "\U0001f4b0",  # money bag
+    NoteKind.CONTRACT: "\U0001f4dd",  # memo
+    NoteKind.OTHER: "\U0001f937",  # shrug
+    NoteKind.NOTE: "\U0001f5d2\ufe0f",  # spiral notepad
+}
+
+
+def reason_icon(kind: NoteKind | str) -> str:
+    try:
+        return REASON_ICONS[NoteKind(kind)]
+    except ValueError:
+        return ""
 
 
 def country_from_location(location: str | None) -> str | None:

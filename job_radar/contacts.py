@@ -25,7 +25,7 @@ from .models import (
     Rejection,
     RejectionSource,
 )
-from .notes import describe
+from .notes import describe, reason_icon
 from .rejections import mark_rejected
 
 EXACT, PROBABLE = "exact", "probable"
@@ -278,6 +278,7 @@ class HistoryEvent:
     probable: bool = False
     note_id: int | None = None  # reasons and notes can be deleted from the history
     event_id: int | None = None  # so can events added by hand (#182)
+    icon: str = ""  # the reason's picture for ignores and notes (#195)
 
 
 def gmail_url(thread_id: str | None) -> str | None:
@@ -327,7 +328,14 @@ def company_history(session: Session, company_id: int) -> list[HistoryEvent]:
     ):
         kind = "note" if note.kind is NoteKind.NOTE else "ignored"
         events.append(
-            HistoryEvent(_as_utc(note.created_at), kind, describe(note), None, note_id=note.id)
+            HistoryEvent(
+                _as_utc(note.created_at),
+                kind,
+                describe(note),
+                None,
+                note_id=note.id,
+                icon=reason_icon(note.kind),
+            )
         )
     for ev in session.scalars(select(CompanyEvent).where(CompanyEvent.company_id == company_id)):
         events.append(HistoryEvent(_as_utc(ev.at), ev.kind, ev.comment or "", None, event_id=ev.id))

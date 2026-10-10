@@ -143,3 +143,5 @@ Examples, from real vacancies:
 It adds `− Requires German — “<quote>”` (**−8**). On the real data (2026-10-03), 13 such sentences were found, with no false alarms among the optional ones.
 
 The optional auto-ignore rule **"Description not in English"** ([settings.md](settings.md)) moves them, and the vacancies that require such a language, out of To review with the reason `language: <Language>`.
+
+Each reason has an icon, shown on its button, in the one-tap suggestions, in the list line and in the company history (#195): location ✈️ (you would have to move), language 🗣️, stack 🧰, hybrid / on-site 🏢, seniority 🎓, salary 💰, contract 📝, other 🤷, note 🗒️.

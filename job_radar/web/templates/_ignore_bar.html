@@ -5,7 +5,7 @@
   {% for s in suggestions %}
   <button class="btn btn-sm btn-outline-danger btn-suggest" hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter"
           hx-vals='{{ {"action": "ignore", "kind": s.kind.value, "detail": s.detail or "", "comment": s.comment, "tab": tab, "from": page_from or ""} | tojson }}'
-          hx-target="{{ target }}" hx-swap="{{ swap }}" title="Ignore with this reason">Ignore: {{ s.label }}</button>
+          hx-target="{{ target }}" hx-swap="{{ swap }}" title="Ignore with this reason">{{ reason_icon(s.kind) }} Ignore: {{ s.label }}</button>
   {% endfor %}
 </div>
 {% endif %}
@@ -24,7 +24,7 @@
   {% for kind, detail, label in chips if label %}
   <button class="chip" hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter, #comment-{{ o.id }}"
           hx-vals='{{ {"action": "ignore", "kind": kind, "detail": detail, "tab": tab, "from": page_from or ""} | tojson }}'
-          hx-target="{{ target }}" hx-swap="{{ swap }}">{{ label }}</button>
+          hx-target="{{ target }}" hx-swap="{{ swap }}">{{ reason_icon(kind) }} {{ label }}</button>
   {% endfor %}
   <input id="comment-{{ o.id }}" name="comment" class="form-control form-control-sm d-inline-block w-auto" placeholder="comment (optional)" size="18">
   <details class="note-form">
@@ -32,7 +32,7 @@
     <form hx-post="/opportunities/{{ o.id }}/notes" hx-include=".col-filter" hx-target="{{ target }}" hx-swap="{{ swap }}">
       <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="from" value="{{ page_from or '' }}">
       <select name="kind" class="form-select form-select-sm d-inline-block w-auto">
-        {% for k in reason_kinds %}<option value="{{ k.value }}">{{ "only (location)" if k.value == "only_location" else k.value | replace("_", " ") }}</option>{% endfor %}
+        {% for k in reason_kinds %}<option value="{{ k.value }}">{{ reason_icon(k) }} {{ "only (location)" if k.value == "only_location" else k.value | replace("_", " ") }}</option>{% endfor %}
       </select>
       <input name="detail" value="{{ country }}" class="form-control form-control-sm d-inline-block w-auto" placeholder="country / language / technology" size="14">
       <input name="comment" class="form-control form-control-sm d-inline-block w-auto" placeholder="comment" size="16">

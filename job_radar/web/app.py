@@ -51,6 +51,7 @@ from ..notes import (
     delete_note,
     ignore_with_reason,
     location_penalty,
+    reason_icon,
 )
 from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
 from ..skills import SORTS, build_report, sort_rows
@@ -101,6 +102,7 @@ def local_time(value: datetime | None, fmt: str, tz: tzinfo | None = None) -> st
 
 templates.env.filters["local"] = local_time
 templates.env.globals["EVENT_KINDS"] = manual.EVENT_KINDS
+templates.env.globals["reason_icon"] = reason_icon
 templates.env.globals["today"] = lambda: datetime.now().strftime("%Y-%m-%d")
 
 # Queue order: undecided first, then the ones worth a look.

@@ -91,7 +91,7 @@ def test_duplicates_are_dropped_and_at_most_three():
 
 def test_one_tap_ignore_from_the_row(client, session):
     o = add_vacancy(session, title="Senior Python Developer", text="Fluent German is required.")
-    assert "ignore? language: German" in client.get("/").text
+    assert "ignore? \U0001f5e3\ufe0f language: German" in client.get("/").text
     assert "Ignore: language: German" in client.get(f"/opportunities/{o.id}/panel").text
     response = client.post(
         f"/opportunities/{o.id}/notes",
@@ -114,7 +114,8 @@ def test_reason_chips_and_work_format_reason(client, session):
     o.location = "Lucknow, India"
     session.commit()
     panel = client.get(f"/opportunities/{o.id}/panel").text
-    assert 'class="chip"' in panel and ">Location: India<" in panel and ">Seniority<" in panel
+    assert 'class="chip"' in panel and ">\u2708\ufe0f Location: India<" in panel
+    assert ">\U0001f393 Seniority<" in panel
     client.post(f"/opportunities/{o.id}/notes", data={"action": "ignore", "kind": "work_format"})
     assert "hybrid / on-site" in client.get(f"/opportunities/{o.id}").text
     client.post(
@@ -164,3 +165,16 @@ def test_one_language_suggestion_even_from_two_sources():
         claude=ClaudeAnalysis(state="done", result=result),
     )
     assert [s.label for s in found] == ["language: Dutch"]
+
+
+def test_reasons_have_icons(client, session):
+    from job_radar.models import NoteKind
+    from job_radar.notes import REASON_ICONS, reason_icon
+
+    assert set(REASON_ICONS) == set(NoteKind)  # every reason has a picture (#195)
+    assert reason_icon("salary") == "\U0001f4b0" and reason_icon("nope") == ""
+    o = add_vacancy(session, title="Python Developer", text="Remote.")
+    panel = client.get(f"/opportunities/{o.id}/panel").text
+    assert "\U0001f4b0 Salary<" in panel and "\U0001f3e2 Hybrid / on-site<" in panel
+    client.post(f"/opportunities/{o.id}/notes", data={"action": "ignore", "kind": "salary"})
+    assert "\U0001f4b0 <b>ignored</b>" in client.get(f"/opportunities/{o.id}").text

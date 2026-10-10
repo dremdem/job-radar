@@ -27,7 +27,7 @@
       <summary class="fold"><span class="badge">contacted · {{ history_count }}</span>{% if applied_before %} <span class="badge warn">already applied {{ (applied_before | local("%Y-%m-%d")) }}</span>{% endif %}</summary>
       <ul>
         {% for e in history %}
-        <li>{{ (e.at | local("%Y-%m-%d")) }} · <b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}{% if e.note_id %} <button class="link" hx-post="/notes/{{ e.note_id }}/delete" hx-include=".col-filter" hx-vals='{"tab": "{{ tab }}"}' hx-target="#opportunity-{{ o.id }}" hx-swap="outerHTML" title="delete">×</button>{% endif %}</li>
+        <li>{{ (e.at | local("%Y-%m-%d")) }} · {% if e.icon %}{{ e.icon }} {% endif %}<b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}{% if e.note_id %} <button class="link" hx-post="/notes/{{ e.note_id }}/delete" hx-include=".col-filter" hx-vals='{"tab": "{{ tab }}"}' hx-target="#opportunity-{{ o.id }}" hx-swap="outerHTML" title="delete">×</button>{% endif %}</li>
         {% endfor %}
         {% if history_count > history | length %}<li class="muted">… {{ history_count - history | length }} more</li>{% endif %}
       </ul>
