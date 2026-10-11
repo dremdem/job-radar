@@ -44,9 +44,10 @@
     <div class="form-grid">
       <label>Model <select name="model" class="form-select form-select-sm">{% for m in models %}<option value="{{ m }}" {% if claude.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label>
       <label>Analyses per day <input type="number" class="form-control form-control-sm" name="daily_cap" value="{{ claude.daily_cap }}" min="0" max="500"></label>
+      <label>Parallel analyses <select name="parallel" class="form-select form-select-sm">{% for n in range(1, 9) %}<option value="{{ n }}" {% if claude.parallel == n %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
       <label>Explanations in <select name="language" class="form-select form-select-sm">{% for l in languages %}<option value="{{ l }}" {% if claude.language == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
     </div>
-    <p class="small muted">The rest wait in the queue until tomorrow. CV: {% if cv_path %}<code>{{ cv_path }}</code>{% else %}not set — add <code>JOB_RADAR_CV_PATH</code> to <code>.env</code>{% endif %}</p>
+    <p class="small muted">Over the daily number the rest wait until tomorrow. More at once finishes the queue sooner and reaches the subscription's limit sooner; at the limit new analyses pause for 15 minutes. CV: {% if cv_path %}<code>{{ cv_path }}</code>{% else %}not set — add <code>JOB_RADAR_CV_PATH</code> to <code>.env</code>{% endif %}</p>
     <button type="submit" class="btn btn-primary btn-sm">Save</button>
   </form>
 </section>

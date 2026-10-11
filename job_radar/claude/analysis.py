@@ -1,5 +1,6 @@
-"""The queue of deep analyses and the worker that runs them one at a time. See docs/claude.md."""
+"""The queue of deep analyses and the workers that run them. See docs/claude.md."""
 
+import re
 import threading
 import time
 import uuid
@@ -8,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..ai.analysis import quote_in_text
@@ -24,11 +25,18 @@ LANGUAGES = ("Russian", "English")
 PENDING = ("queued", "running")
 
 
+MAX_PARALLEL = 8
+USAGE_PAUSE = timedelta(minutes=15)
+# The subscription's limit: waiting a few seconds will not help (#197).
+_USAGE_LIMIT = re.compile(r"usage limit|rate.?limit|\b429\b|too many requests", re.IGNORECASE)
+
+
 @dataclass(frozen=True)
 class ClaudeSettings:
     model: str = "sonnet"
     daily_cap: int = 30
     language: str = "Russian"
+    parallel: int = 4  # analyses at once, 1..MAX_PARALLEL (#197)
 
 
 def load_claude_settings(session: Session) -> ClaudeSettings:
@@ -205,7 +213,8 @@ def _check_quotes(result: dict[str, Any], text: str) -> dict[str, Any]:
 
 
 class Worker:
-    """Runs queued analyses one at a time in a background thread."""
+    """Runs queued analyses in a pool of background threads (#197) and answers chat
+    questions in a thread of its own, so they never wait behind analyses."""
 
     def __init__(
         self,
@@ -224,7 +233,9 @@ class Worker:
         self.retry_waits: tuple[float, ...] = (10.0, 30.0)  # pauses before attempts 2 and 3
         self._wake = threading.Event()
         self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._threads: list[threading.Thread] = []
+        self._claim = threading.Lock()  # one thread at a time picks the next vacancy
+        self.paused_until: datetime | None = None  # after the subscription's usage limit
 
     def start(self) -> None:
         with self.session_factory() as session:
@@ -239,8 +250,13 @@ class Worker:
             ):
                 message.state = "queued"
             session.commit()
-        self._thread = threading.Thread(target=self._loop, daemon=True, name="claude-worker")
-        self._thread.start()
+        loops = [("claude-chat", self._chat_loop)] + [
+            (f"claude-worker-{n}", lambda n=n: self._analysis_loop(n)) for n in range(MAX_PARALLEL)
+        ]
+        for name, target in loops:
+            thread = threading.Thread(target=target, daemon=True, name=name)
+            thread.start()
+            self._threads.append(thread)
 
     def stop(self) -> None:
         self._stop.set()
@@ -249,15 +265,32 @@ class Worker:
     def wake(self) -> None:
         self._wake.set()
 
-    def _loop(self) -> None:
+    def _idle(self) -> None:
+        # Every thread sleeps until woken; the event stays set briefly so all of them see it.
+        if self._wake.wait(self.idle_wait):
+            time.sleep(0.05)
+            self._wake.clear()
+
+    def _chat_loop(self) -> None:
         while not self._stop.is_set():
             try:
-                worked = self.run_once()
+                worked = self._answer_once()
             except Exception:  # never kill the thread; the row says what failed
                 worked = False
             if not worked:
-                self._wake.wait(self.idle_wait)
-                self._wake.clear()
+                self._idle()
+
+    def _analysis_loop(self, slot: int) -> None:
+        while not self._stop.is_set():
+            try:
+                with self.session_factory() as session:
+                    parallel = load_claude_settings(session).parallel
+                active = slot < max(1, min(MAX_PARALLEL, parallel))
+                worked = active and self._analyze_once()
+            except Exception:  # never kill the thread; the row says what failed
+                worked = False
+            if not worked:
+                self._idle()
 
     def _cv(self) -> str | None:
         if self.cv_path and self.cv_path.expanduser().exists():
@@ -267,25 +300,49 @@ class Worker:
     def run_once(self, now: datetime | None = None) -> bool:
         """Answer the oldest chat question, else run the oldest queued analysis.
 
-        Returns False when there was nothing to run."""
-        if self._answer_once():
-            return True
-        with self.session_factory() as session:
-            now = now or datetime.now(UTC)
+        Returns False when there was nothing to run. Tests drive the worker with it."""
+        return self._answer_once() or self._analyze_once(now)
+
+    def _claim_next(self, session: Session, now: datetime) -> ClaudeAnalysis | None:
+        """Mark the oldest queued vacancy as running, unless capped or paused."""
+        with self._claim:
+            if self.paused_until is not None and now < self.paused_until:
+                return None
             settings = load_claude_settings(session)
-            if _done_today(session, now) >= settings.daily_cap:
-                return False
-            job = session.scalar(
-                select(ClaudeAnalysis)
+            running = session.scalar(
+                select(func.count(ClaudeAnalysis.id)).where(ClaudeAnalysis.state == "running")
+            )
+            if _done_today(session, now) + running >= settings.daily_cap:
+                return None
+            job_id = session.scalar(
+                select(ClaudeAnalysis.id)
                 .where(ClaudeAnalysis.state == "queued")
                 .order_by(ClaudeAnalysis.id)
                 .limit(1)
             )
-            if job is None:
-                return False
-            job.state, job.started_at = "running", now
+            if job_id is None:
+                return None
+            taken = session.execute(
+                update(ClaudeAnalysis)
+                .where(ClaudeAnalysis.id == job_id, ClaudeAnalysis.state == "queued")
+                .values(state="running", started_at=now)
+            )
+            session.commit()
+            if taken.rowcount != 1:
+                return None
+            job = session.get(ClaudeAnalysis, job_id)
+            session.refresh(job)
             job.session_id = job.session_id or str(uuid.uuid4())
             session.commit()
+            return job
+
+    def _analyze_once(self, now: datetime | None = None) -> bool:
+        with self.session_factory() as session:
+            now = now or datetime.now(UTC)
+            job = self._claim_next(session, now)
+            if job is None:
+                return False
+            settings = load_claude_settings(session)
 
             o = job.opportunity
             description = latest_description(o)
@@ -324,6 +381,14 @@ class Worker:
                     break
                 except Exception as e:  # transient ones are retried; the rest shown on the row
                     error = e
+                    if _USAGE_LIMIT.search(str(e)):
+                        # The subscription's limit: back to the queue, pause new ones (#197).
+                        self.paused_until = datetime.now(UTC) + USAGE_PAUSE
+                        until = self.paused_until.astimezone().strftime("%H:%M")
+                        job.state, job.started_at, job.session_id = "queued", None, None
+                        job.error = f"{e} · paused until {until}, then retried"
+                        session.commit()
+                        return True
                     if not getattr(e, "transient", False):
                         break
             if error is not None:

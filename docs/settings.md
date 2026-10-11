@@ -27,3 +27,5 @@ Checked in this order; the first match gives the reason. **Window**: 90 days by 
 Open the **Auto-ignored** tab, check the reason, and press any state button (`interested`, `ignore`, `applied`): the vacancy is yours again and the auto reason is cleared.
 
 Settings are stored in the database (`app_settings`), not in `.env`.
+
+**Claude → Parallel analyses** (1–8, default 4): how many Claude analyses run at once; see [claude.md](claude.md#how-it-runs) (#197).

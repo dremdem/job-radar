@@ -3,6 +3,7 @@
   {% if s.pending %}hx-get="/claude/status" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
   {% if added is not none %}{{ added }} queued · {% endif %}{% if skipped %}<span class="neg">{{ skipped }} skipped: no description</span> · {% endif %}
   {% if worker_off %}<span class="neg">Claude worker is off (JOB_RADAR_CLAUDE_WORKER=false) · </span>{% endif %}
-  {% if s.pending %}<b>Claude:</b> {{ s.running }} running, {{ s.queued }} queued{% if s.capped %} · <span class="neg">daily limit {{ s.daily_cap }} reached, the rest waits until tomorrow</span>{% endif %}
+  {% set paused = claude_paused_until() if claude_paused_until is defined else "" %}
+  {% if s.pending %}<b>Claude:</b> {{ s.running }} running, {{ s.queued }} queued{% if paused %} · <span class="neg">subscription limit: paused until {{ paused }}</span>{% endif %}{% if s.capped %} · <span class="neg">daily limit {{ s.daily_cap }} reached, the rest waits until tomorrow</span>{% endif %}
   {% else %}<span class="muted">Claude: idle · {{ s.done_today }} / {{ s.daily_cap }} today</span>{% endif %}
 </span>

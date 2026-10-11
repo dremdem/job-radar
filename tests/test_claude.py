@@ -1,11 +1,14 @@
 import json
 import stat
 import sys
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from job_radar.claude import analysis as claude
+from job_radar.claude.analysis import ClaudeSettings
 from job_radar.claude.prompt import FACTS, SCHEMA, analysis_prompt
 from job_radar.claude.runner import ClaudeCli, ClaudeError, Reply
 from job_radar.models import ClaudeAnalysis
@@ -159,10 +162,14 @@ def test_restart_requeues_running_with_a_new_session(session, tmp_path):
     w = worker(session, FakeRunner([]), tmp_path)
     w.idle_wait = 0.01
     w.start()
+
+    def settled():  # a pool thread may already have picked it up again
+        session.expire_all()
+        return session.get(ClaudeAnalysis, job.id).state in ("queued", "failed")
+
+    assert wait_until(settled)
     w.stop()
-    session.expire_all()
-    job = session.get(ClaudeAnalysis, job.id)
-    assert job.state in ("queued", "failed") and job.session_id != "old"
+    assert session.get(ClaudeAnalysis, job.id).session_id != "old"
 
 
 @pytest.fixture
@@ -488,3 +495,122 @@ def test_chat_redraws_do_not_move_the_page(client, session):
     # Chrome's scroll anchoring jumped the panel away from the chat on every redraw (#188).
     assert "html { overflow-anchor: none; }" in text
     assert 'textarea[name=text]");' in text and "preventScroll: true" in text
+
+
+class SlowRunner:
+    """Counts how many runs overlap; each run waits until released."""
+
+    def __init__(self, reply):
+        self.reply, self.lock = reply, threading.Lock()
+        self.active = self.peak = self.calls = 0
+        self.release = threading.Event()
+
+    def run(self, prompt, *, system, model, schema=None, session_id=None, resume=None):
+        with self.lock:
+            self.active += 1
+            self.calls += 1
+            self.peak = max(self.peak, self.active)
+        self.release.wait(5)
+        with self.lock:
+            self.active -= 1
+        return self.reply
+
+
+def wait_until(check, timeout=5.0):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if check():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def test_analyses_run_in_parallel_up_to_the_setting(session, tmp_path):
+    ids = [vacancy(session, title=f"Python Engineer {n}").id for n in range(5)]
+    claude.enqueue(session, ids)
+    claude.save_claude_settings(session, ClaudeSettings(parallel=3))
+    runner = SlowRunner(Reply("{}", dict(RESULT), "s", None))
+    w = worker(session, runner, tmp_path)
+    w.idle_wait = 0.02
+    w.start()
+    try:
+        assert wait_until(lambda: runner.active == 3)
+        time.sleep(0.2)
+        assert runner.peak == 3  # never more than the setting
+        runner.release.set()
+        assert wait_until(lambda: runner.calls == 5)
+
+        def all_done():
+            session.expire_all()
+            return all(claude.latest(session, i).state == "done" for i in ids)
+
+        assert wait_until(all_done)
+    finally:
+        w.stop()
+    assert runner.calls == 5  # each vacancy exactly once: no double claim
+
+
+def test_chat_is_answered_while_analyses_run(session, tmp_path):
+    o = analyzed(session, tmp_path)
+    other = vacancy(session, title="Python Engineer 2")
+    claude.enqueue(session, [other.id])
+    claude.save_claude_settings(session, ClaudeSettings(parallel=1))
+
+    class Mixed(SlowRunner):
+        def run(self, prompt, **kw):
+            if kw.get("resume"):  # the chat
+                return Reply("Ответ", None, "s", None)
+            return super().run(prompt, **kw)
+
+    runner = Mixed(Reply("{}", dict(RESULT), "s", None))
+    w = worker(session, runner, tmp_path)
+    w.idle_wait = 0.02
+    w.start()
+    try:
+        assert wait_until(lambda: runner.active == 1)  # the only analysis slot is busy
+        claude.ask(session, o.id, "Q?")
+        w.wake()
+
+        def answered():
+            session.expire_all()
+            return any(m.text == "Ответ" for m in claude.messages(session, o.id))
+
+        assert wait_until(answered)
+    finally:
+        runner.release.set()
+        w.stop()
+
+
+def test_usage_limit_requeues_and_pauses(session, tmp_path):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    limit = ClaudeError("Claude AI usage limit reached|1760000000", transient=True)
+    w = worker(session, FakeRunner([limit, Reply("{}", dict(RESULT), "s", None)]), tmp_path)
+    assert w.run_once() is True
+    session.expire_all()
+    job = claude.latest(session, o.id)
+    assert job.state == "queued" and job.attempts == 1  # back in the queue, not retried now
+    assert w.paused_until is not None and "usage limit" in job.error
+    assert w.run_once() is False  # paused: nothing starts
+    assert w.run_once(now=w.paused_until + timedelta(seconds=1)) is True  # the pause is over
+    session.expire_all()
+    assert claude.latest(session, o.id).state == "done"
+
+
+def test_parallel_setting_on_the_settings_page(client, session):
+    assert 'name="parallel"' in client.get("/settings").text
+    client.post("/settings/claude", data={"model": "sonnet", "daily_cap": 30,
+                                          "language": "Russian", "parallel": 6})  # fmt: skip
+    assert claude.load_claude_settings(session).parallel == 6
+    assert ClaudeSettings().parallel == 4
+
+
+def test_status_says_when_the_pause_ends(client, session):
+    o = vacancy(session)
+    claude.enqueue(session, [o.id])
+    w = client.app.state.claude_worker
+    w.paused_until = datetime.now(UTC) + timedelta(minutes=10)
+    text = client.get("/claude/status").text
+    assert "subscription limit: paused until" in text
+    w.paused_until = None
+    assert "paused until" not in client.get("/claude/status").text

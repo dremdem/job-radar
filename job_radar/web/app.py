@@ -91,6 +91,13 @@ def chat_markup(text: str) -> Markup:
 templates.env.filters["chat_markup"] = chat_markup
 
 
+def _pause_left(until: datetime | None) -> str:
+    """ "HH:MM" local while new analyses are paused, else ""."""
+    if until is None or until <= datetime.now(UTC):
+        return ""
+    return local_time(until, "%H:%M")
+
+
 def local_time(value: datetime | None, fmt: str, tz: tzinfo | None = None) -> str:
     """A stored UTC time (naive from SQLite, or aware) in the machine's local zone (#170)."""
     if value is None:
@@ -228,6 +235,8 @@ def create_app(
             cv_path=settings.cv_path,
         )
         app.state.claude_worker = worker
+        # The status line says when a usage-limit pause ends (#197).
+        templates.env.globals["claude_paused_until"] = lambda: _pause_left(worker.paused_until)
         app.state.claude_worker_on = start_worker and settings.claude_worker
         if app.state.claude_worker_on:
             worker.start()
@@ -609,10 +618,12 @@ def create_app(
         model: Annotated[str, Form()] = "sonnet",
         daily_cap: Annotated[int, Form(ge=0, le=500)] = 30,
         language: Annotated[str, Form()] = "Russian",
+        parallel: Annotated[int, Form(ge=1, le=claude.MAX_PARALLEL)] = 4,
     ) -> HTMLResponse:
         if model not in claude.MODELS or language not in claude.LANGUAGES:
             raise HTTPException(status_code=422, detail="Unknown model or language")
-        claude.save_claude_settings(session, ClaudeSettings(model, daily_cap, language))
+        claude.save_claude_settings(session, ClaudeSettings(model, daily_cap, language, parallel))
+        request.app.state.claude_worker.wake()  # a higher number starts more at once
         context = _settings_context(session, settings) | {"message": "Claude settings saved."}
         return templates.TemplateResponse(request, "settings.html", context)
 
