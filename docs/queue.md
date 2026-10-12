@@ -53,6 +53,8 @@ Filters are kept in the URL (`/?tab=review&title=python`), survive switching tab
 
 **Pages (#180).** The list shows 50 vacancies at a time; at its bottom are **‹ Prev**, "51–100 of 726", **Next ›** and a choice of 25 / 50 / 100 / 200 per page (kept with the tab, the search and the description switch; a new tab or search starts at page 1). The whole tab is sorted first, by the score alone, and only the shown page gets the full details (company history, Claude, hints), so long tabs such as All or Ignored load in about a second. **J / K** and **Analyze…** work on the page you see.
 
+**Sort (#199).** The list head has **Sort: Score · Last action**. *Score* is the default. *Last action* puts first the vacancy you did something with most recently: the latest of your state change (interested, ignore, applied), an application, a rejection, a note or ignore reason, an event you added, or your message in its Claude chat. Vacancies you have not touched come after them, newest first. In this mode each item says what and when, e.g. "12.10 · applied". The choice is kept with the tab, the search, the description switch and the pages.
+
 ## Current item
 
 The vacancy you open stays selected and is remembered in this browser (localStorage). After a reload, or coming back from the vacancy page, it is opened again and scrolled into view.

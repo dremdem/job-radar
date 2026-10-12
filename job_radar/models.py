@@ -107,6 +107,7 @@ class Opportunity(Base):
     auto_ignore_reason: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+    state_changed_at: Mapped[datetime | None]  # your last state change, for sorting (#199)
 
     company: Mapped[Company] = relationship(back_populates="opportunities")
     source_records: Mapped[list["SourceRecord"]] = relationship(back_populates="opportunity")

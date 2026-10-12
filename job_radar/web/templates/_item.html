@@ -22,5 +22,6 @@
     <span class="item-title">{{ o.title }}</span>
     <span class="item-meta">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if tab == "all" %} · {{ o.state.value }}{% endif %}</span>
     <span class="item-line {{ line_cls }}">{{ line }}</span>
+    {% if last_action %}<span class="item-when">{{ last_action[0] | local("%d.%m") }} · {{ last_action[1] }}</span>{% endif %}
   </span>
 </a>

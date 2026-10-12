@@ -68,6 +68,7 @@ def add_event(
             )
         )
         opportunity.state = OpportunityState.APPLIED
+        opportunity.state_changed_at = at
         opportunity.auto_ignore_reason = None
     elif kind == "rejection":
         mark_rejected(
@@ -164,6 +165,7 @@ def add_vacancy(
         add_event(session, opportunity, "applied", datetime.now(UTC), comment)
     else:
         opportunity.state = state
+        opportunity.state_changed_at = datetime.now(UTC)
         if comment.strip():
             add_note(session, opportunity, NoteKind.NOTE, comment=comment)
     session.commit()

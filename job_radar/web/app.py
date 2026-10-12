@@ -35,6 +35,7 @@ from ..linkedin.capture import import_capture
 from ..models import (
     Application,
     ApplicationReview,
+    ClaudeMessage,
     Company,
     CompanyEvent,
     EmailMessage,
@@ -43,6 +44,7 @@ from ..models import (
     Opportunity,
     OpportunityNote,
     OpportunityState,
+    Rejection,
     SourceRecord,
 )
 from ..notes import (
@@ -146,6 +148,7 @@ class Filters:
     q: str = ""  # the inbox search box: title, company or location (#158)
     desc: str = ""  # "none" / "has": vacancies without / with a saved description (#176)
     per: str = ""  # vacancies per page, one of PER_PAGE; "" = the default (#180)
+    sort: str = ""  # "" = by score, "recent" = by your last action (#199)
 
     def matches(
         self,
@@ -174,6 +177,9 @@ class Filters:
     def with_desc(self, desc: str) -> "Filters":
         return replace(self, desc=desc)
 
+    def with_sort(self, sort: str) -> "Filters":
+        return replace(self, sort=sort)
+
     def with_per(self, per: int) -> "Filters":
         return replace(self, per="" if per == DEFAULT_PER_PAGE else str(per))
 
@@ -189,6 +195,7 @@ class Filters:
             ("company", self.company),
             ("desc", self.desc),
             ("per", self.per),
+            ("sort", self.sort),
         )
         return "/?" + urlencode({"tab": tab} | {k: v for k, v in pairs if v})
 
@@ -261,9 +268,10 @@ def create_app(
         q: str = "",
         desc: str = "",
         per: str = "",
+        sort: str = "",
         page: int = 1,
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc, per)
+        filters = Filters(country, company, title, q, desc, per, sort)
         return templates.TemplateResponse(
             request, "queue.html", _queue_context(session, _tab(tab), filters, page)
         )
@@ -281,12 +289,14 @@ def create_app(
         q: Annotated[str, Form()] = "",
         desc: Annotated[str, Form()] = "",
         per: Annotated[str, Form()] = "",
+        sort: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc, per)
+        filters = Filters(country, company, title, q, desc, per, sort)
         tab = _tab(tab)
         opportunity = _get_opportunity(session, opportunity_id)
         opportunity.state = state
+        opportunity.state_changed_at = datetime.now(UTC)
         opportunity.auto_ignore_reason = None  # your choice replaces the rule's
         session.commit()
         if source == "page":  # the vacancy page: redraw its buttons only
@@ -313,10 +323,11 @@ def create_app(
         q: str = "",
         desc: str = "",
         per: str = "",
+        sort: str = "",
         notify: bool = False,
     ) -> HTMLResponse:
         # One row for live updates (e.g. a description saved by the bookmarklet in another tab).
-        tab, filters = _tab(tab), Filters(country, company, title, q, desc, per)
+        tab, filters = _tab(tab), Filters(country, company, title, q, desc, per, sort)
         opportunity = _get_opportunity(session, opportunity_id)
         states = TABS[tab][1]
         context = _row_context(session, opportunity) | _tabs_context(session, tab, filters)
@@ -392,9 +403,10 @@ def create_app(
         q: Annotated[str, Form()] = "",
         desc: Annotated[str, Form()] = "",
         per: Annotated[str, Form()] = "",
+        sort: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc, per)
+        filters = Filters(country, company, title, q, desc, per, sort)
         # Rejection is per company: redraw this row and its company's other rows only (#138).
         opportunity = _get_opportunity(session, opportunity_id)
         toggle_manual_rejection(session, opportunity)
@@ -419,9 +431,10 @@ def create_app(
         q: Annotated[str, Form()] = "",
         desc: Annotated[str, Form()] = "",
         per: Annotated[str, Form()] = "",
+        sort: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc, per)
+        filters = Filters(country, company, title, q, desc, per, sort)
         # Penalties and history are per company, so the whole queue is re-rendered.
         opportunity = _get_opportunity(session, opportunity_id)
         try:
@@ -452,8 +465,9 @@ def create_app(
         q: Annotated[str, Form()] = "",
         desc: Annotated[str, Form()] = "",
         per: Annotated[str, Form()] = "",
+        sort: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc, per)
+        filters = Filters(country, company, title, q, desc, per, sort)
         note = session.get(OpportunityNote, note_id)
         if note is None:
             raise HTTPException(status_code=404, detail="Note not found")
@@ -489,10 +503,11 @@ def create_app(
         q: Annotated[str, Form()] = "",
         desc: Annotated[str, Form()] = "",
         per: Annotated[str, Form()] = "",
+        sort: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
         # An event that is not in the mail: a call, an interview, an offer (#182).
-        filters = Filters(country, company, title, q, desc, per)
+        filters = Filters(country, company, title, q, desc, per, sort)
         opportunity = _get_opportunity(session, opportunity_id)
         try:
             day = datetime.strptime(at, "%Y-%m-%d") if at else datetime.now()
@@ -514,9 +529,10 @@ def create_app(
         q: Annotated[str, Form()] = "",
         desc: Annotated[str, Form()] = "",
         per: Annotated[str, Form()] = "",
+        sort: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
-        filters = Filters(country, company, title, q, desc, per)
+        filters = Filters(country, company, title, q, desc, per, sort)
         event = session.get(CompanyEvent, event_id)
         if event is None or event.opportunity_id is None:
             raise HTTPException(status_code=404, detail="Event not found")
@@ -1028,12 +1044,28 @@ def _queue_context(
         | {"eff_score": _score(session, o, rejected.get(o.company_id))[0]}
         for o in opportunities
     ]
-    keyed.sort(key=_queue_order)
+    if filters.sort == "recent":  # your last action first (#199)
+        actions = last_actions(session)
+        for k in keyed:
+            k["last_action"] = actions.get(k["o"].id)
+        # Arrival is not your action: untouched vacancies come after, newest first.
+        keyed.sort(
+            key=lambda k: (
+                k["last_action"] is not None,
+                k["last_action"][0] if k["last_action"] else _utc(k["o"].created_at),
+            ),
+            reverse=True,
+        )
+    else:
+        keyed.sort(key=_queue_order)
     per = filters.per_page
     pages = max(1, -(-len(keyed) // per))
     page = min(max(1, page), pages)
     shown = keyed[(page - 1) * per : page * per]
-    rows = [_row_context(session, k["o"], rejected) for k in shown]
+    rows = [
+        _row_context(session, k["o"], rejected) | {"last_action": k.get("last_action")}
+        for k in shown
+    ]
     context = _tabs_context(session, tab, filters)
     base = filters.href(tab)
     pager = {
@@ -1055,6 +1087,46 @@ def _queue_context(
         "claude_status": claude.status(session),
         "added": None,
     }
+
+
+def _utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def last_actions(session: Session) -> dict[int, tuple[datetime, str]]:
+    """Per vacancy: when you last did something with it, and what (#199)."""
+    found: dict[int, tuple[datetime, str]] = {}
+
+    def keep(oid: int | None, at: datetime | None, what: str) -> None:
+        if oid is None or at is None:
+            return
+        at = _utc(at)
+        if oid not in found or at > found[oid][0]:
+            found[oid] = (at, what)
+
+    for oid, at, state in session.execute(
+        select(Opportunity.id, Opportunity.state_changed_at, Opportunity.state)
+    ):
+        keep(oid, at, state.value.replace("_", " "))
+    for oid, at in session.execute(select(Application.opportunity_id, Application.applied_at)):
+        keep(oid, at, "applied")
+    for oid, at in session.execute(select(Rejection.opportunity_id, Rejection.rejected_at)):
+        keep(oid, at, "rejected")
+    for oid, at, kind in session.execute(
+        select(OpportunityNote.opportunity_id, OpportunityNote.created_at, OpportunityNote.kind)
+    ):
+        keep(oid, at, "note" if kind is NoteKind.NOTE else "ignored")
+    for oid, at, kind in session.execute(
+        select(CompanyEvent.opportunity_id, CompanyEvent.at, CompanyEvent.kind)
+    ):
+        keep(oid, at, kind.replace("_", " "))
+    for oid, at in session.execute(
+        select(ClaudeMessage.opportunity_id, ClaudeMessage.created_at).where(
+            ClaudeMessage.role == "user"
+        )
+    ):
+        keep(oid, at, "chat")
+    return found
 
 
 def _queue_order(row: dict) -> tuple:

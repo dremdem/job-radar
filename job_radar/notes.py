@@ -90,6 +90,7 @@ def ignore_with_reason(
     if kind is NoteKind.NOTE:
         raise ValueError("Pick a reason")
     opportunity.state = OpportunityState.IGNORE
+    opportunity.state_changed_at = datetime.now(UTC)
     return add_note(session, opportunity, kind, detail, comment)
 
 

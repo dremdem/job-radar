@@ -324,3 +324,33 @@ def test_search_redraws_the_description_switch(client, session):
     assert 'hx-select-oob="#tabs,#desc-switch"' in text
     assert '<nav id="desc-switch"' in text
     assert 'href="/?tab=review&amp;q=altery&amp;desc=none"' in text
+
+
+def test_sort_by_last_action(client, session):
+    from datetime import UTC, datetime, timedelta
+
+    from job_radar.manual import add_event
+
+    old = add(session, "Old role")
+    old.score = 9.0
+    fresh = add(session, "Fresh role two")
+    fresh.score = 1.0
+    session.commit()
+    # Score order by default; Last action puts the one you touched first.
+    text = client.get("/?tab=all").text
+    assert text.index("Old role") < text.index("Fresh role two")
+    add_event(session, fresh, "call", datetime.now(UTC) - timedelta(minutes=1), "recruiter")
+    text = client.get("/?tab=all&sort=recent").text
+    assert text.index("Fresh role two") < text.index("Old role")
+    assert "· call</span>" in text  # what the last action was
+    # A state change by you counts too, and is stamped.
+    client.post(f"/opportunities/{old.id}/state", data={"state": "interested", "from": "panel"})
+    session.refresh(old)
+    assert old.state_changed_at is not None
+    text = client.get("/?tab=all&sort=recent").text
+    assert text.index("Old role") < text.index("Fresh role two")
+    assert "· interested</span>" in text
+    # The switch, kept in tab links and the list filters.
+    assert 'href="/?tab=review&amp;sort=recent"' in text
+    assert 'class="col-filter" name="sort" value="recent"' in text
+    assert ">Last action<" in text and ">Score<" in text
