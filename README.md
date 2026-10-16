@@ -105,6 +105,8 @@ uv run ruff check . && uv run ruff format --check .
 uv run pytest
 ```
 
-The same checks run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) on every PR and on `main`. Tests use fixtures only: no secrets, no Gmail.
+The same checks run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) on every PR and on `main`, except for changes that touch only Markdown or `docs/`. Tests use fixtures only: no secrets, no Gmail, no real sleeps or network.
+
+Tests run in parallel (`pytest-xdist`, `-n auto` in `pyproject.toml`); add `-n0` to debug a single test. Keep the CI job under a minute: GitHub bills every job rounded up to a whole minute (#201).
 
 Schema changes: edit `job_radar/models.py`, then `uv run alembic revision --autogenerate -m "..."` and review the generated file.

@@ -41,12 +41,13 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
-addopts = "-ra"
+addopts = "-ra -n auto"
 
 [dependency-groups]
 dev = [
     "httpx2>=2.13.1",
     "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.16.8",
 ]
 

@@ -1,4 +1,6 @@
+import shutil
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,14 +15,22 @@ from job_radar.web.app import create_app
 Settings.model_config["env_file"] = None
 
 
+@pytest.fixture(scope="session")
+def migrated_db(tmp_path_factory) -> Path:
+    """Run the migrations once per test process; each test gets a copy of the file."""
+    path = tmp_path_factory.mktemp("template") / "test.db"
+    upgrade_database(f"sqlite:///{path}")
+    return path
+
+
 @pytest.fixture
 def database_url(tmp_path) -> str:
     return f"sqlite:///{tmp_path / 'test.db'}"
 
 
 @pytest.fixture
-def engine(database_url: str) -> Iterator[Engine]:
-    upgrade_database(database_url)
+def engine(database_url: str, migrated_db: Path, tmp_path) -> Iterator[Engine]:
+    shutil.copyfile(migrated_db, tmp_path / "test.db")
     engine = make_engine(database_url)
     yield engine
     engine.dispose()

@@ -130,9 +130,11 @@ def test_page_cap(session):
     assert client.requested == [1, 2, 3, 4]
 
 
-def test_pipeline_step_reports(session):
+def test_pipeline_step_reports(session, monkeypatch):
     from job_radar import pipeline
     from job_radar.config import Settings
+
+    monkeypatch.setattr("job_radar.himalayas.time.sleep", lambda seconds: None)
 
     lines: list[str] = []
     client = FakeClient({1: page(), 2: HimalayasRateLimited("429")})

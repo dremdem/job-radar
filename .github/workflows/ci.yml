@@ -1,9 +1,12 @@
 name: CI
 
+# Billed per job, rounded up to a whole minute: keep the job under 60 s (#201).
 on:
   pull_request:
+    paths-ignore: ["**.md", "docs/**"]
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
 
 permissions:
   contents: read
