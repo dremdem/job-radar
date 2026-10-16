@@ -1,12 +1,10 @@
 name: CI
 
 # Billed per job, rounded up to a whole minute: keep the job under 60 s (#201).
+# PRs only: main is protected (required check, branch up to date), so the merged
+# tree is the one tested here. No paths-ignore: a required check must always run.
 on:
   pull_request:
-    paths-ignore: ["**.md", "docs/**"]
-  push:
-    branches: [main]
-    paths-ignore: ["**.md", "docs/**"]
 
 permissions:
   contents: read
