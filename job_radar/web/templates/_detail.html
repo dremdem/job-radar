@@ -72,6 +72,12 @@
 
   <section class="panel-card">
     <div class="card-label">Company history</div>
+    {% if others %}{# the same role in other cities, etc. (#209) #}
+    <p class="small mb-1"><b>Other vacancies here</b></p>
+    <ul class="small">
+      {% for other, at in others %}<li>{{ at | local("%Y-%m-%d") }} · <b>{{ other.state.value }}</b> · <a href="/opportunities/{{ other.id }}">{{ other.title }}</a>{% if other.location %} · {{ other.location }}{% endif %}</li>{% endfor %}
+    </ul>
+    {% endif %}
     {% if history %}
     <ul class="small mb-0">
       {% for e in history %}<li>{{ (e.at | local("%Y-%m-%d")) }} · {% if e.icon %}{{ e.icon }} {% endif %}<b>{{ e.kind }}</b>{% if e.probable %} <span class="muted">(probable)</span>{% endif %} · {{ e.text or "" }}{% if e.gmail_url %} · <a href="{{ e.gmail_url }}" target="_blank" rel="noopener noreferrer">Gmail</a>{% endif %}{% if e.event_id %} <button type="button" class="link" title="delete" hx-post="/events/{{ e.event_id }}/delete" hx-include=".col-filter" hx-vals='{"from": "{{ mode }}"}' {% if panel %}hx-target="#detail" hx-swap="innerHTML"{% else %}hx-swap="none"{% endif %}>×</button>{% endif %}</li>{% endfor %}

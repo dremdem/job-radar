@@ -1,6 +1,6 @@
 <div id="queue">
   <div id="queue-body" class="items">
-    {% for row in rows %}{% with o = row.o, eff_score = row.eff_score, claude = row.claude, suggestions = row.suggestions, description = row.description, country = row.country, rejected_at = row.rejected_at, last_action = row.last_action %}{% include "_item.html" %}{% endwith %}
+    {% for row in rows %}{% with o = row.o, eff_score = row.eff_score, claude = row.claude, suggestions = row.suggestions, description = row.description, country = row.country, rejected_at = row.rejected_at, last_action = row.last_action, applied_before = row.applied_before %}{% include "_item.html" %}{% endwith %}
     {% else %}<p class="muted p-3 mb-0">Nothing here.</p>{% endfor %}
     {% if pager and pager.count %}
     <nav class="pager" aria-label="Pages">{# a page at a time: long tabs load fast (#180) #}

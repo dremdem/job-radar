@@ -21,7 +21,9 @@ from .models import (
     EmailDirection,
     EmailMessage,
     NoteKind,
+    Opportunity,
     OpportunityNote,
+    OpportunityState,
     Rejection,
     RejectionSource,
 )
@@ -283,6 +285,24 @@ class HistoryEvent:
 
 def gmail_url(thread_id: str | None) -> str | None:
     return f"https://mail.google.com/mail/u/0/#all/{thread_id}" if thread_id else None
+
+
+YOUR_STATES = (OpportunityState.APPLIED, OpportunityState.INTERESTED, OpportunityState.IGNORE)
+
+
+def other_vacancies(
+    session: Session, company_id: int, opportunity_id: int
+) -> list[tuple[Opportunity, datetime]]:
+    """The company's other vacancies you acted on, with when, newest first (#209)."""
+    found = session.scalars(
+        select(Opportunity).where(
+            Opportunity.company_id == company_id,
+            Opportunity.id != opportunity_id,
+            Opportunity.state.in_(YOUR_STATES),
+        )
+    )
+    dated = [(o, _as_utc(o.state_changed_at or o.updated_at)) for o in found]
+    return sorted(dated, key=lambda pair: pair[1], reverse=True)
 
 
 def company_history(session: Session, company_id: int) -> list[HistoryEvent]:

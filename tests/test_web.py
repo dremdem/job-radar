@@ -432,3 +432,26 @@ def test_times_are_shown_in_local_time():
     assert local_time(datetime(2026, 10, 7, 16, 36, tzinfo=UTC), "%H:%M", tz=bangkok) == "23:36"
     assert local_time(datetime(2026, 10, 7, 20, 0), "%Y-%m-%d", tz=bangkok) == "2026-10-08"
     assert local_time(None, "%H:%M") == ""
+
+
+def test_panel_shows_other_vacancies_of_the_company(client, session):
+    from datetime import UTC, datetime
+
+    from job_radar.models import OpportunityState
+
+    katowice = add_opportunity(session, title="Senior Python Developer", company="Sii Poland")
+    katowice.location, katowice.state = "Katowice (Remote)", OpportunityState.APPLIED
+    katowice.state_changed_at = datetime(2026, 10, 15, 7, 56, tzinfo=UTC)
+    seen = add_opportunity(session, title="Data Engineer", company="Sii Poland")  # untouched
+    warsaw = add_opportunity(session, title="Senior Python Developer", company="Sii Poland")
+    warsaw.location = "Warsaw (Remote)"
+    session.commit()
+    text = client.get(f"/opportunities/{warsaw.id}/panel").text
+    assert "Other vacancies here" in text
+    assert f'href="/opportunities/{katowice.id}"' in text and "Katowice (Remote)" in text
+    assert f'href="/opportunities/{seen.id}"' not in text  # only your states
+    assert "already applied 2026-10-15" in text
+    # The list says so too.
+    assert "applied here 15.10" in client.get("/").text
+    # Not on the applied one itself.
+    assert "Other vacancies here" not in client.get(f"/opportunities/{katowice.id}/panel").text

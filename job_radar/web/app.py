@@ -27,7 +27,7 @@ from ..claude.prompt import QUICK_PROMPTS
 from ..claude.runner import ClaudeCli
 from ..claude.runner import Runner as ClaudeRunner
 from ..config import Settings, get_settings
-from ..contacts import company_history
+from ..contacts import company_history, other_vacancies
 from ..db import make_engine, make_session_factory, upgrade_database
 from ..description import check_python, highlight_python, latest_description, python_risk
 from ..language import language_risk
@@ -1070,10 +1070,13 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
     history = company_history(session, opportunity.company_id)
     eff_score, extra_reasons, description = _score(session, opportunity, rejected_at)
     python_check = check_python(description) if description else None
+    others = other_vacancies(session, opportunity.company_id, opportunity.id)
     applied = [e.at for e in history if e.kind == "applied"]
+    applied += [at for o, at in others if o.state is OpportunityState.APPLIED]
     return {
         "history": history[:HISTORY_SHOWN],
         "history_count": len(history),
+        "others": others,
         "applied_before": max(applied) if applied else None,
         "o": opportunity,
         "states": _manual_states(),

@@ -73,6 +73,7 @@ Linked mail without an event gets a rule-based label in `detected_event` (a hint
 
 - **contacted · N** with the latest events, **expanded by default**: date, type, role or subject, link to the Gmail thread; an extra warning when you already applied. **Expand all** / **Collapse all** above the queue toggle every list at once;
 - or **no contacts found**, stated explicitly.
+- **Other vacancies here (#209)**: the company's other vacancies you acted on in Job Radar (applied, interested, ignore) with the date and a link, so the same role posted in several cities is not taken for a new one. A vacancy you marked **applied** counts for the **already applied** badge too, not only an application found in the mail; the list item then says "applied here DD.MM".
 
 ## Commands
 
