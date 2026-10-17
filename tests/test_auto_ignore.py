@@ -79,6 +79,21 @@ def test_applied_rule_respects_the_window(session):
     assert reason_for(session, opp(session, company="Old Co"), ALL_ON, NOW) is None
 
 
+def test_applied_rule_counts_vacancies_you_marked_applied(session):
+    # Sii Poland: one role in three cities, two marked applied in Job Radar, no mail (#211).
+    katowice = opp(session, company="Sii Poland", state=OpportunityState.APPLIED)
+    katowice.state_changed_at = NOW - timedelta(days=3)
+    session.commit()
+    warsaw = opp(session, company="Sii Poland", location="Warsaw (Remote)")
+    assert reason_for(session, warsaw, ALL_ON, NOW) == "applied to Sii Poland on 2026-09-24"
+    katowice.state_changed_at = NOW - timedelta(days=200)
+    session.commit()
+    assert reason_for(session, warsaw, ALL_ON, NOW) is None
+    # The newer of the two counts: a confirmed application in the mail still wins.
+    applied(session, "Sii Poland", NOW - timedelta(days=1))
+    assert reason_for(session, warsaw, ALL_ON, NOW) == "applied to Sii Poland on 2026-09-26"
+
+
 def test_ignored_rule_counts_only_your_own_ignore(session):
     first = opp(session, state=OpportunityState.IGNORE)
     first.updated_at = NOW - timedelta(days=2)

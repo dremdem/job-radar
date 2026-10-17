@@ -99,6 +99,16 @@ def reason_for(
             ),
             default=None,
         )
+        # A vacancy you marked applied in Job Radar counts too, mail or not (#211).
+        marked = session.execute(
+            select(Opportunity.state_changed_at, Opportunity.updated_at).where(
+                Opportunity.company_id == company_id,
+                Opportunity.state == OpportunityState.APPLIED,
+                Opportunity.id != opportunity.id,
+            )
+        )
+        dates = [_utc(changed or updated) for changed, updated in marked]
+        latest = max([d for d in (latest, *dates) if d is not None], default=None)
         if latest and latest >= since:
             return f"applied to {company} on {latest:%Y-%m-%d}"
     if rules.ignored:

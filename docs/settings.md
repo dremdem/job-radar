@@ -7,7 +7,7 @@
 | Rule | A vacancy is auto-ignored when… | Reason shown |
 |---|---|---|
 | Company rejected you | the company rejected you within the window | `Capitole rejected you on 2026-07-01` |
-| Already applied | you have a confirmed application to the company within the window | `applied to Capitole on 2026-06-28` |
+| Already applied | you have a confirmed application to the company, or marked another of its vacancies **applied** in Job Radar (#211), within the window | `applied to Capitole on 2026-06-28` |
 | Already ignored | you ignored another vacancy of the company (your own `ignore`, not auto) within the window | `ignored another Capitole vacancy on 2026-09-25` |
 | Hybrid / on-site | "hybrid" or "on-site" appears in the title or location | `hybrid / on-site` |
 | No Python in the description | the vacancy has a description, Python is not in it, and not in the title either | `no Python in the description` |
