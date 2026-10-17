@@ -236,8 +236,13 @@ class LinkedInFetch(Base):
     job_id: Mapped[str | None] = mapped_column(String(32))
     start: Mapped[int]
     http_status: Mapped[int | None]
-    status: Mapped[str] = mapped_column(String(16))  # ok / blocked / error
+    status: Mapped[str] = mapped_column(String(16))  # ok / blocked / error / stopped
     jobs: Mapped[int] = mapped_column(default=0)
+    # Why it was not ok: "HTTP 429", "redirected to login", "stopped by you"... (#205)
+    detail: Mapped[str | None] = mapped_column(String(255))
+    # The vacancy a description was fetched for; no foreign key, so merging vacancies
+    # never trips over the log.
+    opportunity_id: Mapped[int | None] = mapped_column(index=True)
 
 
 class OpportunityNote(Base):

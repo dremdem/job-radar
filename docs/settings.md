@@ -29,3 +29,5 @@ Open the **Auto-ignored** tab, check the reason, and press any state button (`in
 Settings are stored in the database (`app_settings`), not in `.env`.
 
 **Claude → Parallel analyses** (1–8, default 4): how many Claude analyses run at once; see [claude.md](claude.md#how-it-runs) (#197).
+
+**LinkedIn → Pause between requests, From / To** (seconds, 0–600, default 10–40): each guest request to LinkedIn waits a random time in this range; see [linkedin-public-search.md](linkedin-public-search.md) (#205). The **LinkedIn log** link next to it shows every request and why fetching stopped.

@@ -242,8 +242,10 @@
       {% endfor %}
     </div>
     <button type="button" class="btn btn-sm btn-primary" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML">Sync</button>
+    <button type="button" class="btn btn-sm btn-outline-primary" hx-post="/descriptions" hx-target="#desc-status" hx-swap="outerHTML" title="Fetch LinkedIn descriptions for To review in the background">Descriptions</button>
   </nav>
   <div><span id="sync-status" class="small" hx-get="/sync/status" hx-trigger="load" hx-swap="outerHTML"></span></div>
+  <div><span id="desc-status" class="small" hx-get="/descriptions/status" hx-trigger="load" hx-swap="outerHTML"></span></div>
   {% block content %}{% endblock %}
 <script>
   // Copy a Claude answer in one tap (#152); http on a LAN address has no Clipboard API.
@@ -262,23 +264,26 @@
   });
 </script>
 <script>
-  // A finished sync can be dismissed until the next one; the browser remembers which (#147).
+  // A finished sync or description job can be dismissed until the next one; the browser
+  // remembers which (#147, #205).
   (function () {
-    var KEY = "jr-sync-dismissed";
+    var KEYS = {"sync-status": "jr-sync-dismissed", "desc-status": "jr-desc-dismissed"};
     function apply(el) {
       if (!el || !el.dataset.finished) return;
       var dismissed = null;
-      try { dismissed = localStorage.getItem(KEY); } catch (e) {}
+      try { dismissed = localStorage.getItem(KEYS[el.id]); } catch (e) {}
       el.hidden = dismissed === el.dataset.finished;
     }
     document.addEventListener("click", function (event) {
-      var button = event.target.closest(".sync-dismiss");
+      var button = event.target.closest(".sync-dismiss, .status-dismiss");
       if (!button) return;
-      var el = document.getElementById("sync-status");
-      try { localStorage.setItem(KEY, el.dataset.finished); } catch (e) {}
+      var el = button.closest("#sync-status, #desc-status");
+      try { localStorage.setItem(KEYS[el.id], el.dataset.finished); } catch (e) {}
       el.hidden = true;
     });
-    document.body.addEventListener("htmx:afterSettle", function () { apply(document.getElementById("sync-status")); });
+    document.body.addEventListener("htmx:afterSettle", function () {
+      Object.keys(KEYS).forEach(function (id) { apply(document.getElementById(id)); });
+    });
   })();
 </script>
 <script>

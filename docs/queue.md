@@ -13,7 +13,7 @@ The main page (`/`) lists opportunities in tabs:
 
 **Layout (#158): an inbox.**
 
-- **Header:** the tabs (each with its count), a search box, **Analyze…**, **Sync** and the Claude status.
+- **Header:** the tabs (each with its count), a search box, **Analyze…**, **Sync**, **Descriptions** and the Claude status.
 - **Left: the list.** One compact item per vacancy: the score, colour-coded (green from 8, amber from 6, red below), the title, company · location, and one line that says the most useful thing. That is Claude's verdict ("Claude: apply · 82%"), a suggested reason to ignore ("ignore? only India"), "no description" or "not analyzed".
 - **Right: the panel** of the selected vacancy. It has the same content as its own page (**page →**):
   - the state buttons, the one-tap reasons to ignore and the reason chips ([applications.md](applications.md#reasons-and-notes));
@@ -94,7 +94,7 @@ The status next to the button lists the steps, one line each, updated while it w
 | Telegram | Allowlisted channels, if configured ([telegram.md](telegram.md)) |
 | Himalayas | Fresh worldwide Python jobs ([himalayas.md](himalayas.md)) |
 | Mail analysis | Rejections, applications, contacts from stored mail ([applications.md](applications.md)) |
-| LinkedIn descriptions | Public job pages for To review, if enabled |
+| LinkedIn descriptions | Starts the background **Descriptions** job, if enabled ([linkedin-public-search.md](linkedin-public-search.md#the-descriptions-button-205)) |
 | AI analysis | Work mode, residence and stack with the local model ([ai.md](ai.md)) |
 
 Each line shows the state:

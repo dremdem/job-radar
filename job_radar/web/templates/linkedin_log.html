@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}LinkedIn log · Job Radar{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>LinkedIn log</h1>
+    <p class="page-sub">Every guest request to LinkedIn of the last {{ days }} days, newest first, and why fetching stopped. Details: docs/linkedin-public-search.md.</p>
+  </div>
+</div>
+<div class="stack">
+<section class="panel-card">
+  <h2 class="section-title">By day</h2>
+  {% if summary %}
+  <ul class="list-unstyled mb-0">
+    {% for d in summary %}
+    <li><b>{{ d.day }}</b>: {{ d.requests }} request{{ "s" if d.requests != 1 }}, {{ d.saved }} saved{% if d.errors %}, {{ d.errors }} error{{ "s" if d.errors > 1 }}{% endif %}{% if d.stops %}, stopped by you {{ d.stops }}×{% endif %}{% if d.blocked_at %}, <span class="neg">blocked at {{ d.blocked_at | local("%H:%M") }}{% if d.blocked_reason %} ({{ d.blocked_reason }}){% endif %}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted mb-0">No requests in these days.</p>
+  {% endif %}
+</section>
+{% if rows %}
+<div class="table-wrap"><table class="table data-table align-top">
+  <thead><tr><th>Time</th><th>What</th><th>Vacancy / search</th><th>Result</th></tr></thead>
+  <tbody>
+  {% for r in rows %}{% set f = r.f %}
+    <tr>
+      <td class="text-nowrap">{{ r.at | local("%d.%m %H:%M:%S") }}</td>
+      <td>{{ f.kind }}</td>
+      <td>{% if r.o %}<a href="/opportunities/{{ r.o.id }}">{{ r.o.title }}</a> <span class="muted">· {{ r.o.company.name }}</span>{% elif f.kind == "description" %}job {{ f.job_id }}{% else %}{{ f.keywords }}{% if f.start %} <span class="muted">from {{ f.start }}</span>{% endif %}{% if f.jobs %} <span class="muted">· {{ f.jobs }} cards</span>{% endif %}{% endif %}</td>
+      <td>{% if f.status == "ok" %}ok{% else %}<span class="{{ 'neg' if f.status in ('blocked', 'error') else 'muted' }}">{{ f.status }}</span>{% endif %}{% if f.detail %} <span class="muted">· {{ f.detail }}</span>{% elif f.status != "ok" and f.http_status %} <span class="muted">· HTTP {{ f.http_status }}</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+</div>
+{% endblock %}

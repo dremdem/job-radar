@@ -51,5 +51,16 @@
     <button type="submit" class="btn btn-primary btn-sm">Save</button>
   </form>
 </section>
+<section class="panel-card">
+  <h2 class="section-title">LinkedIn</h2>
+  <p class="small muted">Public guest requests (search and descriptions, no login): each waits a random time in this range. Longer and uneven pauses get blocked less. <a href="/linkedin/log">LinkedIn log</a></p>
+  <form method="post" action="/settings/linkedin">
+    <div class="form-grid">
+      <label>Pause from, s <input type="number" class="form-control form-control-sm" name="pause_from" value="{{ pause.pause_from | round(1) }}" min="0" max="600" step="any"></label>
+      <label>Pause to, s <input type="number" class="form-control form-control-sm" name="pause_to" value="{{ pause.pause_to | round(1) }}" min="0" max="600" step="any"></label>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+  </form>
+</section>
 </div>
 {% endblock %}

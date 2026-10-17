@@ -102,7 +102,7 @@ def client(pages, sleeps=None):
     return PublicSearchClient(
         http_get=FakeHttp(pages),
         sleep=(sleeps.append if sleeps is not None else lambda _: None),
-        delay=3,
+        pause=(3, 3),
     )
 
 
@@ -126,6 +126,24 @@ def test_client_pauses_between_requests():
     c.fetch(Search("k", "1", "r3600"), start=0)
     c.fetch(Search("k", "1", "r3600"), start=10)
     assert sleeps == [3]
+
+
+def test_pause_is_random_within_the_range():
+    sleeps, ranges = [], []
+
+    def rand(low, high):
+        ranges.append((low, high))
+        return 17.5
+
+    c = PublicSearchClient(
+        http_get=FakeHttp({0: (200, "u", FIXTURE), 10: (200, "u", FIXTURE)}),
+        sleep=sleeps.append,
+        pause=(10, 40),
+        rand=rand,
+    )
+    c.fetch(Search("k", "1", "r3600"), start=0)
+    c.fetch(Search("k", "1", "r3600"), start=10)
+    assert (ranges, sleeps) == ([(10, 40)], [17.5])
 
 
 def add_alert(session, msg_id, sent_at, html):

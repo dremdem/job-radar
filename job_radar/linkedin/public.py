@@ -4,12 +4,14 @@ Plain HTTP without login, cookies or a browser. Stops for the day on the first s
 blocking. See docs/linkedin-public-search.md and the LinkedIn rule in CLAUDE.md.
 """
 
+import random
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -18,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import (
+    AppSetting,
     EmailMessage,
     LinkedInFetch,
     Opportunity,
@@ -42,6 +45,31 @@ _JOB_URN = re.compile(r"jobPosting:(\d+)")
 
 # (status, final url after redirects, body)
 HttpGet = Callable[[str], tuple[int, str, str]]
+PAUSE_KEY = "linkedin"
+STOPPED_BY_YOU = "stopped by you"
+
+
+@dataclass(frozen=True)
+class PauseSettings:
+    """Random pause between guest requests, seconds; edited on Settings (#205)."""
+
+    pause_from: float = 10.0
+    pause_to: float = 40.0
+
+
+def load_pause(session: Session) -> PauseSettings:
+    row = session.get(AppSetting, PAUSE_KEY)
+    if row is None or not isinstance(row.value, dict):
+        return PauseSettings()
+    known = {k: v for k, v in row.value.items() if k in PauseSettings.__dataclass_fields__}
+    return PauseSettings(**known)
+
+
+def save_pause(session: Session, value: PauseSettings) -> None:
+    row = session.get(AppSetting, PAUSE_KEY) or AppSetting(key=PAUSE_KEY)
+    row.value = asdict(value)
+    session.add(row)
+    session.commit()
 
 
 @dataclass(frozen=True)
@@ -110,6 +138,10 @@ class Blocked(Exception):
         self.http_status = http_status
 
 
+class Stopped(Exception):
+    """The user pressed Stop; raised before the next request."""
+
+
 class FetchError(Exception):
     def __init__(self, http_status: int | None):
         super().__init__(f"HTTP {http_status}")
@@ -132,16 +164,37 @@ class PublicSearchClient:
     def __init__(
         self,
         http_get: HttpGet = urllib_get,
-        sleep: Callable[[float], None] = time.sleep,
-        delay: float = 3.0,
+        sleep: Callable[[float], object] | None = None,
+        pause: tuple[float, float] = (PauseSettings.pause_from, PauseSettings.pause_to),
+        rand: Callable[[float, float], float] = random.uniform,
+        stop: threading.Event | None = None,
+        on_wait: Callable[[float], None] | None = None,
     ):
-        self._get, self._sleep, self._delay = http_get, sleep, delay
+        """``stop``: Stop pressed in the web UI; it also cuts the pause short.
+        ``on_wait`` hears each pause before it starts, for the progress line."""
+        self._get, self._sleep, self._pause, self._rand = http_get, sleep, pause, rand
+        self._stop, self._on_wait = stop, on_wait
         self._requested = False
 
+    def _wait(self) -> None:
+        seconds = self._rand(*self._pause)
+        if self._on_wait:
+            self._on_wait(seconds)
+        if self._sleep is not None:
+            self._sleep(seconds)
+        elif self._stop is not None:
+            self._stop.wait(seconds)
+        else:
+            time.sleep(seconds)
+
     def _request(self, url: str, has_content: Callable[[str], bool]) -> tuple[int, str]:
-        """(http status, body); raises Blocked on any sign of blocking."""
+        """(http status, body); raises Blocked on any sign of blocking, Stopped on Stop."""
+        if self._stop is not None and self._stop.is_set():
+            raise Stopped
         if self._requested:
-            self._sleep(self._delay)
+            self._wait()
+            if self._stop is not None and self._stop.is_set():
+                raise Stopped
         self._requested = True
         status, final_url, body = self._get(url)
         if status in (429, 999):
@@ -262,12 +315,12 @@ def import_public_search(
             try:
                 log.http_status, body = client.fetch(search, start)
             except Blocked as e:
-                log.status, log.http_status = "blocked", e.http_status
+                log.status, log.http_status, log.detail = "blocked", e.http_status, str(e)
                 stats.blocked = True
                 session.commit()
                 return stats
             except FetchError as e:
-                log.status, log.http_status = "error", e.http_status
+                log.status, log.http_status, log.detail = "error", e.http_status, str(e)
                 stats.errors += 1
                 break
             page = parse_search_page(body)
@@ -287,10 +340,14 @@ def import_public_search(
 
 @dataclass
 class DescriptionStats:
+    total: int = 0  # vacancies this run will try, within the daily limit
     requests: int = 0
     saved: int = 0
     errors: int = 0
     blocked: bool = False
+    reason: str | None = None  # why LinkedIn blocked, e.g. "HTTP 429"
+    stopped: bool = False  # by the user
+    limit_reached: bool = False
 
 
 def _without_description(session: Session) -> list[tuple[Opportunity, SourceRecord]]:
@@ -316,51 +373,82 @@ def import_public_descriptions(
     *,
     now: datetime | None = None,
     max_per_day: int = 100,
+    on_progress: Callable[[DescriptionStats], None] | None = None,
 ) -> DescriptionStats:
     """Description from the public job page for To review vacancies without one. Opt-in; see
-    docs/linkedin-public-search.md#descriptions-public-job-page."""
+    docs/linkedin-public-search.md#descriptions-public-job-page. Every request is logged with
+    its vacancy, time and, when not ok, the reason (#205)."""
     from ..auto_ignore import apply_rules
     from ..dedup import add_snapshot
 
-    now = now or datetime.now(UTC)
+    def stamp() -> datetime:
+        return now or datetime.now(UTC)
+
+    def progress() -> None:
+        if on_progress:
+            on_progress(stats)
+
     stats = DescriptionStats()
-    today = _day_start(now)
-    blocked_today = select(LinkedInFetch).where(
-        LinkedInFetch.at >= today, LinkedInFetch.status == "blocked"
+    today = _day_start(stamp())
+    block = session.scalar(
+        select(LinkedInFetch)
+        .where(LinkedInFetch.at >= today, LinkedInFetch.status == "blocked")
+        .limit(1)
     )
-    if session.scalar(blocked_today.limit(1)):
-        stats.blocked = True
+    if block is not None:
+        stats.blocked, stats.reason = True, block.detail or _status_text(block.http_status)
         return stats
     done = session.scalar(
         select(func.count())
         .select_from(LinkedInFetch)
-        .where(LinkedInFetch.kind == "description", LinkedInFetch.at >= today)
+        .where(
+            LinkedInFetch.kind == "description",
+            LinkedInFetch.at >= today,
+            LinkedInFetch.status != "stopped",
+        )
     )
-    for opportunity, record in _without_description(session)[: max(0, max_per_day - done)]:
-        log = LinkedInFetch(at=now, kind="description", job_id=record.external_id, start=0)
-        session.add(log)
-        stats.requests += 1
+    waiting = _without_description(session)
+    todo = waiting[: max(0, max_per_day - done)]
+    stats.total, stats.limit_reached = len(todo), len(todo) < len(waiting)
+    progress()
+    for opportunity, record in todo:
+        log = LinkedInFetch(
+            kind="description", job_id=record.external_id, start=0, opportunity_id=opportunity.id
+        )
         try:
             log.http_status, body = client.fetch_posting(record.external_id)
+        except Stopped:
+            log.at, log.status, log.detail = stamp(), "stopped", STOPPED_BY_YOU
+            session.add(log)
+            session.commit()
+            stats.stopped = True
+            break
         except Blocked as e:
-            log.status, log.http_status = "blocked", e.http_status
-            stats.blocked = True
-            session.commit()
-            return stats
+            log.status, log.http_status, log.detail = "blocked", e.http_status, str(e)
+            stats.blocked, stats.reason = True, str(e)
         except FetchError as e:
-            log.status, log.http_status = "error", e.http_status
-            stats.errors += 1
-            session.commit()
-            continue
-        posting = parse_job_posting(body)
-        if posting is None:
-            log.status = "error"
+            log.status, log.http_status, log.detail = "error", e.http_status, str(e)
             stats.errors += 1
         else:
-            log.status, log.jobs = "ok", 1
-            add_snapshot(session, record, posting.description)
-            stats.saved += 1
-            session.refresh(opportunity)
-            apply_rules(session, opportunity)
+            posting = parse_job_posting(body)
+            if posting is None:
+                log.status, log.detail = "error", "no description on page"
+                stats.errors += 1
+            else:
+                log.status, log.jobs = "ok", 1
+                add_snapshot(session, record, posting.description)
+                stats.saved += 1
+                session.refresh(opportunity)
+                apply_rules(session, opportunity)
+        log.at = stamp()
+        session.add(log)
+        stats.requests += 1
         session.commit()
+        progress()
+        if stats.blocked:
+            break
     return stats
+
+
+def _status_text(http_status: int | None) -> str:
+    return f"HTTP {http_status}" if http_status else "blocked"

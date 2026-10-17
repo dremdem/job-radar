@@ -15,7 +15,6 @@ class Settings(BaseSettings):
     linkedin_public_search: bool = False
     linkedin_public_max_searches_per_day: int = 5
     linkedin_public_max_jobs: int = 25
-    linkedin_public_delay_seconds: float = 3.0
     linkedin_public_max_descriptions_per_day: int = 100
     # Telegram via the existing telegram-mcp server (docs/telegram.md); off without a command.
     telegram_mcp_command: str | None = None

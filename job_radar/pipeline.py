@@ -4,14 +4,19 @@ Every step reports through ``echo`` (one line per call), so the same text reache
 terminal or the web status. See docs/queue.md#sync-mail.
 """
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
 from .config import Settings
 from .db import make_engine, make_session_factory, upgrade_database
+
+if TYPE_CHECKING:
+    from .linkedin.public import DescriptionStats
 
 Echo = Callable[[str], None]
 
@@ -24,7 +29,7 @@ def import_linkedin(session: Session, echo: Echo) -> None:
 
 
 def import_linkedin_search(session: Session, settings: Settings, echo: Echo) -> None:
-    from .linkedin.public import PublicSearchClient, import_public_search
+    from .linkedin.public import PublicSearchClient, import_public_search, load_pause
 
     if not settings.linkedin_public_search:
         echo(
@@ -32,9 +37,10 @@ def import_linkedin_search(session: Session, settings: Settings, echo: Echo) -> 
             "(see docs/linkedin-public-search.md)."
         )
         return
+    pause = load_pause(session)
     stats = import_public_search(
         session,
-        PublicSearchClient(delay=settings.linkedin_public_delay_seconds),
+        PublicSearchClient(pause=(pause.pause_from, pause.pause_to)),
         max_searches=settings.linkedin_public_max_searches_per_day,
         max_jobs=settings.linkedin_public_max_jobs,
     )
@@ -46,26 +52,75 @@ def import_linkedin_search(session: Session, settings: Settings, echo: Echo) -> 
         echo("linkedin-search: LinkedIn is blocking guest requests; stopped until tomorrow.")
 
 
-def import_descriptions(session: Session, settings: Settings, echo: Echo) -> None:
-    from .linkedin.public import PublicSearchClient, import_public_descriptions
+DESCRIPTIONS_OFF = (
+    "descriptions: disabled; set JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true to enable "
+    "(see docs/linkedin-public-search.md)."
+)
 
-    if not settings.linkedin_public_search:
-        echo(
-            "descriptions: disabled; set JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true to enable "
-            "(see docs/linkedin-public-search.md)."
-        )
-        return
-    stats = import_public_descriptions(
-        session,
-        PublicSearchClient(delay=settings.linkedin_public_delay_seconds),
-        max_per_day=settings.linkedin_public_max_descriptions_per_day,
+
+def fetch_descriptions(
+    session: Session,
+    settings: Settings,
+    *,
+    stop: threading.Event | None = None,
+    on_wait: Callable[[float], None] | None = None,
+    on_progress: "Callable[[DescriptionStats], None] | None" = None,
+) -> "DescriptionStats":
+    """Descriptions from LinkedIn's public job pages, with the pause from Settings (#205)."""
+    from .linkedin.public import PublicSearchClient, import_public_descriptions, load_pause
+
+    pause = load_pause(session)
+    client = PublicSearchClient(
+        pause=(pause.pause_from, pause.pause_to), stop=stop, on_wait=on_wait
     )
+    return import_public_descriptions(
+        session,
+        client,
+        max_per_day=settings.linkedin_public_max_descriptions_per_day,
+        on_progress=on_progress,
+    )
+
+
+def import_descriptions(session: Session, settings: Settings, echo: Echo) -> None:
+    """Inline, for `./jr sync` and `job-radar import descriptions`."""
+    if not settings.linkedin_public_search:
+        echo(DESCRIPTIONS_OFF)
+        return
+    stats = fetch_descriptions(session, settings)
     echo(
         f"descriptions: {stats.requests} requests, {stats.saved} saved"
         + (f", {stats.errors} errors" if stats.errors else "")
     )
     if stats.blocked:
-        echo("descriptions: LinkedIn is blocking guest requests; stopped until tomorrow.")
+        echo(f"descriptions: LinkedIn is blocking guest requests ({stats.reason}); "
+             "stopped until tomorrow.")  # fmt: skip
+
+
+def description_job(settings: Settings, job) -> None:
+    """The web UI's background Descriptions job (web/description_job.py): fetch, then the
+    local AI analysis on what arrived."""
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            stats = fetch_descriptions(
+                session,
+                settings,
+                stop=job.stop_event,
+                on_wait=job.waiting,
+                on_progress=lambda s: job.progress(
+                    total=s.total, requests=s.requests, saved=s.saved, errors=s.errors
+                ),
+            )
+            job.finish(
+                blocked=stats.blocked,
+                reason=stats.reason,
+                stopped=stats.stopped,
+                limit_reached=stats.limit_reached,
+            )
+            if stats.saved and settings.ai_analysis:
+                analyze_descriptions(session, settings, job.echo)
+    finally:
+        engine.dispose()
 
 
 def import_telegram(session: Session, settings: Settings, echo: Echo) -> None:
@@ -319,8 +374,10 @@ def run_sync(
     since: date | None = None,
     progress_echo: Echo | None = None,
     on_steps: StepsCallback | None = None,
+    start_descriptions: Callable[[], bool] | None = None,
 ) -> list[Step]:
-    """Every source and analysis, each on its own: a failed step does not stop the rest."""
+    """Every source and analysis, each on its own: a failed step does not stop the rest.
+    ``start_descriptions``: the web UI fetches descriptions in a background job (#205)."""
     from .gmail.auth import load_credentials
     from .gmail.client import ApiGmailClient
     from .gmail.sync import sync_gmail
@@ -403,7 +460,13 @@ def run_sync(
             run("himalayas", lambda e: import_himalayas(session, settings, e))
             run("mail", mail)
             # Late: the rules for fetched descriptions see applications/rejections above.
-            run("descriptions", lambda e: import_descriptions(session, settings, e))
+            if start_descriptions is not None:
+                run("descriptions", lambda e: e(
+                    "descriptions: started in the background" if start_descriptions()
+                    else "descriptions: already running"
+                ))  # fmt: skip
+            else:
+                run("descriptions", lambda e: import_descriptions(session, settings, e))
             run("ai", lambda e: analyze_descriptions(session, settings, e))
     finally:
         engine.dispose()

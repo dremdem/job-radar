@@ -1,9 +1,9 @@
 import json
 import re
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlencode
@@ -31,7 +31,9 @@ from ..contacts import company_history
 from ..db import make_engine, make_session_factory, upgrade_database
 from ..description import check_python, highlight_python, latest_description, python_risk
 from ..language import language_risk
+from ..linkedin.alerts import LINKEDIN_SOURCES
 from ..linkedin.capture import import_capture
+from ..linkedin.public import PauseSettings, load_pause, save_pause
 from ..models import (
     Application,
     ApplicationReview,
@@ -40,6 +42,7 @@ from ..models import (
     CompanyEvent,
     EmailMessage,
     JobSnapshot,
+    LinkedInFetch,
     NoteKind,
     Opportunity,
     OpportunityNote,
@@ -59,6 +62,7 @@ from ..rejections import effective_score, latest_rejections, toggle_manual_rejec
 from ..skills import SORTS, build_report, sort_rows
 from ..stack import LISTS, Profile, current_profile, load_profile, save_profile
 from ..suggestions import suggest
+from .description_job import DescriptionJob
 from .sync_job import Runner, SyncJob
 
 HISTORY_SHOWN = 8
@@ -219,13 +223,23 @@ def create_app(
     sync_runner: Runner | None = None,
     claude_runner: ClaudeRunner | None = None,
     start_worker: bool = True,
+    description_runner: Callable[[DescriptionJob], None] | None = None,
 ) -> FastAPI:
     """``start_worker=False``: tests drive the Claude worker with ``run_once``."""
     settings = settings or get_settings()
     sync_job = SyncJob()
-    # The Sync button runs the same pipeline as `./jr sync`; tests pass a fake.
+    description_job = DescriptionJob()
+    description_runner = description_runner or (lambda job: pipeline.description_job(settings, job))
+
+    def start_descriptions() -> bool:
+        return description_job.start(description_runner)
+
+    # The Sync button runs the same pipeline as `./jr sync`, but leaves the slow LinkedIn
+    # descriptions to the background job (#205); tests pass a fake.
     sync_runner = sync_runner or (
-        lambda echo, on_steps: pipeline.run_sync(settings, echo, on_steps=on_steps)
+        lambda echo, on_steps: pipeline.run_sync(
+            settings, echo, on_steps=on_steps, start_descriptions=start_descriptions
+        )
     )
 
     @asynccontextmanager
@@ -733,6 +747,45 @@ def create_app(
     def sync_status(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(request, "_sync_status.html", {"job": sync_job})
 
+    def descriptions_status(request: Request, off: bool = False) -> HTMLResponse:
+        context = {"job": description_job, "off": off}
+        return templates.TemplateResponse(request, "_descriptions_status.html", context)
+
+    @app.post("/descriptions", response_class=HTMLResponse)
+    def start_description_job(request: Request) -> HTMLResponse:
+        if not settings.linkedin_public_search:
+            return descriptions_status(request, off=True)
+        start_descriptions()  # a second click just shows the running one
+        return descriptions_status(request)
+
+    @app.post("/descriptions/stop", response_class=HTMLResponse)
+    def stop_description_job(request: Request) -> HTMLResponse:
+        description_job.stop()
+        return descriptions_status(request)
+
+    @app.get("/descriptions/status", response_class=HTMLResponse)
+    def description_job_status(request: Request) -> HTMLResponse:
+        return descriptions_status(request)
+
+    @app.get("/linkedin/log", response_class=HTMLResponse)
+    def linkedin_log(request: Request, session: SessionDep, days: int = 7) -> HTMLResponse:
+        rows, summary = _fetch_log(session, days)
+        context = {"rows": rows, "summary": summary, "days": days}
+        return templates.TemplateResponse(request, "linkedin_log.html", context)
+
+    @app.post("/settings/linkedin", response_class=HTMLResponse)
+    def save_linkedin_settings(
+        request: Request,
+        session: SessionDep,
+        pause_from: Annotated[float, Form(ge=0, le=600)] = 10,
+        pause_to: Annotated[float, Form(ge=0, le=600)] = 40,
+    ) -> HTMLResponse:
+        if pause_from > pause_to:
+            raise HTTPException(status_code=422, detail="From must not be more than To")
+        save_pause(session, PauseSettings(pause_from, pause_to))
+        context = _settings_context(session, settings) | {"message": "LinkedIn pause saved."}
+        return templates.TemplateResponse(request, "settings.html", context)
+
     @app.get("/capture", response_class=HTMLResponse)
     def capture_page(request: Request) -> HTMLResponse:
         base = str(request.base_url)
@@ -912,11 +965,64 @@ def _settings_context(session: Session, settings: Settings) -> dict:
     return {
         "rules": load_rules(session),
         "claude": claude.load_claude_settings(session),
+        "pause": load_pause(session),
         "models": claude.MODELS,
         "languages": claude.LANGUAGES,
         "cv_path": settings.cv_path,
         "message": None,
     }
+
+
+@dataclass
+class LogDay:
+    day: str
+    requests: int = 0
+    saved: int = 0
+    errors: int = 0
+    stops: int = 0
+    blocked_at: datetime | None = None
+    blocked_reason: str | None = None
+
+
+def _fetch_log(session: Session, days: int) -> tuple[list[dict], list[LogDay]]:
+    """LinkedIn guest requests of the last ``days`` days, newest first, and one line per
+    local day (#205)."""
+    since = datetime.now(UTC) - timedelta(days=max(1, min(days, 90)))
+    fetches = session.scalars(
+        select(LinkedInFetch)
+        .where(LinkedInFetch.at >= since.replace(tzinfo=None))
+        .order_by(LinkedInFetch.at.desc(), LinkedInFetch.id.desc())
+    ).all()
+    # Requests logged before #205 have only the LinkedIn job id.
+    old = {f.job_id for f in fetches if not f.opportunity_id and f.job_id}
+    by_job = dict(
+        session.execute(
+            select(SourceRecord.external_id, SourceRecord.opportunity_id).where(
+                SourceRecord.source_type.in_(LINKEDIN_SOURCES), SourceRecord.external_id.in_(old)
+            )
+        ).all()
+    )
+    vacancy_of = {f.id: f.opportunity_id or by_job.get(f.job_id) for f in fetches}
+    ids = {i for i in vacancy_of.values() if i}
+    query = select(Opportunity).where(Opportunity.id.in_(ids))
+    titles = {o.id: o for o in session.scalars(query.options(joinedload(Opportunity.company)))}
+    rows, by_day = [], {}
+    for f in fetches:
+        at = _utc(f.at)
+        rows.append({"f": f, "at": at, "o": titles.get(vacancy_of[f.id])})
+        day = by_day.setdefault(local_time(at, "%d.%m"), LogDay(local_time(at, "%d.%m")))
+        if f.status == "stopped":
+            day.stops += 1
+            continue
+        day.requests += 1
+        day.saved += f.status == "ok" and f.kind == "description"
+        day.errors += f.status == "error"
+        if f.status == "blocked" and day.blocked_at is None:
+            day.blocked_at, day.blocked_reason = (
+                at,
+                f.detail or (f"HTTP {f.http_status}" if f.http_status else None),
+            )
+    return rows, list(by_day.values())
 
 
 def _first_gap(analysis, profile: Profile | None) -> str:
