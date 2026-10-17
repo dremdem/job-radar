@@ -152,7 +152,7 @@ class Filters:
     q: str = ""  # the inbox search box: title, company or location (#158)
     desc: str = ""  # "none" / "has": vacancies without / with a saved description (#176)
     per: str = ""  # vacancies per page, one of PER_PAGE; "" = the default (#180)
-    sort: str = ""  # "" = by score, "recent" = by your last action (#199)
+    sort: str = ""  # "" = score, "claude" = Claude match % (#207), "recent" = last action (#199)
 
     def matches(
         self,
@@ -1162,6 +1162,10 @@ def _queue_context(
             ),
             reverse=True,
         )
+    elif filters.sort == "claude":  # Claude's match % first, unanalysed at the bottom (#207)
+        matches = claude.latest_matches(session)
+        keyed.sort(key=_queue_order)  # equal % keep the score order
+        keyed.sort(key=lambda k: -matches.get(k["o"].id, -1))
     else:
         keyed.sort(key=_queue_order)
     per = filters.per_page

@@ -104,6 +104,21 @@ def latest_done(session: Session, opportunity_id: int) -> ClaudeAnalysis | None:
     )
 
 
+def latest_matches(session: Session) -> dict[int, int]:
+    """Claude's match % per vacancy, from its latest finished analysis (#207)."""
+    rows = session.execute(
+        select(ClaudeAnalysis.opportunity_id, ClaudeAnalysis.result)
+        .where(ClaudeAnalysis.state == "done", ClaudeAnalysis.result.is_not(None))
+        .order_by(ClaudeAnalysis.id)
+    )
+    matches: dict[int, int] = {}
+    for opportunity_id, result in rows:
+        match = (result or {}).get("match")
+        if isinstance(match, int | float):
+            matches[opportunity_id] = int(match)
+    return matches
+
+
 def messages(session: Session, opportunity_id: int) -> list[ClaudeMessage]:
     return list(
         session.scalars(

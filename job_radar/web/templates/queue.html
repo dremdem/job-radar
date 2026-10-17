@@ -22,8 +22,8 @@
   </div>
   <div class="inbox-body">
     <section class="inbox-list" aria-label="Vacancies">
-      <div class="list-head"><span class="sort-switch">Sort:{# by score or by your last action (#199) #}
-        {% for value, label in [("", "Score"), ("recent", "Last action")] %}<a href="{{ filters.with_sort(value).href(tab) }}"{% if filters.sort == value %} class="active" aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}</span><span class="kbd-hint">J / K to move</span></div>
+      <div class="list-head"><span class="sort-switch">Sort:{# by score, Claude's match % (#207) or your last action (#199) #}
+        {% for value, label in [("", "Score"), ("claude", "Claude %"), ("recent", "Last action")] %}<a href="{{ filters.with_sort(value).href(tab) }}"{% if filters.sort == value %} class="active" aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}</span><span class="kbd-hint">J / K to move</span></div>
       {% include "_desc_switch.html" %}
       {% include "_queue.html" %}
     </section>

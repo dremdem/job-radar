@@ -354,3 +354,30 @@ def test_sort_by_last_action(client, session):
     assert 'href="/?tab=review&amp;sort=recent"' in text
     assert 'class="col-filter" name="sort" value="recent"' in text
     assert ">Last action<" in text and ">Score<" in text
+
+
+def test_sort_by_claude_match(client, session):
+    from job_radar.models import ClaudeAnalysis
+
+    def analysed(title: str, score: float, match: int | None, state: str = "done"):
+        o = add(session, title)
+        o.score = score
+        if match is not None or state != "done":
+            result = {"verdict": "maybe", "match": match} if match is not None else None
+            session.add(
+                ClaudeAnalysis(
+                    opportunity=o, model="m", prompt_version="v", state=state, result=result
+                )
+            )
+        return o
+
+    analysed("Top score role", 9.5, None)
+    analysed("Low match role", 5.0, 30)
+    analysed("High match role", 4.0, 90)
+    analysed("Queued role", 8.0, None, state="queued")
+    session.commit()
+    text = client.get("/?tab=all&sort=claude").text
+    order = ["High match role", "Low match role", "Top score role", "Queued role"]
+    assert [text.index(t) for t in order] == sorted(text.index(t) for t in order)
+    assert ">Claude %<" in text
+    assert 'class="col-filter" name="sort" value="claude"' in text
