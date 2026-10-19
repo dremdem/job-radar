@@ -4,7 +4,7 @@ from typing import Any
 
 from ..stack import Profile
 
-PROMPT_VERSION = "2"  # 2: ignore_reason (#117)
+PROMPT_VERSION = "3"  # 2: ignore_reason (#117); 3: memory (#215)
 # Never inferred from the CV: stated by the user (docs/claude.md#what-claude-gets).
 FACTS = [
     "I want full remote work only.",
@@ -171,6 +171,7 @@ def analysis_prompt(
     location: str | None,
     salary: str | None,
     description: str,
+    memory: str = "",
 ) -> str:
     profile = profile or Profile()
     parts = [
@@ -180,6 +181,7 @@ def analysis_prompt(
         _list("Technologies I know", profile.known),
         _list("Technologies I can pick up quickly (not a blocker)", profile.learnable),
         _list("Blockers if required at a professional level", profile.blockers),
+        *([memory] if memory else []),  # what earlier chats taught (#215)
         "# My CV",
         cv.strip() if cv else "(no CV given: judge from the lists above)",
         "# The vacancy",

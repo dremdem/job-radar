@@ -12,6 +12,7 @@
     <div class="msg msg-{{ m.role }}">
       <div class="small muted">{{ "You" if m.role == "user" else "Claude" }} · {{ (m.created_at | local("%Y-%m-%d %H:%M")) }}{% if m.state in ("queued", "running") %} · <b>thinking…</b>{% elif m.state == "failed" %} · <span class="neg">failed: {{ m.error }}</span>{% endif %}</div>
       <div class="msg-text">{{ m.text | chat_markup }}</div>
+      {% if m.memory_note %}<div class="small muted">📝 Memory: {{ m.memory_note }} · <a href="/memory">see</a></div>{% endif %}
       {% if m.role == "assistant" and m.text %}<textarea class="msg-raw" hidden>{{ m.text }}</textarea>
       <button type="button" class="btn btn-sm btn-outline-secondary mt-1 copy-answer">Copy</button>{% endif %}
     </div>

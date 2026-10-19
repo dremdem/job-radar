@@ -238,7 +238,7 @@
   <nav class="navbar navbar-expand border-bottom mb-3 flex-wrap gap-2">
     <a class="navbar-brand fw-bold" href="/">Job Radar</a>
     <div class="navbar-nav flex-wrap">
-      {% for href, label in [("/", "Queue"), ("/applications", "Applications"), ("/capture", "Capture"), ("/skills", "Skills"), ("/settings", "Settings"), ("/profile", "Profile")] %}
+      {% for href, label in [("/", "Queue"), ("/applications", "Applications"), ("/capture", "Capture"), ("/skills", "Skills"), ("/memory", "Memory"), ("/settings", "Settings"), ("/profile", "Profile")] %}
       <a href="{{ href }}" class="nav-link{% if path == href or (href == '/' and path.startswith('/opportunities')) %} active{% endif %}">{{ label }}</a>
       {% endfor %}
     </div>

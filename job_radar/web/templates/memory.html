@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Memory · Job Radar{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Claude memory</h1>
+    <p class="page-sub">Facts about you and skills Claude keeps between chats. It writes them itself in the vacancy chat; every chat and analysis reads them. Edit or delete anything here. Details: docs/claude-memory.md.</p>
+  </div>
+</div>
+{% if message %}<p class="notice-inline"><b>{{ message }}</b></p>{% endif %}
+<div class="stack">
+  {% for e in entries %}
+  <section class="panel-card">
+    <form method="post" action="/memory">
+      <div class="form-grid">
+        <label>Kind <select name="kind" class="form-select form-select-sm">{% for k in kinds %}<option value="{{ k }}" {% if e.kind == k %}selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
+        <label>Name <input type="text" name="name" value="{{ e.name }}" class="form-control form-control-sm" readonly></label>
+        <label>Description <input type="text" name="description" value="{{ e.description }}" maxlength="255" class="form-control form-control-sm"></label>
+      </div>
+      <textarea name="body" class="form-control mt-2" rows="4" maxlength="{{ max_body }}">{{ e.body }}</textarea>
+      <p class="small muted mt-1 mb-1">changed {{ e.updated_at | local("%Y-%m-%d %H:%M") }}{% if e.opportunity_id %} in the chat of <a href="/opportunities/{{ e.opportunity_id }}#chat">#{{ e.opportunity_id }}</a>{% endif %}</p>
+      <button type="submit" class="btn btn-primary btn-sm">Save</button>
+      <button type="submit" class="btn btn-outline-danger btn-sm" formaction="/memory/{{ e.name }}/delete" onclick="return confirm('Delete {{ e.name }}?')">Delete</button>
+    </form>
+  </section>
+  {% else %}
+  <p class="muted">Nothing yet. Claude adds entries when a chat teaches it something worth keeping.</p>
+  {% endfor %}
+
+  <section class="panel-card">
+    <h2 class="section-title">Add</h2>
+    <form method="post" action="/memory">
+      <div class="form-grid">
+        <label>Kind <select name="kind" class="form-select form-select-sm">{% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}</select></label>
+        <label>Name <input type="text" name="name" maxlength="64" required class="form-control form-control-sm" placeholder="salary"></label>
+        <label>Description <input type="text" name="description" maxlength="255" class="form-control form-control-sm" placeholder="what salary to name"></label>
+      </div>
+      <textarea name="body" class="form-control mt-2" rows="3" maxlength="{{ max_body }}" placeholder="From 4000 USD net a month."></textarea>
+      <p class="mt-2 mb-0"><button type="submit" class="btn btn-primary btn-sm">Add</button></p>
+    </form>
+  </section>
+
+  <section class="panel-card">
+    <h2 class="section-title">Change log</h2>
+    {% if changes %}
+    <ul class="small mb-0">
+      {% for c in changes %}<li>{{ c.at | local("%Y-%m-%d %H:%M") }} · <b>{{ c.op }}</b> {{ c.name }} · by {{ c.by }}{% if c.opportunity_id %} in <a href="/opportunities/{{ c.opportunity_id }}#chat">#{{ c.opportunity_id }}</a>{% endif %}
+        <details><summary class="muted">text</summary>{% if c.before %}<div><span class="muted">before:</span><pre class="mem-text">{{ c.before }}</pre></div>{% endif %}{% if c.after %}<div><span class="muted">after:</span><pre class="mem-text">{{ c.after }}</pre></div>{% endif %}</details></li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted small mb-0">No changes yet.</p>{% endif %}
+  </section>
+</div>
+<style>.mem-text { white-space: pre-wrap; font-size: 12px; margin: 0 0 .5rem; }</style>
+{% endblock %}

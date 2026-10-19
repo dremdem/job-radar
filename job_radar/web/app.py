@@ -21,6 +21,7 @@ from ..ai.analysis import latest_analysis, recheck_stack
 from ..ai.analysis import risks as ai_risks
 from ..auto_ignore import Rules, apply_to_review, load_rules, save_rules
 from ..claude import analysis as claude
+from ..claude import memory as claude_memory
 from ..claude.analysis import ClaudeSettings
 from ..claude.analysis import Worker as ClaudeWorker
 from ..claude.prompt import QUICK_PROMPTS
@@ -700,6 +701,39 @@ def create_app(
         context = {"report": report, "days": days, "scope": scope, "message": message}
         context |= {"sort": "unlock", "dir": "desc"}
         return templates.TemplateResponse(request, "skills.html", context)
+
+    @app.get("/memory", response_class=HTMLResponse)
+    def memory_page(request: Request, session: SessionDep) -> HTMLResponse:
+        return _memory_response(request, session)
+
+    @app.post("/memory", response_class=HTMLResponse)
+    def save_memory(
+        request: Request,
+        session: SessionDep,
+        kind: Annotated[str, Form()],
+        name: Annotated[str, Form(max_length=64)],
+        description: Annotated[str, Form(max_length=255)] = "",
+        body: Annotated[str, Form()] = "",
+    ) -> HTMLResponse:
+        saved = claude_memory.save(session, kind, name, description, body, by="you")
+        if saved is None:
+            raise HTTPException(status_code=422, detail="Unknown kind or empty name")
+        return _memory_response(request, session, f"Saved {saved}.")
+
+    @app.post("/memory/{name}/delete", response_class=HTMLResponse)
+    def delete_memory(request: Request, session: SessionDep, name: str) -> HTMLResponse:
+        claude_memory.delete(session, name, by="you")
+        return _memory_response(request, session, f"Deleted {name}.")
+
+    def _memory_response(request: Request, session: Session, message: str = "") -> HTMLResponse:
+        context = {
+            "entries": claude_memory.entries(session),
+            "changes": claude_memory.changes(session),
+            "kinds": claude_memory.KINDS,
+            "max_body": claude_memory.MAX_BODY,
+            "message": message,
+        }
+        return templates.TemplateResponse(request, "memory.html", context)
 
     @app.get("/profile", response_class=HTMLResponse)
     def profile_page(request: Request) -> HTMLResponse:

@@ -16,6 +16,7 @@ from ..ai.analysis import quote_in_text
 from ..description import latest_description
 from ..models import AppSetting, ClaudeAnalysis, ClaudeMessage, Opportunity
 from ..stack import current_profile
+from . import memory
 from .prompt import PROMPT_VERSION, SCHEMA, analysis_prompt, chat_system_prompt, system_prompt
 from .runner import ClaudeError, Runner
 
@@ -375,6 +376,7 @@ class Worker:
                 location=o.location,
                 salary=o.salary,
                 description=description,
+                memory=memory.prompt_section(session),
             )
             reply, error = None, None
             for attempt in range(1 + len(self.retry_waits)):
@@ -436,7 +438,13 @@ class Worker:
             try:
                 reply = self.runner.run(
                     question.text,
-                    system=chat_system_prompt(settings.language, web=settings.chat_web),
+                    system="\n\n".join(
+                        (
+                            chat_system_prompt(settings.language, web=settings.chat_web),
+                            memory.prompt_section(session),
+                            memory.WRITE_RULES,
+                        )
+                    ),
                     model=analysis.model,
                     resume=analysis.session_id,
                     web=settings.chat_web,
@@ -445,12 +453,14 @@ class Worker:
                 question.state, question.error = "failed", str(e) or e.__class__.__name__
             else:
                 question.state, question.error = "done", None
+                text, note = memory.apply_reply(session, reply.text, question.opportunity_id)
                 session.add(
                     ClaudeMessage(
                         opportunity_id=question.opportunity_id,
                         analysis_id=analysis.id,
                         role="assistant",
-                        text=reply.text,
+                        text=text,
+                        memory_note=note,
                     )
                 )
             session.commit()

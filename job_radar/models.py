@@ -363,5 +363,35 @@ class ClaudeMessage(Base):
     state: Mapped[str] = mapped_column(String(16), default="done", index=True)
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    memory_note: Mapped[str | None] = mapped_column(Text)  # what this answer changed (#215)
 
     analysis: Mapped[ClaudeAnalysis] = relationship()
+
+
+class ClaudeMemory(Base):
+    """A fact or a skill Claude keeps between chats. See docs/claude-memory.md."""
+
+    __tablename__ = "claude_memory"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))  # fact / skill
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    description: Mapped[str] = mapped_column(String(255), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    opportunity_id: Mapped[int | None]  # whose chat changed it last; no FK, like the log
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+
+
+class ClaudeMemoryChange(Base):
+    """One change of the memory, by Claude or by you, to see and undo it by hand."""
+
+    __tablename__ = "claude_memory_changes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64))
+    op: Mapped[str] = mapped_column(String(16))  # added / updated / deleted
+    by: Mapped[str] = mapped_column(String(16))  # claude / you
+    before: Mapped[str | None] = mapped_column(Text)
+    after: Mapped[str | None] = mapped_column(Text)
+    opportunity_id: Mapped[int | None]
+    at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), index=True)

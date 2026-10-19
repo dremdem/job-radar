@@ -72,6 +72,8 @@ You need Claude Code installed and logged in on this machine (`claude` in a term
 
 ## Vacancy page and chat
 
+**Memory (#215).** The chat keeps facts about you and skills between conversations and every analysis reads them: [claude-memory.md](claude-memory.md).
+
 Every vacancy has its own page, `/opportunities/<id>`: the **page →** link next to the title in the queue and in the Description window (#106). A row with a finished analysis also has **Chat with Claude →** (with the number of messages), which opens the page at the chat. It shows:
 - title, company, location, salary and the source links;
 - the description, with Python marked;
