@@ -48,9 +48,9 @@ class FakeRunner:
         self.replies = list(replies)
         self.calls = []
 
-    def run(self, prompt, *, system, model, schema=None, session_id=None, resume=None):
+    def run(self, prompt, *, system, model, schema=None, session_id=None, resume=None, web=False):
         self.calls.append({"prompt": prompt, "system": system, "model": model, "schema": schema,
-                           "session_id": session_id, "resume": resume})  # fmt: skip
+                           "session_id": session_id, "resume": resume, "web": web})  # fmt: skip
         reply = self.replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
@@ -112,6 +112,7 @@ def test_worker_runs_one_and_checks_quotes(session, tmp_path):
     assert job.result["red_flags"][0]["quote_ok"] is False  # not in the description
     call = runner.calls[0]
     assert call["schema"] == SCHEMA and call["model"] == "sonnet" and call["session_id"]
+    assert call["web"] is False  # an analysis never goes online (#213)
     assert "Senior Python developer, FastAPI" in call["prompt"]  # the CV
     assert "Russian" in call["system"]
     assert claude.status(session).recent == [o.id]
@@ -208,6 +209,26 @@ def test_cli_runner_uses_print_mode_without_tools_or_api_key(fake_claude, tmp_pa
     assert call["key"] is None  # never paid API billing
 
 
+def test_cli_runner_web_allows_search_but_not_linkedin_or_hh(fake_claude, tmp_path):
+    script, log = fake_claude
+    ClaudeCli(str(script), tmp_path).run("q", system="s", model="sonnet", resume="r", web=True)
+    argv = json.loads(log.read_text())["argv"]
+    assert argv[argv.index("--tools") + 1] == "WebSearch,WebFetch"
+    assert argv[argv.index("--allowedTools") + 1] == "WebSearch,WebFetch"
+    denied = argv[argv.index("--disallowedTools") + 1 : argv.index("--strict-mcp-config")]
+    for domain in ("linkedin.com", "*.linkedin.com", "hh.ru", "*.hh.ru", "lnkd.in"):
+        assert f"WebFetch(domain:{domain})" in denied
+
+
+def test_chat_without_internet_when_switched_off(session, tmp_path):
+    o = analyzed(session, tmp_path)
+    claude.save_claude_settings(session, ClaudeSettings(chat_web=False))
+    claude.ask(session, o.id, "Что за компания?")
+    runner = FakeRunner([Reply("Не знаю.", None, "sess-1", None)])
+    worker(session, runner, tmp_path).run_once()
+    assert runner.calls[0]["web"] is False
+
+
 def test_cli_runner_reports_missing_command(tmp_path):
     with pytest.raises(ClaudeError, match="not found"):
         ClaudeCli(str(tmp_path / "nope"), tmp_path).run("x", system="s", model="sonnet")
@@ -233,7 +254,12 @@ def test_queue_button_and_row_badges(client, session):
 def test_claude_settings(client, session):
     assert 'name="model"' in client.get("/settings").text
     client.post("/settings/claude", data={"model": "opus", "daily_cap": "5", "language": "English"})
-    assert claude.load_claude_settings(session) == claude.ClaudeSettings("opus", 5, "English")
+    # An unchecked box is not sent: the chat goes offline (#213).
+    off = claude.ClaudeSettings("opus", 5, "English", chat_web=False)
+    assert claude.load_claude_settings(session) == off
+    client.post("/settings/claude", data={"model": "opus", "chat_web": "on"})
+    assert claude.load_claude_settings(session).chat_web is True
+    assert 'name="chat_web" checked' in client.get("/settings").text
     assert client.post("/settings/claude", data={"model": "gpt"}).status_code == 422
 
 
@@ -261,6 +287,8 @@ def test_chat_continues_the_analysis_session_and_goes_first(session, tmp_path):
     worker(session, runner, tmp_path).run_once()
     call = runner.calls[0]
     assert call["resume"] == "sess-1" and call["schema"] is None
+    assert call["web"] is True  # the chat may search the web (#213)
+    assert "LinkedIn" in call["system"]  # and is told what it may not open
     assert call["prompt"] == "Как ответить про TensorFlow?"
     assert "Answer in Russian" in call["system"]
     session.expire_all()
@@ -505,7 +533,7 @@ class SlowRunner:
         self.active = self.peak = self.calls = 0
         self.release = threading.Event()
 
-    def run(self, prompt, *, system, model, schema=None, session_id=None, resume=None):
+    def run(self, prompt, *, system, model, schema=None, session_id=None, resume=None, web=False):
         with self.lock:
             self.active += 1
             self.calls += 1

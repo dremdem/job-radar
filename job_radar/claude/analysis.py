@@ -37,6 +37,7 @@ class ClaudeSettings:
     daily_cap: int = 30
     language: str = "Russian"
     parallel: int = 4  # analyses at once, 1..MAX_PARALLEL (#197)
+    chat_web: bool = True  # the chat may search the web, never the analysis (#213)
 
 
 def load_claude_settings(session: Session) -> ClaudeSettings:
@@ -435,9 +436,10 @@ class Worker:
             try:
                 reply = self.runner.run(
                     question.text,
-                    system=chat_system_prompt(settings.language),
+                    system=chat_system_prompt(settings.language, web=settings.chat_web),
                     model=analysis.model,
                     resume=analysis.session_id,
+                    web=settings.chat_web,
                 )
             except Exception as e:  # shown under the question; ask again to retry
                 question.state, question.error = "failed", str(e) or e.__class__.__name__

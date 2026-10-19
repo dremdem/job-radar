@@ -39,7 +39,8 @@ Every quote is checked against the description, as for the local model. A quote 
 ## How it runs
 
 - **Workers (#197):** the server runs a pool of analysis threads; each takes the oldest queued vacancy and runs `claude -p --output-format json --json-schema … --model <model> --tools "" --strict-mcp-config --setting-sources ""`, with the prompt on stdin.
-  - No tools: Claude only reads and answers. It cannot open files or run commands.
+  - No tools: Claude only reads and answers. It cannot open files, run commands or go online. The vacancy text is not ours, so an analysis never gets the internet: a line planted in a description could steer it (#213).
+  - **The chat can search the web (#213)**, unless **Internet in chat** is off in Settings: its runs get `--tools WebSearch,WebFetch` (allowed without asking) and nothing else. LinkedIn and hh.ru are denied by Claude Code's own permission rules (`--disallowedTools "WebFetch(domain:linkedin.com)" "WebFetch(domain:*.linkedin.com)" …`, both forms: a bare domain does not cover `www.`), because the project never fetches them automatically. The risk that is left: a description could ask Claude to open a URL that carries something from the conversation; turn the switch off if that worries you.
   - `ANTHROPIC_API_KEY` is removed from its environment, so it never falls back to paid API billing.
   - **Parallel analyses** (Settings, 1–8, default 4) is how many run at once; a change applies without a restart. A vacancy is claimed atomically, so two threads never run the same one.
   - Chat questions have **their own thread**, outside that number: an answer never waits behind analyses.
@@ -61,6 +62,7 @@ Every quote is checked against the description, as for the local model. A quote 
 | Settings page | Model | `sonnet` (`opus`, `haiku`) |
 | Settings page | Analyses per day | 30; the rest wait in the queue until tomorrow |
 | Settings page | Language of the explanations | Russian |
+| Settings page | Internet in chat | on: the vacancy chat may use web search and open pages, except LinkedIn and hh.ru (#213) |
 | Settings page | Parallel analyses | 4 (1–8): how many run at once; more finishes the queue sooner and uses the subscription's limit sooner (#197) |
 | `.env` | `JOB_RADAR_CV_PATH` | none: without it, the analysis says there is no CV |
 | `.env` | `JOB_RADAR_CLAUDE_COMMAND` | `claude` |

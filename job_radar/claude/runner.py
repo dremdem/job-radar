@@ -1,4 +1,5 @@
-"""Run `claude -p` on the user's subscription: no tools, no API key, JSON out."""
+"""Run `claude -p` on the user's subscription: no tools (web search in the chat), no API key,
+JSON out."""
 
 import json
 import os
@@ -18,6 +19,13 @@ _TRANSIENT = re.compile(
     r"|\b5\d\d\b|timed? ?out|no answer in|temporarily|try again",
     re.IGNORECASE,
 )
+
+
+# The chat may search the web, but never open these: the project does not fetch them (#213).
+# Claude Code needs both forms: a bare domain does not cover its subdomains.
+WEB_TOOLS = "WebSearch,WebFetch"
+BLOCKED_DOMAINS = ("linkedin.com", "lnkd.in", "licdn.com", "hh.ru", "hh.kz", "headhunter.ru")
+WEB_DENIED = [f"WebFetch(domain:{p}{d})" for d in BLOCKED_DOMAINS for p in ("", "*.")]
 
 
 def is_transient(message: str) -> bool:
@@ -48,6 +56,7 @@ class Runner(Protocol):
         schema: dict[str, Any] | None = None,
         session_id: str | None = None,
         resume: str | None = None,
+        web: bool = False,
     ) -> Reply: ...
 
 
@@ -66,7 +75,16 @@ class ClaudeCli:
         schema: dict[str, Any] | None = None,
         session_id: str | None = None,
         resume: str | None = None,
+        web: bool = False,
     ) -> Reply:
+        tools = [
+            "--tools",
+            WEB_TOOLS,
+            "--allowedTools",
+            WEB_TOOLS,
+            "--disallowedTools",
+            *WEB_DENIED,
+        ]
         args = [
             *self.command,
             "-p",
@@ -74,8 +92,7 @@ class ClaudeCli:
             "json",
             "--model",
             model,
-            "--tools",
-            "",
+            *(tools if web else ["--tools", ""]),
             "--strict-mcp-config",
             "--setting-sources",
             "",
