@@ -73,6 +73,8 @@ def test_queue_listens_and_capture_page_signals_and_closes(client, session):
     capture = client.get("/capture").text
     assert 'BroadcastChannel("job-radar")' in queue and "/row?" in queue
     assert 'BroadcastChannel("job-radar")' in capture and "window.close()" in capture
+    # A big traffic light for the result, kept long enough to see (#219).
+    assert 'id="light"' in capture and "✓ Description saved" in capture and "3000" in capture
 
 
 def test_description_opens_in_a_modal_with_python_highlighted(client, session):

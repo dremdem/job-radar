@@ -1,5 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Capture · Job Radar{% endblock %}
+{% block title %}Capture · Job Radar<style>
+  .light { font-size: 32px; font-weight: 700; text-align: center; padding: 28px 16px; border-radius: 12px; }
+  .light-green { background: #1F8F4E; color: #fff; }
+  .light-yellow { background: #E0A100; color: #1A1A1A; }
+  .light-red { background: #C0392B; color: #fff; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -8,6 +14,7 @@
   </div>
 </div>
 <div class="stack">
+<div id="light" class="light" hidden></div>{# the result at a glance: green / yellow / red (#219) #}
 <div id="result" class="small"></div>
 <section class="panel-card">
   <div class="card-label">Set up once</div>
@@ -33,6 +40,13 @@
     history.replaceState(null, "", "/capture");  // drop the data from the address bar
     var out = document.getElementById("result");
     out.textContent = "Saving…";
+    function light(color, text) {
+      var box = document.getElementById("light");
+      box.className = "light light-" + color;
+      box.textContent = text;
+      box.hidden = false;
+      document.title = text + " · Job Radar";
+    }
     fetch("/api/capture", {method: "POST", headers: {"Content-Type": "application/json"}, body: decodeURIComponent(raw)})
       .then(function (r) { return r.json(); })
       .then(function (s) {
@@ -50,12 +64,22 @@
         if ("BroadcastChannel" in window)
           new BroadcastChannel("job-radar").postMessage({type: "captured", opportunity_ids: s.opportunity_ids || []});
         var fine = s.vacancy ? !/not recognised|no description/.test(s.vacancy) : (s.cards && s.skipped < s.cards);
+        if (fine && !(s.cards && s.skipped)) light("green", s.vacancy ? "✓ Description saved" : "✓ Saved");
+        else if (fine) light("yellow", "! Saved, some jobs unreadable");
+        else if (s.vacancy && /no description/.test(s.vacancy)) light("yellow", "! No description saved");
+        else light("red", "✗ Nothing saved");
         if (fine && window.opener !== undefined) {
           out.appendChild(p("Closing this tab…"));
-          setTimeout(function () { window.close(); }, 1500);
+          setTimeout(function () { window.close(); }, 3000);
         }
       })
-      .catch(function () { out.textContent = "Could not save the page."; });
+      .catch(function () { out.textContent = "Could not save the page."; light("red", "✗ Could not save"); });
   })();
 </script>
+<style>
+  .light { font-size: 32px; font-weight: 700; text-align: center; padding: 28px 16px; border-radius: 12px; }
+  .light-green { background: #1F8F4E; color: #fff; }
+  .light-yellow { background: #E0A100; color: #1A1A1A; }
+  .light-red { background: #C0392B; color: #fff; }
+</style>
 {% endblock %}
