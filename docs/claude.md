@@ -6,7 +6,7 @@ The local model (docs/ai.md) sorts every vacancy cheaply. For the few vacancies 
 
 1. **One vacancy:** press **✨ Claude** in its row. It is queued at once. The button is there only when the vacancy has a description: without one there is nothing to analyze, and the row says so (open the vacancy and click the bookmarklet). A row with a finished analysis has **↻ again** to run it once more (#146).
 2. **Several:** tick them, or press **Select ≥ 6.5** to tick every row with that score or more and a description. Vacancies without a description are skipped when queued; the status says how many. On a phone, the tick is the big **Select** toggle in the row's buttons, away from the title link (#123). While anything is ticked, a bar stays at the bottom of the screen with the count and **Analyze with Claude**, so there is no scrolling back to the top. Press it. The vacancies are queued and analyzed in the background, **4 at a time** by default (about 20–60 s each; see *Parallel analyses* below). You can keep working, reload the page or close it.
-3. Each finished vacancy updates its row by itself: a verdict badge (`apply` / `maybe` / `skip`), the match in %, and the analysis under **Claude**. The header shows the progress (`Claude: 2 queued, 1 running`). If you allow browser notifications, one pops up per finished vacancy.
+3. Each finished vacancy updates its row by itself: a verdict badge (`apply` / `maybe` / `skip`), the match in %, and the analysis under **Claude**. The header shows the progress (`Claude: 2 queued, 1 running`). There are no browser notifications (#217): it all runs in the background.
 4. You decide. Nothing changes the vacancy's state by itself; "ignore with reason" stays a click away.
 
 ## What Claude gets

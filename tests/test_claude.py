@@ -642,3 +642,7 @@ def test_status_says_when_the_pause_ends(client, session):
     assert "subscription limit: paused until" in text
     w.paused_until = None
     assert "paused until" not in client.get("/claude/status").text
+
+
+def test_no_browser_notifications(client):
+    assert "Notification" not in client.get("/").text  # #217
