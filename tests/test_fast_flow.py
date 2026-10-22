@@ -74,7 +74,12 @@ def test_queue_listens_and_capture_page_signals_and_closes(client, session):
     assert 'BroadcastChannel("job-radar")' in queue and "/row?" in queue
     assert 'BroadcastChannel("job-radar")' in capture and "window.close()" in capture
     # A big traffic light for the result, kept long enough to see (#219).
-    assert 'id="light"' in capture and "✓ Description saved" in capture and "3000" in capture
+    assert 'id="light"' in capture and "✓ Description saved" in capture
+    assert "}, 1500);" in capture  # 1.5 s by default; Settings change it (#221)
+    client.post("/settings/capture", data={"close_after": "4"})
+    assert "}, 4000);" in client.get("/capture").text
+    assert 'name="close_after" value="4.0"' in client.get("/settings").text
+    assert client.post("/settings/capture", data={"close_after": "99"}).status_code == 422
 
 
 def test_description_opens_in_a_modal_with_python_highlighted(client, session):

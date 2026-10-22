@@ -63,5 +63,15 @@
     <button type="submit" class="btn btn-primary btn-sm">Save</button>
   </form>
 </section>
+<section class="panel-card">
+  <h2 class="section-title">Capture</h2>
+  <p class="small muted">After the bookmarklet saved a page, its tab shows the result and closes itself. <a href="/capture">Capture</a></p>
+  <form method="post" action="/settings/capture">
+    <div class="form-grid">
+      <label>Close the tab after, s <input type="number" class="form-control form-control-sm" name="close_after" value="{{ close_after | round(1) }}" min="0" max="60" step="0.5"></label>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+  </form>
+</section>
 </div>
 {% endblock %}

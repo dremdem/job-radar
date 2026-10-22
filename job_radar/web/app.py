@@ -38,6 +38,7 @@ from ..linkedin.public import PauseSettings, load_pause, save_pause
 from ..models import (
     Application,
     ApplicationReview,
+    AppSetting,
     ClaudeMessage,
     Company,
     CompanyEvent,
@@ -822,12 +823,23 @@ def create_app(
         context = _settings_context(session, settings) | {"message": "LinkedIn pause saved."}
         return templates.TemplateResponse(request, "settings.html", context)
 
+    @app.post("/settings/capture", response_class=HTMLResponse)
+    def save_capture_settings(
+        request: Request,
+        session: SessionDep,
+        close_after: Annotated[float, Form(ge=0, le=60)] = CLOSE_AFTER,
+    ) -> HTMLResponse:
+        save_close_after(session, close_after)
+        context = _settings_context(session, settings) | {"message": "Capture setting saved."}
+        return templates.TemplateResponse(request, "settings.html", context)
+
     @app.get("/capture", response_class=HTMLResponse)
-    def capture_page(request: Request) -> HTMLResponse:
+    def capture_page(request: Request, session: SessionDep) -> HTMLResponse:
         base = str(request.base_url)
         context = {
             "bookmarklet": bookmarklet(base),
             "debug_bookmarklet": bookmarklet(base, "bookmarklet_debug"),
+            "close_ms": round(load_close_after(session) * 1000),
         }
         return templates.TemplateResponse(request, "capture.html", context)
 
@@ -997,11 +1009,29 @@ def _claude_context(session: Session, opportunity_id: int) -> dict:
     }
 
 
+CAPTURE_KEY = "capture"
+CLOSE_AFTER = 1.5  # seconds the capture tab stays open after a good result (#221)
+
+
+def load_close_after(session: Session) -> float:
+    row = session.get(AppSetting, CAPTURE_KEY)
+    value = row.value.get("close_after") if row and isinstance(row.value, dict) else None
+    return float(value) if isinstance(value, int | float) else CLOSE_AFTER
+
+
+def save_close_after(session: Session, seconds: float) -> None:
+    row = session.get(AppSetting, CAPTURE_KEY) or AppSetting(key=CAPTURE_KEY)
+    row.value = {"close_after": seconds}
+    session.add(row)
+    session.commit()
+
+
 def _settings_context(session: Session, settings: Settings) -> dict:
     return {
         "rules": load_rules(session),
         "claude": claude.load_claude_settings(session),
         "pause": load_pause(session),
+        "close_after": load_close_after(session),
         "models": claude.MODELS,
         "languages": claude.LANGUAGES,
         "cv_path": settings.cv_path,

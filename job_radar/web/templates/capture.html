@@ -70,7 +70,7 @@
         else light("red", "✗ Nothing saved");
         if (fine && window.opener !== undefined) {
           out.appendChild(p("Closing this tab…"));
-          setTimeout(function () { window.close(); }, 3000);
+          setTimeout(function () { window.close(); }, {{ close_ms }});  // Settings → Capture (#221)
         }
       })
       .catch(function () { out.textContent = "Could not save the page."; light("red", "✗ Could not save"); });

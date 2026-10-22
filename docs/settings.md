@@ -31,3 +31,7 @@ Settings are stored in the database (`app_settings`), not in `.env`.
 **Claude → Parallel analyses** (1–8, default 4): how many Claude analyses run at once; see [claude.md](claude.md#how-it-runs) (#197).
 
 **LinkedIn → Pause between requests, From / To** (seconds, 0–600, default 10–40): each guest request to LinkedIn waits a random time in this range; see [linkedin-public-search.md](linkedin-public-search.md) (#205). The **LinkedIn log** link next to it shows every request and why fetching stopped.
+
+## Capture
+
+**Close the capture tab after, s**: how long the bookmarklet's tab stays open after a good result, 1.5 by default, 0–60 ([linkedin-capture.md](linkedin-capture.md), #221).
