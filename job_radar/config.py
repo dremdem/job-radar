@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     himalayas_first_run_days: float = 1
     # hh.ru digests from the remote saved search, received on or after this date (docs/hh.md).
     hh_digests_since: date | None = None
-    # Description analysis with a local model through Ollama (docs/ai.md).
-    ai_analysis: bool = True
+    # Description analysis with a local model through Ollama (docs/ai.md); opt-in since #223.
+    ai_analysis: bool = False
     ollama_url: str = "http://localhost:11434"
     ai_model: str = "gemma3:4b"
     ai_max_per_sync: int = 150

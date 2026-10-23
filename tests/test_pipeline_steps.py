@@ -66,3 +66,9 @@ def test_summary_is_the_step_result_without_prefix(tmp_path, engine, database_ur
     monkeypatch.setattr(pipeline, "import_himalayas", fake)
     steps = by_key(pipeline.run_sync(settings(tmp_path, database_url, himalayas=True), print))
     assert steps["himalayas"].summary == "5 pages, 75 fresh jobs, 42 new"
+
+
+def test_local_model_is_off_by_default(monkeypatch):
+    # Claude does the filtering now; the Ollama step is opt-in (#223).
+    monkeypatch.delenv("JOB_RADAR_AI_ANALYSIS", raising=False)
+    assert Settings(_env_file=None).ai_analysis is False

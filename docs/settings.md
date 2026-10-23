@@ -12,7 +12,7 @@
 | Hybrid / on-site | "hybrid" or "on-site" appears in the title or location | `hybrid / on-site` |
 | No Python in the description | the vacancy has a description, Python is not in it, and not in the title either | `no Python in the description` |
 | Description not in English | the description (or the title) is in a language other than English or Russian ([applications.md](applications.md#vacancy-language)) | `language: German` |
-| AI: hybrid / country-only | the local model found, with a quote checked against the description, that the job is hybrid / on-site or limited to some countries ([ai.md](ai.md)) | `AI: only for UK` |
+| AI: hybrid / country-only | the local model found, with a quote checked against the description, that the job is hybrid / on-site or limited to some countries ([ai.md](ai.md)); works only with `JOB_RADAR_AI_ANALYSIS=true`, off by default | `AI: only for UK` |
 
 Checked in this order; the first match gives the reason. **Window**: 90 days by default (setting), so a company comes back to To review three months later. All rules are **off** until switched on.
 

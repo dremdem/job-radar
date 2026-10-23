@@ -6,6 +6,16 @@ Job Radar asks a **local** model to read vacancy descriptions for what the title
 
 It runs through [Ollama](https://ollama.com) on this machine, so there is no paid API and no description leaves the computer. The default model is `gemma3:4b`: 3–9 s per description on an 8 GB GPU.
 
+## Off by default (#223)
+
+Since the [Claude analysis](claude.md) the step is **off** unless `JOB_RADAR_AI_ANALYSIS=true`. Measured on 2026-10-23:
+
+- it filtered nothing before Claude: the auto-ignore rule below was off, so 0 vacancies were ignored by it;
+- of the 64 vacancies it flagged that Claude also analyzed, Claude said *skip* for 46 and *maybe* for 17, never *apply*; Claude reads work mode, residence and stack gaps itself, with reasons;
+- it costs memory while a model is loaded and 8.6 GB of disk for the models.
+
+What is lost while it is off: the `AI:` and `Requires …` reasons and their score penalties on new vacancies, the stack check against your Profile lists, and the "AI: hybrid / country-only" auto-ignore rule (it finds nothing). Vacancies analyzed earlier keep their reasons. Turn it back on with the variable and a running Ollama.
+
 ## Rule: the model extracts, code decides
 
 The model only answers a fixed set of questions and must copy the **exact sentence** that supports each answer:
@@ -36,7 +46,7 @@ The optional auto-ignore rule **"AI: hybrid / on-site or country-only"** in [Set
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `JOB_RADAR_AI_ANALYSIS` | `true` | Run the step in Sync |
+| `JOB_RADAR_AI_ANALYSIS` | `false` | Run the step in Sync |
 | `JOB_RADAR_OLLAMA_URL` | `http://localhost:11434` | Ollama server |
 | `JOB_RADAR_AI_MODEL` | `gemma3:4b` | Model; install with `ollama pull gemma3:4b` |
 | `JOB_RADAR_AI_MAX_PER_SYNC` | `150` | Descriptions analyzed per run |
