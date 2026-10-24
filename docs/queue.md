@@ -131,6 +131,6 @@ Some things never reach the mail or the sources Job Radar reads (#182).
 **An event.** Under **Company history** (in the panel and on the vacancy page): the kind, the date (today by default) and a short comment, then **Add event**. Kinds: recruiter outreach, call, interview, test task, offer, applied, rejection, other.
 - **Applied** records an application (source `manual`) and moves the vacancy to Applied.
 - **Rejection** records a rejection by the company, so its other vacancies get the usual penalty.
-- The rest are stored as company events. They show in the history with a **×** to delete them.
+- The rest are stored as company events. They show in the history; like every history record they have a **×** to delete them ([applications.md](applications.md#deleting-a-record-225)).
 
 **A vacancy.** **+ Add** next to **Analyze…** opens a dialog: title and company (required), link, location, state (To review, Interested or Applied) and a comment. The link decides the source: a LinkedIn job (`/jobs/view/…-<id>`) or an hh.ru vacancy is stored by its id, so a later alert or notice about it joins the same vacancy; any other link is stored as is. The score comes from the same title and location rules as the imports. A link Job Radar already has is refused with the vacancy it belongs to ("Already here: #1567 …"). The new vacancy's page opens.

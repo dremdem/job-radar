@@ -218,6 +218,8 @@ def link_and_label(session: Session) -> ContactStats:
     for e in emails:
         if e.detected_event is not None or e.direction is not EmailDirection.IN:
             continue
+        if e.hidden_at is not None:
+            continue
         if classify(e.subject, e.snippet) != "rejection":
             continue
         display, address = _split_sender(e.from_addr)
@@ -256,7 +258,7 @@ def link_and_label(session: Session) -> ContactStats:
             and "noreply" not in e.from_addr.lower().replace("-", "")
         ):
             label = "recruiter_outreach"
-        if label == "rejection":
+        if label == "rejection" and e.hidden_at is None:
             mark_rejected(
                 session,
                 company_id=e.company_id,
@@ -281,6 +283,20 @@ class HistoryEvent:
     note_id: int | None = None  # reasons and notes can be deleted from the history
     event_id: int | None = None  # so can events added by hand (#182)
     icon: str = ""  # the reason's picture for ignores and notes (#195)
+    application_id: int | None = None  # and every other record (#225)
+    rejection_id: int | None = None
+    email_id: int | None = None
+
+    @property
+    def ref(self) -> tuple[str, int] | None:
+        """(kind, id) for delete_history_item."""
+        for kind in HISTORY_KINDS:
+            if (item_id := getattr(self, f"{kind}_id")) is not None:
+                return kind, item_id
+        return None
+
+
+HISTORY_KINDS = ("note", "event", "application", "rejection", "email")
 
 
 def gmail_url(thread_id: str | None) -> str | None:
@@ -326,13 +342,25 @@ def company_history(session: Session, company_id: int) -> list[HistoryEvent]:
         url = gmail_url(
             threads.get(app.email_message_id) or _thread_of(session, app.email_message_id)
         )
-        events.append(HistoryEvent(_as_utc(app.applied_at), kind, app.role or "unknown role", url))
+        events.append(
+            HistoryEvent(
+                _as_utc(app.applied_at),
+                kind,
+                app.role or "unknown role",
+                url,
+                application_id=app.id,
+            )
+        )
     for r in session.scalars(select(Rejection).where(Rejection.company_id == company_id)):
         represented.add(r.email_message_id)
         url = gmail_url(threads.get(r.email_message_id) or _thread_of(session, r.email_message_id))
-        events.append(HistoryEvent(_as_utc(r.rejected_at), "rejection", r.role or "", url))
+        events.append(
+            HistoryEvent(_as_utc(r.rejected_at), "rejection", r.role or "", url, rejection_id=r.id)
+        )
     for e in session.scalars(select(EmailMessage).where(EmailMessage.company_id == company_id)):
         if e.id in represented or e.detected_event in ("application_confirmation", "rejection"):
+            continue
+        if e.hidden_at is not None:
             continue
         events.append(
             HistoryEvent(
@@ -341,6 +369,7 @@ def company_history(session: Session, company_id: int) -> list[HistoryEvent]:
                 e.subject,
                 gmail_url(e.gmail_thread_id),
                 probable=e.company_match == PROBABLE,
+                email_id=e.id,
             )
         )
     for note in session.scalars(
@@ -360,6 +389,34 @@ def company_history(session: Session, company_id: int) -> list[HistoryEvent]:
     for ev in session.scalars(select(CompanyEvent).where(CompanyEvent.company_id == company_id)):
         events.append(HistoryEvent(_as_utc(ev.at), ev.kind, ev.comment or "", None, event_id=ev.id))
     return sorted(events, key=lambda ev: ev.at, reverse=True)
+
+
+def delete_history_item(session: Session, kind: str, item_id: int) -> bool:
+    """Delete one record of the company history (#225). Your notes, events and rejections
+    are deleted; mail stays in the database (and in Gmail) but is hidden, and an application
+    is dismissed, so the next sync does not bring them back. False when there is no such record.
+    """
+    model = {
+        "note": OpportunityNote,
+        "event": CompanyEvent,
+        "application": Application,
+        "rejection": Rejection,
+        "email": EmailMessage,
+    }.get(kind)
+    item = session.get(model, item_id) if model else None
+    if item is None:
+        return False
+    if isinstance(item, Application):
+        item.review = ApplicationReview.DISMISSED
+    elif isinstance(item, EmailMessage):
+        item.hidden_at = datetime.now(UTC)
+    else:
+        email_id = item.email_message_id if isinstance(item, Rejection) else None
+        if email_id is not None and (email := session.get(EmailMessage, email_id)):
+            email.hidden_at = datetime.now(UTC)  # or the importer records it again
+        session.delete(item)
+    session.commit()
+    return True
 
 
 def _thread_of(session: Session, email_id: int | None) -> str | None:

@@ -95,8 +95,8 @@ def import_rejections(
     ).all()
     for email in emails:
         stats.emails += 1
-        if not _SUBJECT.match(email.subject.strip()):
-            continue
+        if not _SUBJECT.match(email.subject.strip()) or email.hidden_at is not None:
+            continue  # hidden: deleted from the company history (#225)
         html, text = email.body_html, email.body_text
         if html is None and text is None:
             if email.detected_event in skip:

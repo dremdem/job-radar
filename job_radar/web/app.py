@@ -28,7 +28,7 @@ from ..claude.prompt import QUICK_PROMPTS
 from ..claude.runner import ClaudeCli
 from ..claude.runner import Runner as ClaudeRunner
 from ..config import Settings, get_settings
-from ..contacts import company_history, other_vacancies
+from ..contacts import company_history, delete_history_item, other_vacancies
 from ..db import make_engine, make_session_factory, upgrade_database
 from ..description import check_python, highlight_python, latest_description, python_risk
 from ..language import language_risk
@@ -533,11 +533,13 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(e)) from e
         return _after_manual(request, session, opportunity, source, tab, filters)
 
-    @app.post("/events/{event_id}/delete", response_class=HTMLResponse)
-    def remove_event(
+    @app.post("/history/{kind}/{item_id}/delete", response_class=HTMLResponse)
+    def remove_history_item(
         request: Request,
-        event_id: int,
+        kind: str,
+        item_id: int,
         session: SessionDep,
+        opportunity: Annotated[int, Form()],
         tab: Annotated[str, Form()] = DEFAULT_TAB,
         country: Annotated[str, Form()] = "",
         company: Annotated[str, Form()] = "",
@@ -548,13 +550,12 @@ def create_app(
         sort: Annotated[str, Form()] = "",
         source: Annotated[str, Form(alias="from")] = "",
     ) -> HTMLResponse:
+        # Any record of the company history, from the vacancy you are looking at (#225).
         filters = Filters(country, company, title, q, desc, per, sort)
-        event = session.get(CompanyEvent, event_id)
-        if event is None or event.opportunity_id is None:
-            raise HTTPException(status_code=404, detail="Event not found")
-        opportunity = _get_opportunity(session, event.opportunity_id)
-        manual.delete_event(session, event_id)
-        return _after_manual(request, session, opportunity, source, tab, filters)
+        shown = _get_opportunity(session, opportunity)
+        if not delete_history_item(session, kind, item_id):
+            raise HTTPException(status_code=404, detail="No such history record")
+        return _after_manual(request, session, shown, source, tab, filters)
 
     @app.post("/opportunities", response_class=HTMLResponse)
     def add_vacancy(

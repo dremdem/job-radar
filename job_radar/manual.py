@@ -92,14 +92,6 @@ def add_event(
     session.commit()
 
 
-def delete_event(session: Session, event_id: int) -> CompanyEvent | None:
-    event = session.get(CompanyEvent, event_id)
-    if event is not None:
-        session.delete(event)
-        session.commit()
-    return event
-
-
 def source_for_link(link: str) -> tuple[SourceType, str, str] | None:
     """(source type, external id, canonical url) for a pasted link; None for no link."""
     link = link.strip()

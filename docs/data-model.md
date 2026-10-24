@@ -113,6 +113,7 @@ A Gmail message relevant to the search. Unique on `gmail_message_id`.
 | `detected_event` | Nullable: `application_confirmation`, `application_update`, `rejection`, `interview`, `recruiter_outreach`, `other` |
 | `company_id` | Optional link, see [applications.md](applications.md#linking-mail-to-a-company) |
 | `company_match` | Nullable: `exact` or `probable` |
+| `hidden_at` | Nullable: when you deleted it from the company history; hidden mail is never imported again as an application or a rejection (#225) |
 
 ## SyncCursor
 

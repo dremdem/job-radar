@@ -210,6 +210,8 @@ class EmailMessage(Base):
     detected_event: Mapped[str | None] = mapped_column(String(32))
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
     company_match: Mapped[str | None] = mapped_column(String(16))  # exact / probable
+    # Deleted from the company history (#225): kept so a sync does not bring it back.
+    hidden_at: Mapped[datetime | None]
 
 
 class SyncCursor(Base):

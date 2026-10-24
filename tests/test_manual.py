@@ -115,8 +115,9 @@ def test_web_add_event_and_delete_it(client, session):
     assert response.status_code == 200
     assert "recruiter on Telegram" in response.text and "<b>call</b>" in response.text
     event = session.scalars(select(CompanyEvent)).one()
-    assert f'hx-post="/events/{event.id}/delete"' in response.text
-    page = client.post(f"/events/{event.id}/delete", data={"from": "panel"}).text
+    assert f'hx-post="/history/event/{event.id}/delete"' in response.text
+    data = {"from": "panel", "opportunity": o.id}
+    page = client.post(f"/history/event/{event.id}/delete", data=data).text
     assert "recruiter on Telegram" not in page
     assert client.post(f"/opportunities/{o.id}/events", data={"kind": "party"}).status_code == 422
 

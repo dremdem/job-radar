@@ -257,7 +257,11 @@ def import_applications(session: Session, fetch_body: FetchBody | None = None) -
     stats = ImportStats()
     emails = session.scalars(
         select(EmailMessage)
-        .where(EmailMessage.direction == EmailDirection.IN, EmailMessage.detected_event.is_(None))
+        .where(
+            EmailMessage.direction == EmailDirection.IN,
+            EmailMessage.detected_event.is_(None),
+            EmailMessage.hidden_at.is_(None),  # deleted from the company history (#225)
+        )
         .order_by(EmailMessage.sent_at)
     ).all()
     for email in emails:

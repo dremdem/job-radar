@@ -73,6 +73,22 @@ Linked mail without an event gets a rule-based label in `detected_event` (a hint
 
 - **contacted · N** with the latest events, **expanded by default**: date, type, role or subject, link to the Gmail thread; an extra warning when you already applied. **Expand all** / **Collapse all** above the queue toggle every list at once;
 - or **no contacts found**, stated explicitly.
+
+## Deleting a record (#225)
+
+Every line of **Company history** (in the panel and on the vacancy page) has a **×**. It asks first, naming the one record ("Delete from the history: 2026-10-20 · ignored · salary · too low?"), and nothing changes if you cancel. Typical case: you clicked Ignore with a reason, then moved the vacancy to Interested; the old `ignored` line can now go.
+
+What deleting does, by kind:
+
+| Record | Effect |
+|---|---|
+| `ignored` / `note` | the reason or note is deleted; a location reason stops lowering the company's other vacancies |
+| an event you added (call, interview, …) | deleted |
+| `rejection` | deleted, so the company no longer counts as rejected; when it came from mail, the mail is hidden too |
+| `applied` / `applied?` | the application is dismissed, as **Dismiss** on Applications does; the "applied here" badge goes |
+| other mail (interview, recruiter outreach, …) | hidden |
+
+Mail is never deleted, in Gmail or in the database: it gets `hidden_at`, and the next sync does not make it an application or a rejection again. The vacancy's own state does not change; set it with the state buttons.
 - **Other vacancies here (#209)**: the company's other vacancies you acted on in Job Radar (applied, interested, ignore) with the date and a link, so the same role posted in several cities is not taken for a new one. A vacancy you marked **applied** counts for the **already applied** badge too, not only an application found in the mail; the list item then says "applied here DD.MM".
 
 ## Commands
@@ -104,7 +120,7 @@ uv run job-radar sync gmail        # runs it last
   The vacancy becomes `ignore`. A plain `ignore` button still works without a reason.
 - **Note**: in **more…**, the same form without ignoring, for any vacancy ("ask about EOR").
 
-Both are stored in `opportunity_notes` and appear in the company history as `ignored` / `note` events (date, reason, comment), with a delete button.
+Both are stored in `opportunity_notes` and appear in the company history as `ignored` / `note` events (date, reason, comment), with a delete button ([Deleting a record](#deleting-a-record-225)).
 
 ## Effect on the score
 
