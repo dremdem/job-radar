@@ -86,6 +86,7 @@ Every vacancy has its own page, `/opportunities/<id>`: the **page →** link nex
 - Questions have their own background thread, so they are answered while analyses run; they don't count towards the daily cap. The page shows *thinking…* and the answer when it is ready, without a reload.
 - Every message is stored in `claude_messages` and shown on every visit. Each Claude answer has a **Copy** button that puts its plain text on the clipboard in one tap (#152).
 - The chat needs a finished analysis: the page offers **Analyze with Claude** until there is one.
+- **Ctrl+Enter** (**⌘+Enter** on a Mac) sends the message, like **Ask Claude**; plain **Enter** is a new line (#227). A second press while the message is still being sent does nothing, and an empty box is not sent.
 - **Quick prompts** (#144). Buttons above the chat box put a ready question into it; edit it if you like, then press **Ask Claude**. The buttons never send anything themselves.
 
   | Button | Asks for |

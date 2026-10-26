@@ -298,6 +298,17 @@
     fold(document);
     document.body.addEventListener("htmx:afterSwap", function (event) { fold(event.target); });
   })();
+  // Ctrl+Enter (⌘+Enter on a Mac) sends the Claude chat; Enter stays a new line (#227).
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey) || event.isComposing) return;
+    var box = event.target;
+    if (!box.matches || !box.matches("textarea[data-send-key]") || !box.form) return;
+    event.preventDefault();
+    var form = box.form;
+    if (event.repeat || form.classList.contains("htmx-request")) return;  // already sending
+    if (form.requestSubmit) form.requestSubmit();  // checks "required", then htmx sends it
+    else form.querySelector("[type=submit]").click();
+  });
   // Keep typing in the Claude chat after its section is redrawn (#188).
   (function () {
     var hadFocus = false;
