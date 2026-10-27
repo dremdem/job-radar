@@ -27,6 +27,10 @@
       {% endfor %}
     </div>
     <div class="form-row">
+      <label class="d-flex align-items-center gap-2 flex-grow-1">Countries <input type="text" class="form-control form-control-sm" name="countries" value="{{ rules.countries | join(', ') }}" placeholder="India, Pakistan"></label>
+      <span class="small muted">a vacancy located there is ignored at once; India and Pakistan also by their big cities and states. Empty: off</span>
+    </div>
+    <div class="form-row">
       <label class="d-flex align-items-center gap-2">Look back <input type="number" class="form-control form-control-sm num-input" name="days" value="{{ rules.days }}" min="1" max="3650"> days</label>
       <span class="small muted">rejections, applications and ignores older than this do not count</span>
     </div>

@@ -216,3 +216,50 @@ def test_language_rule_reads_the_description(session):
     session.refresh(o)
     assert reason_for(session, o, Rules()) is None
     assert reason_for(session, o, Rules(language=True)) == "language: German"
+
+
+def test_country_rule_is_on_with_india_and_pakistan_by_default(session):
+    rules = load_rules(session)
+    assert rules.countries == ("India", "Pakistan") and rules.any
+    for location in (
+        "India (Remote)",
+        "Bengaluru, Karnataka, India",
+        "Pakistan",
+        "Bengaluru (Remote)",  # LinkedIn often names only the city
+        "Mumbai Metropolitan Region (Hybrid)",
+        "Greater Delhi Area",
+        "Lahore (Remote)",
+        "Karnataka, India (Remote)",
+    ):
+        reason = reason_for(session, opp(session, location=location), rules, NOW)
+        assert reason is not None and reason.startswith("country: "), location
+    assert reason_for(session, opp(session, location="Lahore (Remote)"), rules, NOW) == (
+        "country: Pakistan (Lahore (Remote))"
+    )
+    for location in ("Indiana, United States (Remote)", "Spain (Remote)", None, ""):
+        assert reason_for(session, opp(session, location=location), rules, NOW) is None, location
+
+
+def test_country_list_is_yours_and_empty_turns_it_off(session):
+    vietnam = Rules(countries=("Vietnam",))
+    assert reason_for(session, opp(session, location="Hanoi, Vietnam"), vietnam, NOW) == (
+        "country: Vietnam (Hanoi, Vietnam)"
+    )
+    assert reason_for(session, opp(session, location="India (Remote)"), vietnam, NOW) is None
+    off = Rules(countries=())
+    assert not off.any
+    assert reason_for(session, opp(session, location="India (Remote)"), off, NOW) is None
+    save_rules(session, vietnam)
+    assert load_rules(session) == vietnam  # a tuple again after the JSON round trip
+
+
+def test_new_india_vacancy_goes_to_auto_ignored_on_import(session):
+    add_linkedin_job(
+        session,
+        AlertJob("9001", "Python Developer", "Infosys", "Hyderabad (Remote)", None, False),
+        SourceType.LINKEDIN_ALERT,
+    )
+    session.commit()
+    o = session.scalars(select(Opportunity)).one()
+    assert o.state is OpportunityState.AUTO_IGNORE
+    assert o.auto_ignore_reason == "country: India (Hyderabad (Remote))"

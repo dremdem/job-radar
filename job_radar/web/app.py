@@ -19,7 +19,7 @@ from .. import applications as apps
 from .. import manual, pipeline
 from ..ai.analysis import latest_analysis, recheck_stack
 from ..ai.analysis import risks as ai_risks
-from ..auto_ignore import Rules, apply_to_review, load_rules, save_rules
+from ..auto_ignore import Rules, apply_to_review, load_rules, parse_countries, save_rules
 from ..claude import analysis as claude
 from ..claude import memory as claude_memory
 from ..claude.analysis import ClaudeSettings
@@ -605,6 +605,7 @@ def create_app(
         ai_location: Annotated[str | None, Form()] = None,
         language: Annotated[str | None, Form()] = None,
         days: Annotated[int, Form(ge=1, le=3650)] = 90,
+        countries: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
         rules = Rules(
             hybrid=hybrid is not None,
@@ -615,6 +616,7 @@ def create_app(
             ai_location=ai_location is not None,
             language=language is not None,
             days=days,
+            countries=parse_countries(countries),
         )
         save_rules(session, rules)
         context = _settings_context(session, settings)

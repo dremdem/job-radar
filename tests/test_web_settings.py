@@ -57,3 +57,15 @@ def test_auto_ignored_tab_shows_reason_and_undo_clears_it(client, session):
 
 def test_nav_links_to_settings(client):
     assert 'href="/settings"' in client.get("/").text
+
+
+def test_countries_are_edited_on_settings(client, session):
+    from job_radar.auto_ignore import load_rules
+
+    text = client.get("/settings").text
+    assert 'name="countries"' in text and "India, Pakistan" in text
+    client.post("/settings", data={"countries": " india ,Pakistan,\nVietnam, ", "days": "90"})
+    assert load_rules(session).countries == ("India", "Pakistan", "Vietnam")
+    assert "India, Pakistan, Vietnam" in client.get("/settings").text
+    client.post("/settings", data={"countries": "", "days": "90"})
+    assert load_rules(session).countries == ()

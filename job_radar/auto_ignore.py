@@ -19,6 +19,23 @@ from .models import (
 
 SETTINGS_KEY = "auto_ignore"
 _HYBRID = re.compile(r"\b(hybrid|on-?site)\b", re.IGNORECASE)
+DEFAULT_COUNTRIES = ("India", "Pakistan")
+# LinkedIn often names only the city or the state ("Bengaluru (Remote)"), so for these
+# countries their big cities and states count too (#229). Other countries: the name only.
+COUNTRY_PLACES = {
+    "india": (
+        "Bengaluru", "Bangalore", "Hyderabad", "Mumbai", "Delhi", "New Delhi", "Gurgaon",
+        "Gurugram", "Noida", "Pune", "Chennai", "Kolkata", "Ahmedabad", "Kochi", "Jaipur",
+        "Lucknow", "Chandigarh", "Indore", "Coimbatore", "Mangaluru", "Mysuru",
+        "Thiruvananthapuram", "Bhubaneswar", "Visakhapatnam", "Nagpur", "Vadodara", "Surat",
+        "Karnataka", "Telangana", "Maharashtra", "Tamil Nadu", "Kerala", "Gujarat", "Haryana",
+        "Uttar Pradesh", "West Bengal", "Andhra Pradesh", "Rajasthan", "Odisha",
+    ),
+    "pakistan": (
+        "Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad", "Peshawar", "Multan",
+        "Hyderabad", "Quetta", "Sialkot",
+    ),
+}  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -31,6 +48,7 @@ class Rules:
     ai_location: bool = False  # docs/ai.md
     language: bool = False  # title or description not in English / Russian
     days: int = 90
+    countries: tuple[str, ...] = DEFAULT_COUNTRIES  # empty: the rule is off (#229)
 
     @property
     def any(self) -> bool:
@@ -43,8 +61,32 @@ class Rules:
                 self.no_python,
                 self.ai_location,
                 self.language,
+                self.countries,
             )
         )
+
+
+def parse_countries(text: str) -> tuple[str, ...]:
+    """ "india, Pakistan\nVietnam" -> ("India", "Pakistan", "Vietnam"), without repeats."""
+    found: list[str] = []
+    for part in re.split(r"[,;\n]", text):
+        name = " ".join(part.split())
+        if name.islower():
+            name = name.title()
+        if name and name.casefold() not in {f.casefold() for f in found}:
+            found.append(name)
+    return tuple(found)
+
+
+def country_of(location: str | None, countries: tuple[str, ...]) -> str | None:
+    """The first listed country the location is in, by its name or a known city / state."""
+    if not location:
+        return None
+    for country in countries:
+        names = (country, *COUNTRY_PLACES.get(country.casefold(), ()))
+        if any(re.search(rf"\b{re.escape(n)}\b", location, re.IGNORECASE) for n in names):
+            return country
+    return None
 
 
 def load_rules(session: Session) -> Rules:
@@ -52,6 +94,8 @@ def load_rules(session: Session) -> Rules:
     if row is None or not isinstance(row.value, dict):
         return Rules()
     known = {k: v for k, v in row.value.items() if k in Rules.__dataclass_fields__}
+    if isinstance(known.get("countries"), list):  # JSON has no tuples
+        known["countries"] = tuple(known["countries"])
     return Rules(**known)
 
 
@@ -74,6 +118,8 @@ def reason_for(
     since = now - timedelta(days=rules.days)
     company_id, company = opportunity.company_id, opportunity.company.name
 
+    if country := country_of(opportunity.location, rules.countries):
+        return f"country: {country} ({opportunity.location})"
     if rules.rejected:
         latest = max(
             (

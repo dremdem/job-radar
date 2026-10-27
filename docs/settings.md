@@ -6,6 +6,7 @@
 
 | Rule | A vacancy is auto-ignored when… | Reason shown |
 |---|---|---|
+| Countries | the vacancy's location is in a listed country (#229): its name as a whole word ("Indiana" is not India), and for India and Pakistan also their big cities and states, because LinkedIn often gives only the city. The list is a text field, comma-separated; default **India, Pakistan**; empty turns the rule off | `country: India (Bengaluru (Remote))` |
 | Company rejected you | the company rejected you within the window | `Capitole rejected you on 2026-07-01` |
 | Already applied | you have a confirmed application to the company, or marked another of its vacancies **applied** in Job Radar (#211), within the window | `applied to Capitole on 2026-06-28` |
 | Already ignored | you ignored another vacancy of the company (your own `ignore`, not auto) within the window | `ignored another Capitole vacancy on 2026-09-25` |
@@ -14,7 +15,7 @@
 | Description not in English | the description (or the title) is in a language other than English or Russian ([applications.md](applications.md#vacancy-language)) | `language: German` |
 | AI: hybrid / country-only | the local model found, with a quote checked against the description, that the job is hybrid / on-site or limited to some countries ([ai.md](ai.md)); works only with `JOB_RADAR_AI_ANALYSIS=true`, off by default | `AI: only for UK` |
 
-Checked in this order; the first match gives the reason. **Window**: 90 days by default (setting), so a company comes back to To review three months later. All rules are **off** until switched on.
+Checked in this order; the first match gives the reason. **Window**: 90 days by default (setting), so a company comes back to To review three months later. The countries rule is **on** with India and Pakistan; all other rules are **off** until switched on.
 
 ## When they run
 
