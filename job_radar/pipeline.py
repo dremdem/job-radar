@@ -190,6 +190,24 @@ def import_himalayas(session: Session, settings: Settings, echo: Echo, client=No
         echo(f"himalayas: could not read the API: {stats.error}")
 
 
+def import_hackernews(session: Session, settings: Settings, echo: Echo, client=None) -> None:
+    """Remote Python posts from "Ask HN: Who is hiring?" (docs/hackernews.md)."""
+    from .hackernews import HackerNewsClient
+    from .hackernews import import_hackernews as run
+
+    if not settings.hackernews:
+        echo("hackernews: disabled (JOB_RADAR_HACKERNEWS=false).")
+        return
+    stats = run(session, client or HackerNewsClient())
+    if stats.error:
+        echo(f"hackernews: could not read the thread: {stats.error}")
+        return
+    echo(
+        f"hackernews: {stats.thread}: {stats.posts} posts, {stats.new} new, "
+        f"{stats.known} already stored, {stats.skipped} skipped (not remote Python)"
+    )
+
+
 def analyze_descriptions(session: Session, settings: Settings, echo: Echo, model=None) -> None:
     """Work mode and residence from descriptions with a local model (docs/ai.md)."""
     from .ai.analysis import analyze_pending
@@ -334,6 +352,7 @@ STEPS: list[tuple[str, str, str, str]] = [
     ("linkedin_search", "LinkedIn search", "linkedin-search", "first"),
     ("telegram", "Telegram", "telegram", "last"),
     ("himalayas", "Himalayas", "himalayas", "first"),
+    ("hackernews", "Hacker News", "hackernews", "first"),
     ("mail", "Mail analysis", "", "all"),
     ("descriptions", "LinkedIn descriptions", "descriptions", "first"),
     ("ai", "AI analysis", "ai", "last"),
@@ -387,6 +406,7 @@ def run_sync(
         "linkedin_search": settings.linkedin_public_search,
         "telegram": bool(settings.telegram_mcp_command),
         "himalayas": settings.himalayas,
+        "hackernews": settings.hackernews,
         "descriptions": settings.linkedin_public_search,
         "ai": settings.ai_analysis,
     }
@@ -458,6 +478,7 @@ def run_sync(
             run("linkedin_search", lambda e: import_linkedin_search(session, settings, e))
             run("telegram", lambda e: import_telegram(session, settings, e))
             run("himalayas", lambda e: import_himalayas(session, settings, e))
+            run("hackernews", lambda e: import_hackernews(session, settings, e))
             run("mail", mail)
             # Late: the rules for fetched descriptions see applications/rejections above.
             if start_descriptions is not None:

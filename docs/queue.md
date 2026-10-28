@@ -93,6 +93,7 @@ The status next to the button lists the steps, one line each, updated while it w
 | LinkedIn search | Public guest search, if enabled ([linkedin-public-search.md](linkedin-public-search.md)) |
 | Telegram | Allowlisted channels, if configured ([telegram.md](telegram.md)) |
 | Himalayas | Fresh worldwide Python jobs ([himalayas.md](himalayas.md)) |
+| Hacker News | Remote Python posts from "Ask HN: Who is hiring?" ([hackernews.md](hackernews.md)) |
 | Mail analysis | Rejections, applications, contacts from stored mail ([applications.md](applications.md)) |
 | LinkedIn descriptions | Starts the background **Descriptions** job, if enabled ([linkedin-public-search.md](linkedin-public-search.md#the-descriptions-button-205)) |
 | AI analysis | Work mode, residence and stack with the local model ([ai.md](ai.md)) |

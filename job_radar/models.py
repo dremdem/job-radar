@@ -29,6 +29,7 @@ class SourceType(enum.StrEnum):
     GMAIL = "gmail"
     HH = "hh"  # hh.ru vacancy, external_id = its id (docs/hh.md)
     HIMALAYAS = "himalayas"
+    HACKERNEWS = "hackernews"  # "Ask HN: Who is hiring?" post, external_id = comment id
     TELEGRAM = "telegram"
     MANUAL = "manual"  # added by hand; external_id = the link, or "manual:<n>" (#182)
 

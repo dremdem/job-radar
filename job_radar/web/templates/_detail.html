@@ -18,6 +18,7 @@
         {% if o.easy_apply %}<span class="badge">Easy Apply</span>{% endif %}
         {% if o.source_records and o.source_records | map(attribute="source_type.value") | reject("equalto", "linkedin_search") | list | length == 0 %}<span class="badge">public search</span>{% endif %}
         {% if o.source_records | selectattr("source_type.value", "equalto", "himalayas") | list %}<span class="badge">via Himalayas</span>{% endif %}
+        {% if o.source_records | selectattr("source_type.value", "equalto", "hackernews") | list %}<span class="badge">via Hacker News</span>{% endif %}
         {% if not has_description %}<span class="badge warn">verify manually</span>{% endif %}
         {% if o.auto_ignore_reason %}<span class="badge warn">auto-ignored: {{ o.auto_ignore_reason }}</span>{% endif %}
         {% if rejected_at %}<span class="badge reject">rejected {{ (rejected_at | local("%Y-%m-%d")) }}</span>{% endif %}

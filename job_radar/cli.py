@@ -196,10 +196,13 @@ def sync(
     ] = None,
 ) -> None:
     """Import new items from a source."""
-    if source in (SourceType.TELEGRAM, SourceType.HIMALAYAS):
-        step = (
-            pipeline.import_telegram if source is SourceType.TELEGRAM else pipeline.import_himalayas
-        )
+    steps = {
+        SourceType.TELEGRAM: pipeline.import_telegram,
+        SourceType.HIMALAYAS: pipeline.import_himalayas,
+        SourceType.HACKERNEWS: pipeline.import_hackernews,
+    }
+    if source in steps:
+        step = steps[source]
         settings = Settings()
         upgrade_database(settings.database_url)
         engine = make_engine(settings.database_url)
