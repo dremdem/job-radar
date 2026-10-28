@@ -346,6 +346,26 @@ def test_chat_markup_is_safe():
     assert '<span class="quote">Speak fluent Dutch</span>' in html
 
 
+def test_chat_links_are_clickable():
+    # #241: links in answers had to be copied by hand.
+    from job_radar.web.app import chat_markup
+
+    a = '<a href="{0}" target="_blank" rel="noopener noreferrer">{1}</a>'
+    url = "https://job-boards.greenhouse.io/planetscale/jobs/4251150009"
+    html = str(chat_markup(f"- **Direct link:** {url}."))
+    assert a.format(url, url) + "." in html
+    html = str(chat_markup(f"- [PlanetScale Greenhouse posting]({url})"))
+    assert a.format(url, "PlanetScale Greenhouse posting") in html
+    html = str(chat_markup("(see https://example.com/a?x=1&y=2)"))
+    assert (
+        a.format("https://example.com/a?x=1&amp;y=2", "https://example.com/a?x=1&amp;y=2") + ")"
+        in html
+    )
+    html = str(chat_markup('[x](javascript:alert(1)) https://e.com/"onmouseover=x'))
+    assert "javascript:" not in html.replace("[x](javascript:alert(1))", "")
+    assert 'href="javascript' not in html and '"onmouseover' not in html
+
+
 def test_transient_errors_are_retried(session, tmp_path):
     o = vacancy(session)
     claude.enqueue(session, [o.id])

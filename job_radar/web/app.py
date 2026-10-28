@@ -85,10 +85,26 @@ templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 templates.env.filters["highlight_python"] = highlight_python
 
 
+# On escaped text: "&" only as "&amp;", so a quote (&#34;) or "<" ends the URL.
+_URL = r"https?://(?:[^\s<>&()\[\]]|&amp;)+"
+_LINK = re.compile(rf"\[([^\]]+)\]\(({_URL})\)|({_URL})")
+
+
+def _link(m: re.Match[str]) -> str:
+    """A Markdown [text](url) or a bare URL (#241); http(s) only."""
+    if m.group(2):
+        label, url, tail = m.group(1), m.group(2), ""
+    else:
+        url = m.group(3).rstrip(".,;:!?")
+        label, tail = url, m.group(3)[len(url) :]
+    return f'<a href="{url}" target="_blank" rel="noopener noreferrer">{label}</a>{tail}'
+
+
 def chat_markup(text: str) -> Markup:
-    """Claude's light Markdown made safe: escape first, then **bold** and "> quote" lines."""
+    """Claude's light Markdown made safe: escape first, then links, **bold** and "> quote"."""
     lines = []
     for line in str(escape(text)).splitlines():
+        line = _LINK.sub(_link, line)
         line = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", line)
         if line.startswith("&gt; "):
             line = f'<span class="quote">{line[5:]}</span>'

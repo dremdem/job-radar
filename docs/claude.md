@@ -84,7 +84,7 @@ Every vacancy has its own page, `/opportunities/<id>`: the **page →** link nex
 **Chat.** Below the analysis you can ask Claude anything about this vacancy, e.g. "how do I answer the TensorFlow requirement?" or "write a short cover note".
 - Each question continues **the same Claude session** as the analysis (`claude -p --resume <session id>`), so Claude remembers the vacancy, your CV, your profile and everything said before. A question is answered in plain text in the language chosen in Settings.
 - Questions have their own background thread, so they are answered while analyses run; they don't count towards the daily cap. The page shows *thinking…* and the answer when it is ready, without a reload.
-- Every message is stored in `claude_messages` and shown on every visit. Each Claude answer has a **Copy** button that puts its plain text on the clipboard in one tap (#152).
+- Every message is stored in `claude_messages` and shown on every visit. Each Claude answer has a **Copy** button that puts its plain text on the clipboard in one tap (#152). Links in an answer (`https://…` and Markdown `[text](url)`) are clickable and open in a new tab (#241).
 - The chat needs a finished analysis: the page offers **Analyze with Claude** until there is one.
 - **Ctrl+Enter** (**⌘+Enter** on a Mac) sends the message, like **Ask Claude**; plain **Enter** is a new line (#227). A second press while the message is still being sent does nothing, and an empty box is not sent.
 - **Quick prompts** (#144). Buttons above the chat box put a ready question into it; edit it if you like, then press **Ask Claude**. The buttons never send anything themselves.
