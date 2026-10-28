@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     himalayas_first_run_days: float = 1
     # "Ask HN: Who is hiring?" via the HN Search API (docs/hackernews.md): public, no key.
     hackernews: bool = True
+    # Remote OK public JSON feed (docs/remoteok.md): no key, one request per sync.
+    remoteok: bool = True
     # hh.ru digests from the remote saved search, received on or after this date (docs/hh.md).
     hh_digests_since: date | None = None
     # Description analysis with a local model through Ollama (docs/ai.md); opt-in since #223.

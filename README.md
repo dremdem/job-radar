@@ -1,6 +1,6 @@
 # Job Radar
 
-Local-first assistant for reviewing job opportunities: collects vacancies (LinkedIn alert emails, Gmail history, hh.ru notifications, Telegram channels, Himalayas, Hacker News "Who is hiring?"), deduplicates them, scores with explanations and keeps application history per company.
+Local-first assistant for reviewing job opportunities: collects vacancies (LinkedIn alert emails, Gmail history, hh.ru notifications, Telegram channels, Himalayas, Hacker News "Who is hiring?", Remote OK), deduplicates them, scores with explanations and keeps application history per company.
 
 Human-in-the-loop only: no auto-apply, no LinkedIn scraping.
 
@@ -31,7 +31,7 @@ A small wrapper so you do not have to remember the commands below:
 | `./jr stop` / `./jr restart` | Stop / restart it |
 | `./jr status` | Is it running, on which address |
 | `./jr logs` | Follow the server log |
-| `./jr sync` | Sync every source: Gmail, LinkedIn, Telegram, Himalayas, Hacker News, AI analysis (same as the **Sync** button) |
+| `./jr sync` | Sync every source: Gmail, LinkedIn, Telegram, Himalayas, Hacker News, Remote OK, AI analysis (same as the **Sync** button) |
 | `./jr auth` | One-time Gmail consent (read-only) |
 | `./jr update` | `git pull`, install dependencies, restart the server |
 | `./jr check` | `ruff` + `pytest` |
@@ -60,6 +60,7 @@ A second `./jr start` does not start a second server.
 | `job-radar sync telegram` | Vacancies from allowlisted Telegram channels via telegram-mcp, see [docs/telegram.md](docs/telegram.md) |
 | `job-radar sync himalayas` | Fresh worldwide Python vacancies from the Himalayas public API, see [docs/himalayas.md](docs/himalayas.md) |
 | `job-radar sync hackernews` | Remote Python posts from the monthly "Ask HN: Who is hiring?" thread, see [docs/hackernews.md](docs/hackernews.md) |
+| `job-radar sync remoteok` | Fresh Python vacancies from the Remote OK feed, see [docs/remoteok.md](docs/remoteok.md) |
 | `job-radar analyze` | Work mode and residence from descriptions with a local model (Ollama), see [docs/ai.md](docs/ai.md) |
 | `job-radar sync <other source>` | Placeholder until the source lands |
 
@@ -75,6 +76,7 @@ Settings come from environment variables with the `JOB_RADAR_` prefix, or from `
 | `JOB_RADAR_TELEGRAM_MCP_COMMAND` | — | How to start the telegram-mcp server; Telegram is off without it ([docs/telegram.md](docs/telegram.md)) |
 | `JOB_RADAR_HIMALAYAS` | `true` | Read Himalayas on every sync ([docs/himalayas.md](docs/himalayas.md)) |
 | `JOB_RADAR_HACKERNEWS` | `true` | Read "Ask HN: Who is hiring?" on every sync ([docs/hackernews.md](docs/hackernews.md)) |
+| `JOB_RADAR_REMOTEOK` | `true` | Read Remote OK on every sync ([docs/remoteok.md](docs/remoteok.md)) |
 | `JOB_RADAR_AI_ANALYSIS` | `false` | Analyze descriptions with the local model on every sync; off by default, Claude does the filtering ([docs/ai.md](docs/ai.md)) |
 | `JOB_RADAR_PROFILE` | `data/profile.yaml` | Your stack from the CV; vacancies requiring other technologies are marked ([docs/ai.md](docs/ai.md#stack-vs-your-cv), example: `profile.example.yaml`) |
 | `JOB_RADAR_HH_DIGESTS_SINCE` | — | Import hh.ru «Вакансии по подписке» digests received on or after this date ([docs/hh.md](docs/hh.md#digests-вакансии-по-подписке-102)) |

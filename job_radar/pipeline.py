@@ -190,6 +190,24 @@ def import_himalayas(session: Session, settings: Settings, echo: Echo, client=No
         echo(f"himalayas: could not read the API: {stats.error}")
 
 
+def import_remoteok(session: Session, settings: Settings, echo: Echo, client=None) -> None:
+    """Fresh Python jobs from the Remote OK feed (docs/remoteok.md)."""
+    from .remoteok import RemoteOKClient
+    from .remoteok import import_remoteok as run
+
+    if not settings.remoteok:
+        echo("remoteok: disabled (JOB_RADAR_REMOTEOK=false).")
+        return
+    stats = run(session, client or RemoteOKClient())
+    if stats.error:
+        echo(f"remoteok: could not read the feed: {stats.error}")
+        return
+    echo(
+        f"remoteok: {stats.jobs} jobs, {stats.new} new, {stats.known} already stored, "
+        f"{stats.skipped} skipped as noise, {stats.old} older than 30 days"
+    )
+
+
 def import_hackernews(session: Session, settings: Settings, echo: Echo, client=None) -> None:
     """Remote Python posts from "Ask HN: Who is hiring?" (docs/hackernews.md)."""
     from .hackernews import HackerNewsClient
@@ -353,6 +371,7 @@ STEPS: list[tuple[str, str, str, str]] = [
     ("telegram", "Telegram", "telegram", "last"),
     ("himalayas", "Himalayas", "himalayas", "first"),
     ("hackernews", "Hacker News", "hackernews", "first"),
+    ("remoteok", "Remote OK", "remoteok", "first"),
     ("mail", "Mail analysis", "", "all"),
     ("descriptions", "LinkedIn descriptions", "descriptions", "first"),
     ("ai", "AI analysis", "ai", "last"),
@@ -407,6 +426,7 @@ def run_sync(
         "telegram": bool(settings.telegram_mcp_command),
         "himalayas": settings.himalayas,
         "hackernews": settings.hackernews,
+        "remoteok": settings.remoteok,
         "descriptions": settings.linkedin_public_search,
         "ai": settings.ai_analysis,
     }
@@ -479,6 +499,7 @@ def run_sync(
             run("telegram", lambda e: import_telegram(session, settings, e))
             run("himalayas", lambda e: import_himalayas(session, settings, e))
             run("hackernews", lambda e: import_hackernews(session, settings, e))
+            run("remoteok", lambda e: import_remoteok(session, settings, e))
             run("mail", mail)
             # Late: the rules for fetched descriptions see applications/rejections above.
             if start_descriptions is not None:
