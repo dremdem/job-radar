@@ -29,6 +29,9 @@ class SourceType(enum.StrEnum):
     GMAIL = "gmail"
     HH = "hh"  # hh.ru vacancy, external_id = its id (docs/hh.md)
     HIMALAYAS = "himalayas"
+    REMOTIVE = "remotive"  # small boards, docs/boards.md; external_id = the board's job id
+    WORKINGNOMADS = "workingnomads"
+    WEWORKREMOTELY = "weworkremotely"  # external_id = the job page URL
     JOBICY = "jobicy"  # Jobicy API, external_id = its job id
     REMOTEOK = "remoteok"  # Remote OK feed, external_id = its job id
     HACKERNEWS = "hackernews"  # "Ask HN: Who is hiring?" post, external_id = comment id

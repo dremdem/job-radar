@@ -202,6 +202,10 @@ def sync(
         SourceType.HACKERNEWS: pipeline.import_hackernews,
         SourceType.REMOTEOK: pipeline.import_remoteok,
         SourceType.JOBICY: pipeline.import_jobicy,
+        # One step reads all three small boards (docs/boards.md).
+        SourceType.REMOTIVE: pipeline.import_boards,
+        SourceType.WORKINGNOMADS: pipeline.import_boards,
+        SourceType.WEWORKREMOTELY: pipeline.import_boards,
     }
     if source in steps:
         step = steps[source]

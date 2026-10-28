@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     remoteok: bool = True
     # Jobicy public API (docs/jobicy.md): no key; the first run looks back a day.
     jobicy: bool = True
+    # Remotive, Working Nomads, We Work Remotely public feeds (docs/boards.md).
+    boards: bool = True
     # hh.ru digests from the remote saved search, received on or after this date (docs/hh.md).
     hh_digests_since: date | None = None
     # Description analysis with a local model through Ollama (docs/ai.md); opt-in since #223.

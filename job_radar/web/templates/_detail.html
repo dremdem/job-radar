@@ -21,6 +21,9 @@
         {% if o.source_records | selectattr("source_type.value", "equalto", "hackernews") | list %}<span class="badge">via Hacker News</span>{% endif %}
         {% if o.source_records | selectattr("source_type.value", "equalto", "remoteok") | list %}<span class="badge">via Remote OK</span>{% endif %}
         {% if o.source_records | selectattr("source_type.value", "equalto", "jobicy") | list %}<span class="badge">via Jobicy</span>{% endif %}
+        {% if o.source_records | selectattr("source_type.value", "equalto", "remotive") | list %}<span class="badge">via Remotive</span>{% endif %}
+        {% if o.source_records | selectattr("source_type.value", "equalto", "workingnomads") | list %}<span class="badge">via Working Nomads</span>{% endif %}
+        {% if o.source_records | selectattr("source_type.value", "equalto", "weworkremotely") | list %}<span class="badge">via We Work Remotely</span>{% endif %}
         {% if not has_description %}<span class="badge warn">verify manually</span>{% endif %}
         {% if o.auto_ignore_reason %}<span class="badge warn">auto-ignored: {{ o.auto_ignore_reason }}</span>{% endif %}
         {% if rejected_at %}<span class="badge reject">rejected {{ (rejected_at | local("%Y-%m-%d")) }}</span>{% endif %}

@@ -190,6 +190,28 @@ def import_himalayas(session: Session, settings: Settings, echo: Echo, client=No
         echo(f"himalayas: could not read the API: {stats.error}")
 
 
+def import_boards(session: Session, settings: Settings, echo: Echo, client=None) -> None:
+    """Remotive, Working Nomads, We Work Remotely (docs/boards.md)."""
+    from .boards import HttpClient
+    from .boards import import_boards as run
+
+    if not settings.boards:
+        echo("boards: disabled (JOB_RADAR_BOARDS=false).")
+        return
+    results = run(session, client or HttpClient())
+    for s in results:
+        if s.waited:
+            echo(f"boards: {s.label}: read less than 6 h ago, skipped")
+        elif s.error:
+            echo(f"boards: {s.label}: could not read the feed: {s.error}")
+        else:
+            echo(
+                f"boards: {s.label}: {s.jobs} jobs, {s.new} new, {s.known} already stored, "
+                f"{s.skipped} skipped as noise, {s.old} older than 30 days"
+            )
+    echo(f"boards: {sum(s.new for s in results)} new")
+
+
 def import_jobicy(session: Session, settings: Settings, echo: Echo, client=None) -> None:
     """Fresh Python jobs from the Jobicy API (docs/jobicy.md)."""
     from .jobicy import JobicyClient
@@ -390,6 +412,7 @@ STEPS: list[tuple[str, str, str, str]] = [
     ("hackernews", "Hacker News", "hackernews", "first"),
     ("remoteok", "Remote OK", "remoteok", "first"),
     ("jobicy", "Jobicy", "jobicy", "first"),
+    ("boards", "Other boards", "boards", "last"),
     ("mail", "Mail analysis", "", "all"),
     ("descriptions", "LinkedIn descriptions", "descriptions", "first"),
     ("ai", "AI analysis", "ai", "last"),
@@ -446,6 +469,7 @@ def run_sync(
         "hackernews": settings.hackernews,
         "remoteok": settings.remoteok,
         "jobicy": settings.jobicy,
+        "boards": settings.boards,
         "descriptions": settings.linkedin_public_search,
         "ai": settings.ai_analysis,
     }
@@ -520,6 +544,7 @@ def run_sync(
             run("hackernews", lambda e: import_hackernews(session, settings, e))
             run("remoteok", lambda e: import_remoteok(session, settings, e))
             run("jobicy", lambda e: import_jobicy(session, settings, e))
+            run("boards", lambda e: import_boards(session, settings, e))
             run("mail", mail)
             # Late: the rules for fetched descriptions see applications/rejections above.
             if start_descriptions is not None:

@@ -1,0 +1,318 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss">
+  <channel>
+    <title>We Work Remotely: Full-Stack Programming Jobs</title>
+    <link>https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss</link>
+    <description>We Work Remotely: Full-Stack Programming Jobs</description>
+    <language>en-US</language>
+    <ttl>60</ttl>
+    <item>
+      <title>Carrot: Sr. Data Engineer</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <state></state>
+      <skills></skills>
+      <category>Full-Stack Programming</category>
+      <type>Full-Time</type>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; Remote
+&lt;/p&gt;
+
+&lt;div class="content-intro"&gt;&lt;p&gt;&lt;strong&gt;About Carrot: &lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://c212.net/c/link/?t=0&amp;amp;l=en&amp;amp;o=4420559-1&amp;amp;h=3535232987&amp;amp;u=https%3A%2F%2Fwww.carrotfertility.com%2F&amp;amp;a=Carrot+Fertility"&gt;Carrot&lt;/a&gt; is the leading global fertility and family care platform, built on intelligent care orchestration: the right clinical guidance, at the right moment, in the context of each member’s life. More than a thousand multinational employers, health plans, and health systems trust Carrot to support millions of members across 195 countries – from pre-pregnancy through menopause and major life moments in between. Carrot's comprehensive clinical program delivers industry-leading cost savings for plan sponsors and award-winning experiences and improved outcomes for millions of people worldwide.&lt;br&gt;&lt;br&gt;Carrot is widely regarded as a defining force in healthcare innovation as a recipient of several top-tier awards, including Fast Company's 'Most Innovative Companies' and CNBC's '100 Barrier Breaking Startups'. The company is regularly cited by leading global outlets — including The Economist, Bloomberg, The Wall Street Journal, NPR, ABC News, and Harvard Business Review — as a leading voice on digital health, the future of work, and family health. Learn more at &lt;a href="http://get-carrot.com"&gt;get-carrot.com&lt;/a&gt;.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;&lt;strong&gt;The Opportunity &lt;/strong&gt;&lt;strong&gt;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Carrot is seeking a Sr. Data Engineer to lead the evolution, reliability, and scalability of our modern data infrastructure across analytics, reporting, and business intelligence. In this role, you will architect, build, and maintain robust, automated data pipelines, orchestrate workflows, integrate diverse data sources, and partner with stakeholders across the business to deliver secure, compliant, high-quality data solutions.&lt;/p&gt;
+&lt;p&gt;Your work will span the full data lifecycle, from architecting resilient ETL/ELT pipelines and developing real-time and batch data integrations to automating reporting, reducing technical debt, and enabling advanced analytics. Sr. Data Engineers at Carrot are operational stewards and technical mentors, driving improvements in system maturity, cost efficiency, automation, and collaborative practices.&lt;/p&gt;
+&lt;p&gt;You will join our Data Engineering team, which develops and optimizes scalable data pipelines and cloud infrastructure to enable secure, automated reporting and analytics across Carrot. The team collaborates closely with Business Intelligence, Product, Finance, Legal, and Commercial partners to deliver reliable integrations and self-serve solutions that drive business insights and operational efficiency.&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;What You’ll Own &lt;/strong&gt;&lt;strong&gt;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;In this role, you will:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Architect, build, test, deploy, and maintain scalable, automated ETL/ELT pipelines using Python, dbt, and orchestration tools such as Prefect and Airflow&lt;/li&gt;
+&lt;li&gt;Administer and optimize cloud-based data warehouse and lake platforms, including Snowflake, AWS (S3, Redshift), and Google Cloud, integrating new sources and tuning for performance and cost&lt;/li&gt;
+&lt;li&gt;Orchestrate data workflows with custom scheduling, alerting, dependency management, monitoring, and error resolution&lt;/li&gt;
+&lt;li&gt;Design and maintain secure external data flows through SFTP, Files.com, and APIs, with a focus on reliability and compliance&lt;/li&gt;
+&lt;li&gt;Automate manual reporting and operational tasks, building robust, reusable pipeline components that reduce operational overhead&lt;/li&gt;
+&lt;li&gt;Partner with backend product engineers to optimize production database schemas with analytics use cases in mind&lt;/li&gt;
+&lt;li&gt;Strengthen data quality, lineage, governance, and documentation practices across key data domains&lt;/li&gt;
+&lt;li&gt;Mentor teammates and reinforce best practices in version control, code review, and structured workflow management&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;What Success Looks Like &lt;/strong&gt;&lt;strong&gt;&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;In your first 12–18 months, you will have:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Taken end-to-end ownership of core pipelines and integrations, with measurable improvements in reliability, data recency, and cost efficiency&lt;/li&gt;
+&lt;li&gt;Automated high-effort manual workflows, reducing operational risk and freeing capacity for higher-value engineering work&lt;/li&gt;
+&lt;li&gt;Delivered secure, compliant data integrations that stakeholders across the business trust for decision-making&lt;/li&gt;
+&lt;li&gt;Strengthened observability across the platform, including monitoring, alerting, and incident response for critical data workflows&lt;/li&gt;
+&lt;li&gt;Established yourself as a technical mentor and a go-to partner for Business Intelligence, Product, and cross-functional teams&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;br&gt;&lt;br&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;About You &lt;/strong&gt;&lt;strong&gt;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;You likely have:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Expert-level proficiency in Snowflake, dbt, and Python for data modeling, transformation, pipeline development, and advanced analytics&lt;/li&gt;
+&lt;li&gt;Advanced SQL skills for complex querying, large-scale data model design, and database optimization&lt;/li&gt;
+&lt;li&gt;Proven experience architecting, building, testing, deploying, and maintaining scalable, automated ETL/ELT pipelines using modern orchestration tools such as Prefect and Airflow&lt;/li&gt;
+&lt;li&gt;Hands-on administration of cloud-based data warehouse and lake platforms, including Snowflake, AWS (S3, Redshift), and Google Cloud&lt;/li&gt;
+&lt;li&gt;A strong understanding of secure external data flows through SFTP, Files.com, and APIs, with a focus on reliability and compliance&lt;/li&gt;
+&lt;li&gt;Mastery of version control (Git, GitHub) and structured workflow management (Jira) for code review, audit trails, and operational transparency&lt;/li&gt;
+&lt;li&gt;A demonstrated ability to automate and simplify complex manual tasks, building robust, reusable pipeline components&lt;/li&gt;
+&lt;li&gt;Dependability, adaptability, and a collaborative approach to engineering, thriving in dynamic and ambiguous environments&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Nice to Have &lt;/strong&gt;&lt;strong&gt;⭐&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;While not required, we would be especially excited if you bring:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Hands-on experience in startup or rapid-growth environments, delivering technical solutions under shifting priorities&lt;/li&gt;
+&lt;li&gt;A background supporting business intelligence, analytics, and data science teams through large-scale integrations and multi-tenant reporting&lt;/li&gt;
+&lt;li&gt;Familiarity with both batch and event-driven ingestion paradigms, including near-real-time pipelines built on Snowflake, dbt, and Python&lt;/li&gt;
+&lt;li&gt;Experience automating operational, financial, or compliance-driven workflows within cloud data environments&lt;/li&gt;
+&lt;li&gt;Exposure to audit, privacy, and compliance frameworks such as SOC 2, HIPAA, GDPR, ISO, and SOX, particularly in data governance and secure access controls&lt;/li&gt;
+&lt;li&gt;Experience in regulated industries such as healthcare, healthtech, or SaaS&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Why This Role Matters &lt;/strong&gt;&lt;strong&gt;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Reliable data is the foundation of how Carrot operates, from the analytics that guide business decisions to the reporting our customers and partners depend on. The systems this role owns determine the accuracy, recency, and security of data used across the entire company.&lt;/p&gt;
+&lt;p&gt;As Carrot scales globally, the Sr. Data Engineer will make our data platform more automated, resilient, and cost-efficient, enabling teams across the business to move faster with data they trust. This work directly supports Carrot's mission of expanding access to fertility and family-building care worldwide.&lt;/p&gt;
+&lt;p&gt;&lt;br&gt;&lt;br&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Interview Process &lt;/strong&gt;&lt;strong&gt;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;We believe in a thoughtful and transparent interview process designed to create alignment for both candidates and our team.&lt;/p&gt;
+&lt;p&gt;For this role, candidates can expect:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Recruiter Screen — 30 minutes&lt;/li&gt;
+&lt;li&gt;Hiring Manager Interview — 30–45 minutes&lt;/li&gt;
+&lt;li&gt;Cross-Functional Panel Interviews — 45 minutes&lt;/li&gt;
+&lt;li&gt;Executive Leadership Conversation — 30 minutes&lt;/li&gt;
+&lt;li&gt;Hiring Manager Wrap-Up — 15 minutes&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Throughout the process, we will share additional context about the team, business priorities, customer landscape, and what success looks like in this role.&lt;/p&gt;
+&lt;h2&gt;&amp;nbsp;&lt;/h2&gt;
+&lt;h2&gt;&lt;strong&gt;Why Candidates Join Carrot &lt;/strong&gt;&lt;/h2&gt;
+&lt;p&gt;Carrot offers the opportunity to do meaningful work in service of a deeply human mission.&lt;/p&gt;
+&lt;p&gt;Highlights include:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A mission-driven company focused on expanding access to fertility and family-forming care globally.&lt;/li&gt;
+&lt;li&gt;A high-growth environment where leaders are empowered to shape strategy and drive impact.&lt;/li&gt;
+&lt;li&gt;Competitive compensation, equity, and comprehensive benefits.&lt;/li&gt;
+&lt;li&gt;Flexible Time Off and a culture that actively encourages employees to recharge.&lt;/li&gt;
+&lt;li&gt;Comprehensive parental leave and family-forming benefits.&lt;/li&gt;
+&lt;li&gt;A collaborative, inclusive, and values-driven culture.&lt;/li&gt;
+&lt;li&gt;The opportunity to work alongside passionate, thoughtful teammates committed to improving healthcare outcomes worldwide.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Compensation:&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Carrot offers a holistic Total Rewards package designed to support our employees in all aspects of their life inside and outside of work, including health and wellness benefits, retirement savings plans, short- and long-term incentives, parental leave, family-forming assistance, and a competitive compensation package. The starting base salary for this position will range from $145,000-$165,000. Actual compensation may vary from posted base salary depending on your confirmed job-related skills and experience.&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Fraud and Security Notice: &lt;/strong&gt;Please note that all communication regarding job opportunities at Carrot will come exclusively from an @get-carrot.com email address. If you receive messages from any other domain, please disregard them and report the incident to: &lt;a href="mailto:securityreporting@get-carrot.com"&gt;securityreporting@get-carrot.com&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;A Note on AI&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;At Carrot, we believe AI can help us work smarter, move faster, and create more meaningful experiences for our members, customers, and each other. While not every role requires deep technical AI expertise, we value people who are curious, eager to learn, and excited to thoughtfully incorporate AI into their day-to-day work.&lt;/p&gt;
+&lt;p&gt;For some roles, AI fluency is a core requirement—and we'll call that out clearly in the qualifications. For everyone else, we're looking for people who embrace new ways of working, use AI responsibly to improve quality and efficiency, and continue to learn as the technology evolves.&lt;/p&gt;&lt;div class="content-conclusion"&gt;&lt;p&gt;&lt;strong&gt;Why Carrot?&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Carrot has received national and international recognition for its pioneering work, including Fast Company's Most Innovative Companies and World Changing Ideas, Inc. Power Partners, and Modern Healthcare’s Innovators. Carrot’s global workforce has been acknowledged with several accolades, including Fortune’s Best Workplaces in Healthcare, Great Place to Work, and Age-Friendly Employer certifications. Carrot is regularly featured in media reporting on issues related to the future of work, women in leadership, and healthcare innovation, including MSNBC, The Economist, Bloomberg, The Wall Street Journal, CNBC, National Public Radio, Harvard Business Review, and more. Learn more at carrotfertility.com.&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;/p&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/carrot-sr-data-engineer"&gt;https://weworkremotely.com/remote-jobs/carrot-sr-data-engineer&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Wed, 28 Oct 2026 07:31:13 +0000</pubDate>
+      <expires_at>Fri, 27 Nov 2026 07:31:13 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/carrot-sr-data-engineer</guid>
+      <link>https://weworkremotely.com/remote-jobs/carrot-sr-data-engineer</link>
+    </item>
+<item>
+      <title>Coinbase: Associate Manager, Internal Audit</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <state></state>
+      <skills></skills>
+      <category>Full-Stack Programming</category>
+      <type>Full-Time</type>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; Remote - UK
+&lt;/p&gt;
+
+&lt;div class="content-intro"&gt;&lt;p&gt;Ready to do the most impactful work of your career? At&amp;nbsp;&lt;a href="https://www.coinbase.com/?utm_campaign=mt_o_m_w_m_m__coi_0_jd-onchain&amp;amp;utm_source=coinbase"&gt;Coinbase&lt;/a&gt;, we are uncompromising on our mission to increase economic freedom. The bar is high, the environment is intense, and we like it that way. This isn't a place for complacency, it’s a place to be pushed past your perceived limits. If you're ready to build the future of finance alongside people who refuse to settle for "good enough," you belong here. Coinbase is a remote-first, but not remote-only company. Expect to get together quarterly for intense in-person working sessions called “surges.”&amp;nbsp;&lt;a href="https://www.coinbase.com/careers"&gt;learn more about working at Coinbase&lt;/a&gt;.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;The Coinbase Internal Audit team is an independent, risk-based function that helps protect and strengthen the company by evaluating the effectiveness of governance, compliance, risk management, and control processes. Operating as the third line of defense, the team partners across the business to deliver objective assurance and practical recommendations that improve operations, support regulatory readiness, and help Coinbase scale with confidence.&lt;/p&gt;
+&lt;p&gt;Coinbase is looking for an Associate Manager to join the Internal Audit team, focused on Financial Crimes Compliance (FCC). This role is based in the United Kingdom (Remote) and will report to the Internal Audit Manager. This individual will take a lead role in executing FCC audits end-to-end, from planning through reporting and validation, while also mentoring junior team members and beginning to take on audit leadership responsibilities. This individual has solid experience working in or with FinTech or financial services, a working knowledge of the applicable regulatory environment, and demonstrated ability to independently manage audit engagements with minimal oversight.&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;What you’ll do:&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Lead FCC audits from planning through reporting, demonstrating working knowledge of regulatory requirements across the U.S. and globally&lt;/li&gt;
+&lt;li&gt;Own audit scoping, stakeholder management, fieldwork execution, data analysis, and validation of management's remediation activities&lt;/li&gt;
+&lt;li&gt;Drive process mapping and control design assessments to identify gaps and opportunities for enhancement&lt;/li&gt;
+&lt;li&gt;Partner with business leaders across the organization to understand processes, internal controls, and areas of risk&lt;/li&gt;
+&lt;li&gt;Shape clear, well-supported audit reports and executive summaries for senior leadership review&lt;/li&gt;
+&lt;li&gt;Mentor team members on audit fieldwork, workpaper quality, and compliance standards&lt;/li&gt;
+&lt;li&gt;Drive innovation in audit execution and internal infrastructure improvements&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Required Skills and Experience:&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;6+ years of experience in audit, financial crimes compliance, compliance testing, or risk management&lt;/li&gt;
+&lt;li&gt;Working knowledge of US, EU, and APAC AML, Sanctions, and Terrorist Financing regulations and risk management practices&lt;/li&gt;
+&lt;li&gt;Familiarity with data analysis techniques to perform testing across larger datasets&lt;/li&gt;
+&lt;li&gt;Demonstrated ability to independently lead audit engagements and oversee team members&amp;nbsp;&lt;/li&gt;
+&lt;li&gt;Utilizes generative AI responsibly, maintaining human oversight to deliver business-ready outputs and drive measurable improvements in workflow efficiency, cost, and quality&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Position ID: &lt;span&gt;P77898&lt;/span&gt;&lt;/p&gt;&lt;div class="content-pay-transparency"&gt;&lt;div class="pay-input"&gt;&lt;div class="description"&gt;&lt;p&gt;&lt;strong&gt;Pay Transparency Notice:&lt;/strong&gt; The target annual &lt;strong&gt;base&lt;/strong&gt; salary for this position can range as detailed below. Total compensation may&lt;strong&gt; &lt;/strong&gt;also include equity and bonus eligibility and benefits (including medical, dental, and vision).&lt;/p&gt;&lt;/div&gt;&lt;div class="title"&gt;Annual base salary range (excluding equity and bonus):&lt;/div&gt;&lt;div class="pay-range"&gt;&lt;span&gt;£76,500&lt;/span&gt;&lt;span class="divider"&gt;—&lt;/span&gt;&lt;span&gt;£85,000 GBP&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="content-conclusion"&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;em&gt;Application Limit: &lt;/em&gt;&lt;/strong&gt;Candidates may submit a maximum of 3 applications within a 6-month period.&lt;/li&gt;
+&lt;li&gt;&lt;span&gt;&lt;em&gt;&lt;strong&gt;Equal Opportunity Employer: &lt;/strong&gt;Coinbase is an Equal Opportunity Employer. All qualified applicants will receive consideration for employment without regard to race, color, religion, sex, sexual orientation, gender identity, national origin, disability, protected veteran status, or genetic information. Applicants with criminal histories will be considered consistent with applicable federal, state, and local laws.&lt;/em&gt;&lt;/span&gt;&lt;/li&gt;
+&lt;li&gt;&lt;span&gt;&lt;em&gt;&lt;strong&gt;US Applicants: &lt;/strong&gt;View&lt;a href="https://www.dol.gov/sites/dolgov/files/WHD/legacy/files/eppac.pdf"&gt; Employee Rights&lt;/a&gt;,&lt;a href="https://www.eeoc.gov/sites/default/files/2023-06/22-088_EEOC_KnowYourRights6.12.pdf"&gt; Know Your Rights&lt;/a&gt;, and&lt;a href="https://static-assets.coinbase.com/e-verify.pdf"&gt; E-Verify&lt;/a&gt; Notice of Participation.&lt;/em&gt;&lt;/span&gt;&lt;/li&gt;
+&lt;li&gt;&lt;span&gt;&lt;em&gt;&lt;strong&gt;Accommodations: &lt;/strong&gt;If you are an individual with a disability who needs a reasonable accommodation, email us your request and contact info at accommodations[at]coinbase.com.&amp;nbsp;Need screen reading technology?&lt;a href="https://chromewebstore.google.com/detail/screen-reader/kgejglhpjiefppelpmljglcjbhoiplfn"&gt; Click here&lt;/a&gt; to download a free compatible screen reader and view the&lt;a href="http://www.chromevox.com/tutorial/"&gt;&lt;strong&gt; &lt;/strong&gt;tutorial&lt;/a&gt;.&lt;/em&gt;&lt;/span&gt;&lt;/li&gt;
+&lt;li&gt;&lt;span&gt;&lt;em&gt;&lt;strong&gt;Data Privacy &amp;amp; Arbitration: &lt;/strong&gt;By submitting your application, you agree to our&lt;a href="https://www.coinbase.com/legal/applicant_privacy_notice"&gt; Candidate Privacy Notice&lt;/a&gt;. US applicants: By submitting your application, you agree to&lt;a href="https://www.coinbase.com/legal/application-arbitration-agreement"&gt; Arbitration of Disputes&lt;/a&gt;.&lt;br&gt;&lt;/em&gt;&lt;/span&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/coinbase-associate-manager-internal-audit"&gt;https://weworkremotely.com/remote-jobs/coinbase-associate-manager-internal-audit&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Tue, 27 Oct 2026 07:30:57 +0000</pubDate>
+      <expires_at>Thu, 26 Nov 2026 07:30:57 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/coinbase-associate-manager-internal-audit</guid>
+      <link>https://weworkremotely.com/remote-jobs/coinbase-associate-manager-internal-audit</link>
+    </item>
+<item>
+      <title>Lithic: Senior Software Engineer, Processing</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <state></state>
+      <skills></skills>
+      <category>Full-Stack Programming</category>
+      <type>Full-Time</type>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; Remote 
+&lt;/p&gt;
+
+&lt;div class="content-intro"&gt;&lt;p&gt;Lithic is the modern card issuing and processing platform empowering ambitious financial companies to build the future of payments.&lt;/p&gt;
+&lt;p&gt;Our infrastructure powers card programs for 100+ innovative clients, from fintechs reimagining credit and digital banking to platforms transforming disbursements and spend management. Companies like Mercury, Flex, and Novo rely on Lithic's developer-friendly APIs, direct network connections, and flawless reconciliation to launch and scale card programs in weeks, not years.&lt;/p&gt;
+&lt;p&gt;We're building a future where access to better financial products materially improves people's lives, free from the constraints of 30-year-old mainframes and legacy processors. We're proud to be backed by world-class investors who share that vision, including Bessemer Venture Partners, Index Ventures, Spark Capital, Stripes, and Mastercard, along with many others.&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;We're a team of 170+ across 26 states and 7 countries, headquartered in New York City.&amp;nbsp;&lt;/p&gt;&lt;/div&gt;&lt;p&gt;&lt;strong&gt;Position:&lt;/strong&gt; Senior Software Engineer, Processing&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Location:&lt;/strong&gt; Remote&lt;/p&gt;
+&lt;p&gt;We are hiring a &lt;strong&gt;Senior Software Engineer&lt;/strong&gt; for our Processing team to lead Lithic’s next phase of growth.&lt;/p&gt;
+&lt;p&gt;The Processing team builds and maintains the real-time interfaces between Lithic and external payment networks. Every card authorization, clearing message, and settlement file flows through systems this team owns. The team manages both online and batch transaction flows across Mastercard, Visa, and Amex, along with transaction enrichment, disputes processing, and network compliance. The systems we maintain have strict latency and uptime requirements, because they sit on the critical path for every card transaction. The team also manages the physical network peering with card network partners, so infrastructure and networking expertise are important. The team primarily uses Java, Python, and Kotlin on AWS.&lt;/p&gt;
+&lt;h3&gt;&lt;strong&gt;What you'll do:&lt;/strong&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Ensure high reliability, low latency, and correctness for Lithic's transaction processing interfaces and related services&lt;/li&gt;
+&lt;li&gt;Develop new capabilities across authorization, clearing/settlement, disputes, and network integration surfaces&lt;/li&gt;
+&lt;li&gt;Ensure that the team is delivering reliable, secure, and scalable code with minimal tech debt&lt;/li&gt;
+&lt;li&gt;Evolve the infrastructure supporting physical network peering with card network partners, ensuring connectivity, failover, and capacity meet reliability requirements&lt;/li&gt;
+&lt;li&gt;Own initiatives from planning to launch, keeping stakeholders informed and aligned along the way&lt;/li&gt;
+&lt;li&gt;Participate in the team on-call rotation&lt;/li&gt;
+&lt;li&gt;Lead efforts to improve systems and processes both within the team and across engineering&lt;/li&gt;
+&lt;li&gt;Help drive strategic planning in collaboration with the engineering manager and product manager&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;strong&gt;What you'll bring:&lt;/strong&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;8+ years experience shipping code in fast paced production environments&lt;/li&gt;
+&lt;li&gt;Advanced distributed system instincts and design skills&lt;/li&gt;
+&lt;li&gt;Experience driving large cross-functional projects across engineering, product, and operations teams&lt;/li&gt;
+&lt;li&gt;A proven commitment to empathy and inclusion&lt;/li&gt;
+&lt;li&gt;Excellent communication skills&lt;/li&gt;
+&lt;li&gt;Growth mindset and continuous desire to learn and improve is a must&lt;/li&gt;
+&lt;li&gt;An interest in fintech and the payments space is preferred&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The annual US salary range for this role is $160,000 - $200,000 plus equity. This salary range may be inclusive of several career levels at Lithic and will be narrowed during the interview process based on the candidate’s experience and qualifications.&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;This is a remote position. However, candidates must be located in the United States, Canada (Ontario or British Columbia), Netherlands, Poland, or Czech Republic. We do not offer visa sponsorship or assistance.&lt;/p&gt;
+&lt;p&gt;This is a hybrid position. Candidates must be located within a commutable distance to our NYC office in Soho. We do not offer visa sponsorship or assistance.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Crack the code&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;A hidden code is tucked into this application. Find it and enter it below to continue.&lt;/p&gt;
+&lt;div&gt;
+&lt;div&gt;
+&lt;div&gt;
+&lt;div&gt;
+&lt;div&gt;
+&lt;div&gt;
+&lt;div&gt;
+&lt;div&gt;
+&lt;div&gt;
+&lt;div&gt;
+&lt;div&gt;
+&lt;div&gt;IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJUaGUgYW5zd2VyIHRvIGxpZmUsIHRoZSB1bml2ZXJzZSwgYW5kIGV2ZXJ5dGhpbmcg4oCUIGVuY3J5cHRlZC4iIiIKCnBhc3N3b3JkID0gYiJceGVkXHhjMSIKX2tleSA9IGIiXHhkOVx4ZjNceGVkXHhmYlx4ODBceGM0flx4YTdcblx4YjhceGZiPFx4ZmJPXlx4ZmIiCgpkZWYgZGVjcnlwdF9wYXNzd29yZCgpIC0+IHN0cjoKICAgIHJldHVybiBieXRlcyhhIF4gYiBmb3IgYSwgYiBpbiB6aXAocGFzc3dvcmQsIF9rZXkpKS5kZWNvZGUoKQoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHJlc3VsdCA9IGRlY3J5cHRfcGFzc3dvcmQoKQogICAgcHJpbnQoZiJEZWNyeXB0ZWQgcGFzc3dvcmQ6IHtyZXN1bHR9IikKICAgIGFzc2VydCByZXN1bHQgPT0gIjQyIiwgIkRvbid0IHBhbmljIOKAlCBidXQgZGVjcnlwdGlvbiBmYWlsZWQhIgo=&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;div class="content-conclusion"&gt;&lt;h3&gt;Benefits for Full-Time US Employees:&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Unlimited PTO&lt;/li&gt;
+&lt;li&gt;12-weeks fully paid parental leave&lt;/li&gt;
+&lt;li&gt;4-Week Fully Paid Sabbatical (earned at your 5-year anniversary)&lt;/li&gt;
+&lt;li&gt;Work From Anywhere: work from anywhere in the world 4-weeks each year&lt;/li&gt;
+&lt;li&gt;3% cashback on card purchases with your complimentary &lt;a href="http://Privacy.com"&gt;Privacy.com&lt;/a&gt; employee account&lt;/li&gt;
+&lt;li&gt;Health, vision, and dental insurance; HSA Contribution Match&lt;/li&gt;
+&lt;li&gt;401(k) match&lt;/li&gt;
+&lt;li&gt;Voluntary Life Insurance and STD/LTD&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;NYC-based employees work from our SoHo office three days a week. Tuesdays and Thursdays are our core days, and you'll choose a third day that works for your schedule and team needs.&lt;/p&gt;
+&lt;p&gt;In-office employees receive:&amp;nbsp;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Commuter benefit&lt;/li&gt;
+&lt;li&gt;Catered lunch every Tuesday and Thursday&lt;/li&gt;
+&lt;/ul&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/lithic-senior-software-engineer-processing"&gt;https://weworkremotely.com/remote-jobs/lithic-senior-software-engineer-processing&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Sun, 18 Oct 2026 07:30:59 +0000</pubDate>
+      <expires_at>Tue, 17 Nov 2026 07:30:59 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/lithic-senior-software-engineer-processing</guid>
+      <link>https://weworkremotely.com/remote-jobs/lithic-senior-software-engineer-processing</link>
+    </item>
+<item>
+      <title>Toptal: Applied AI Engineers for telecommunications company</title>
+      <region>USA Only</region>
+      <country></country>
+      <state></state>
+      <skills></skills>
+      <category>Full-Stack Programming</category>
+      <type>Full-Time</type>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; 
+&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Summary&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;The Senior AI Professional will help design, develop, and optimize production-grade agentic AI solutions. This role complements an existing platform engineering team and focuses on turning AI concepts into reliable, scalable software rather than purely research-oriented work.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;General information&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;This engagement requires deep hands-on expertise in machine learning and applied AI, with a strong emphasis on prompt optimization, model behavior, agent orchestration, and evaluation. The work will involve collaborating with platform engineers, product teams, and business stakeholders to improve AI quality, reliability, and performance in production environments.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Tasks and Deliverables&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Design, develop, and optimize production-grade agentic AI solutions.&lt;/p&gt;&lt;p&gt;Run meaningful evaluations to improve prompts, model behavior, orchestration, reliability, and performance in production.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Required experience&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Deep expertise in machine learning and applied AI.&lt;/li&gt;&lt;li&gt;Experience building and deploying production-level AI/ML services.&lt;/li&gt;&lt;li&gt;Strong software engineering and coding skills.&lt;/li&gt;&lt;li&gt;Experience developing or optimizing LLM- and agent-based applications.&lt;/li&gt;&lt;li&gt;Strong knowledge of prompt engineering and optimization.&lt;/li&gt;&lt;li&gt;Strong knowledge of model evaluation and benchmarking.&lt;/li&gt;&lt;li&gt;Strong knowledge of AI quality, reliability, and performance measurement.&lt;/li&gt;&lt;li&gt;Strong knowledge of agent behavior and orchestration.&lt;/li&gt;&lt;li&gt;Ability to design and run meaningful evaluations and interpret results.&lt;/li&gt;&lt;li&gt;Experience with APIs, data pipelines, backend systems, and AI platforms.&lt;/li&gt;&lt;li&gt;Familiarity with modern AI tools, frameworks, and cloud environments.&lt;/li&gt;&lt;li&gt;Ability to collaborate with platform engineers, product teams, and business stakeholders.&lt;/li&gt;&lt;li&gt;Strong communication skills and experience delivering maintainable, production-quality solutions.&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;&lt;strong&gt;Nice to have:&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Python experience.&lt;/li&gt;&lt;li&gt;Background as an Applied AI Scientist, AI Engineer, or Machine Learning Engineer.&lt;/li&gt;&lt;li&gt;Engagement highlights&lt;/li&gt;&lt;li&gt;Own a defined production AI workstream with direct impact on reliability and scale.&lt;/li&gt;&lt;li&gt;Work closely with an existing platform engineering team on applied AI delivery.&lt;/li&gt;&lt;li&gt;Focus on production-grade AI implementation rather than purely research-oriented work.&lt;/li&gt;&lt;/ul&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/toptal-applied-ai-engineers-for-telecommunications-company"&gt;https://weworkremotely.com/remote-jobs/toptal-applied-ai-engineers-for-telecommunications-company&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Mon, 12 Oct 2026 16:38:01 +0000</pubDate>
+      <expires_at>Wed, 11 Nov 2026 16:38:01 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/toptal-applied-ai-engineers-for-telecommunications-company</guid>
+      <link>https://weworkremotely.com/remote-jobs/toptal-applied-ai-engineers-for-telecommunications-company</link>
+    </item>
+<item>
+      <media:content url="https://wwr-pro.s3.amazonaws.com/logos/0066/7400/logo.gif" type="image/png"/>
+      <title>A.Team: Senior Independent Software Developer ($90-$170/hr)</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <state>New York</state>
+      <skills></skills>
+      <category>Full-Stack Programming</category>
+      <type>Contract</type>
+      <description>&lt;img src="https://we-work-remotely.imgix.net/logos/0066/7400/logo.gif?ixlib=rails-4.0.0&amp;w=50&amp;h=50&amp;dpr=2&amp;fit=fill&amp;auto=compress" /&gt;
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; NYC and TLV
+    &lt;br /&gt;&lt;strong&gt;URL:&lt;/strong&gt; &lt;a href="https://build.a.team/wwrfastrackreferral"&gt;https://build.a.team/wwrfastrackreferral&lt;/a&gt;
+&lt;/p&gt;
+
+&lt;div&gt;Imagine choosing your projects, collaborating with the best, and keeping every dollar you earn.&lt;br&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;At A·Team, we’ve turned this vision into reality for top-tier independent software builders. Since May 2020, A·Teamers have earned over $108 million working on high-impact projects for companies backed by a16z, YC, Insight Partners, Tiger Global, Softbank, General Catalyst, and more.&lt;br&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;strong&gt;&lt;br&gt;Why A·Team?&lt;br&gt;&lt;/strong&gt;&lt;br&gt;&lt;/div&gt;&lt;ul&gt;&lt;li&gt;&lt;strong&gt;High-paying, meaningful missions:&lt;/strong&gt; Earn $90-$170/hr with over 500 companies—from trailblazing startups like Sightful, D-ID, and Apprentice to enterprise innovators like Lyft, Google X, and HCA.&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Collaborate with trusted peers:&lt;/strong&gt; Work in small, elite teams for high-impact projects, ensuring top-tier collaboration.&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Full autonomy:&lt;/strong&gt; Choose projects that excite you. Join when you're ready, and take breaks as needed.&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Exclusive gatherings:&lt;/strong&gt; Participate in off-the-record events and connect with top builders.&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Transparent earnings:&lt;/strong&gt; Keep 100% of your rate.&lt;/li&gt;&lt;/ul&gt;&lt;div&gt;&lt;strong&gt;&lt;br&gt;How to Join:&lt;br&gt;&lt;/strong&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;a href="https://build.a.team/wwrfastrackreferral"&gt;Visit A·Team Application&lt;/a&gt; and mention WWR under "how you heard about A·Team." No cover letter needed – we value your portfolio.&lt;br&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;strong&gt;&lt;br&gt;What to Expect:&lt;br&gt;&lt;/strong&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;As an A·Teamer, you’ll be invited to projects matching your interests. Work with startups, well-funded companies, or non-tech giants, building ambitious software from scratch in 3-4 person teams. Scope, strategize, and execute, often guiding clients who need direction.&lt;br&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;strong&gt;&lt;br&gt;Who We're Looking For:&lt;/strong&gt;&lt;/div&gt;&lt;ul&gt;&lt;li&gt;&lt;strong&gt;Senior developers&lt;/strong&gt; who left large companies to pursue their craft with autonomy.&lt;/li&gt;&lt;li&gt;Those preferring consistent contract work over full-time roles, eager to create innovative products with other top-tier builders.&lt;/li&gt;&lt;li&gt;Independent workers, full-time employees exploring client work, bootstrapping side projects, or searching for their next big thing.&lt;/li&gt;&lt;/ul&gt;&lt;div&gt;&lt;strong&gt;&lt;br&gt;Not for:&lt;/strong&gt;&lt;/div&gt;&lt;ul&gt;&lt;li&gt;People seeking small gigs.&lt;/li&gt;&lt;li&gt;Builders focused on simple WordPress/Wix/Squarespace sites.&lt;/li&gt;&lt;li&gt;Early-career professionals and recent grads.&lt;/li&gt;&lt;/ul&gt;&lt;div&gt;&lt;strong&gt;&lt;br&gt;Our Vision:&lt;br&gt;&lt;/strong&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;A·Team is for the "unhirables" – exceptional builders whom traditional companies can’t hire full-time. We empower you to do meaningful work with your favorite people in small, autonomous, expert teams.&lt;br&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;A.Team is forging a new vision for the future of work that’s backed by $60M in funding from investors like Insight Partners, Tiger Global, and Spruce House, future-of-work pioneers like Adam Grant, Dan Ariely and Joseph Fuller, cultural leaders like Jay-Z’s RocNation, and founders and execs from CAA, Apollo, Upwork, Fiverr, and SpaceX.&lt;/div&gt;&lt;div&gt;&lt;br&gt;Ready to join a team where your talent is valued, and your work is meaningful? Apply now and start your next great mission with A·Team.&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/a-team-senior-independent-software-developer-90-170-hr"&gt;https://weworkremotely.com/remote-jobs/a-team-senior-independent-software-developer-90-170-hr&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Sun, 16 Jun 2024 17:30:51 +0000</pubDate>
+      <expires_at>Tue, 03 Nov 2026 17:30:51 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/a-team-senior-independent-software-developer-90-170-hr</guid>
+      <link>https://weworkremotely.com/remote-jobs/a-team-senior-independent-software-developer-90-170-hr</link>
+    </item>
+  </channel>
+</rss>
