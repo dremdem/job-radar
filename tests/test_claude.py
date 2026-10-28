@@ -465,6 +465,16 @@ def test_chat_has_quick_prompts(client, session):
     assert "на русском" in dict(QUICK_PROMPTS)["Сопроводительное (RU)"]
 
 
+def test_find_original_posting_prompt():
+    # #239: boards like We Work Remotely hide the apply link behind a paywall.
+    from job_radar.claude.prompt import QUICK_PROMPTS
+
+    text = dict(QUICK_PROMPTS)["Find original posting"].lower()
+    for rule in ("careers page", "greenhouse", "lever", "ashby", "not found", "do not apply"):
+        assert rule in text, rule
+    assert "linkedin" in text and "hh.ru" in text  # never opened
+
+
 def test_vacancies_without_description_are_not_queued(client, session):
     with_text = vacancy(session, title="With text")
     without = vacancy(session, title="No text", text=None)

@@ -95,6 +95,7 @@ Every vacancy has its own page, `/opportunities/<id>`: the **page →** link nex
   | Why I fit | 3–5 bullets tying your CV to the vacancy's requirements |
   | Questions to ask | What to ask the recruiter about this job |
   | Reply to recruiter (EN) | A short, polite reply to a recruiter's message (paste their message after the prompt) |
+  | Find original posting | The same vacancy on the employer's own careers page or its ATS (Greenhouse, Lever, Ashby, Workable, …), for boards that hide the apply link behind a paywall, like We Work Remotely (#239). Claude searches the web, checks that the title and company match and that the posting looks open, and gives the link and where it found it, or says it found nothing. It never applies or fills a form. Needs **Internet in chat** on |
 
   The prompts live in `job_radar/claude/prompt.py` (`QUICK_PROMPTS`).
 

@@ -136,6 +136,17 @@ QUICK_PROMPTS: list[tuple[str, str]] = [
         + _HONEST
         + "Recruiter's message:\n\n",
     ),
+    (
+        # #239: some boards hide the apply link behind a paywall.
+        "Find original posting",
+        "Find this vacancy on the employer's own site: their careers page or their ATS "
+        "(Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee, …), not another job "
+        "board or aggregator. Search by the company and the title. Check that the title and the "
+        "company match and that the posting looks open. Give the direct link, where you found "
+        "it, and anything that differs from the vacancy text (location, salary). If you can't "
+        "find it, say not found and give the company's careers page if you found that. Do not "
+        "apply, fill in or submit anything, and never open LinkedIn or hh.ru.",
+    ),
 ]
 
 
