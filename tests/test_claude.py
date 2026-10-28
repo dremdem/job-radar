@@ -366,6 +366,17 @@ def test_chat_links_are_clickable():
     assert 'href="javascript' not in html and '"onmouseover' not in html
 
 
+def test_description_links_are_clickable_and_python_still_marked():
+    # #243: the way to apply is often a link in the description.
+    from job_radar.description import highlight_python
+
+    url = "https://jobs.lever.co/python-co/1"
+    html = str(highlight_python(f"Python role. Apply: {url}. <b>"))
+    assert "<mark>Python</mark> role" in html
+    assert f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>.' in html
+    assert "&lt;b&gt;" in html
+
+
 def test_transient_errors_are_retried(session, tmp_path):
     o = vacancy(session)
     claude.enqueue(session, [o.id])

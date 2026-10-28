@@ -71,7 +71,7 @@ When a vacancy has its description (sent by the [bookmarklet](linkedin-capture.m
 - `− No Python in description` and **−3** to the score when the word never appears — unless the title already says Python;
 - nothing without a description (the row keeps *verify manually*).
 
-The full text is in the panel and on the vacancy page, every *Python* highlighted. The quote shows the context: Python in "nice to have" counts the same as in the requirements, so read it. Also available as an auto-ignore rule in [settings.md](settings.md).
+The full text is in the panel and on the vacancy page, every *Python* highlighted; its `http(s)://` links are clickable and open in a new tab (#243). The quote shows the context: Python in "nice to have" counts the same as in the requirements, so read it. Also available as an auto-ignore rule in [settings.md](settings.md).
 
 ## Buttons
 

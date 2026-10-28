@@ -177,3 +177,26 @@ def test_sync_step_reports_counts_and_can_be_turned_off(session):
     lines.clear()
     step(session, Settings(hackernews=False), lines.append, client=FakeClient())
     assert lines == ["hackernews: disabled (JOB_RADAR_HACKERNEWS=false)."]
+
+
+def test_links_cut_short_by_hn_keep_the_full_address():
+    # #243: HN shows "https://jobs.lever.co/curai/46e0dd2f-...-5b45f477..."; the href is whole.
+    text = post("Curai").description
+    assert "5b45f477..." not in text
+    assert "https://jobs.lever.co/curai/46e0dd2f-c1dd-4ca2-9095-5b45f477" in text
+    assert "https://curaihealth.com" in text  # a link shown whole stays as it is
+
+
+def test_a_stored_post_gets_the_new_text(session):
+    import_hackernews(session, FakeClient())
+    record = session.scalar(select(SourceRecord).where(SourceRecord.external_id == "49925489"))
+    edited = thread()
+    for c in edited["children"]:
+        if c["id"] == 49925489:
+            c["text"] += "<p>Apply: jobs@example.org"
+    stats = import_hackernews(session, FakeClient(edited))
+    assert (stats.new, stats.known) == (0, 5)
+    session.refresh(record.opportunity)
+    from job_radar.description import latest_description
+
+    assert latest_description(record.opportunity).endswith("Apply: jobs@example.org")

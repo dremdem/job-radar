@@ -213,13 +213,16 @@ def import_hackernews(session: Session, client: Client) -> HackerNewsStats:
         stats.posts += 1
         if not wants(post):
             stats.skipped += 1
-        elif session.scalar(
+        elif known := session.scalar(
             select(SourceRecord.id).where(
                 SourceRecord.source_type == SourceType.HACKERNEWS,
                 SourceRecord.external_id == str(post.id),
             )
         ):
             stats.known += 1
+            # Edited on HN, or read by an older version (#243): the new text becomes current.
+            if post.description:
+                add_snapshot(session, session.get(SourceRecord, known), post.description)
         else:
             _add(session, post)
             stats.new += 1

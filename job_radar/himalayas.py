@@ -76,6 +76,11 @@ class HimalayasJob:
 
 def _text(html: str) -> str:
     soup = BeautifulSoup(html or "", "html.parser")
+    for a in soup.find_all("a", href=True):
+        # Hacker News shows a long link cut short with "..."; keep the whole address (#243).
+        shown, href = a.get_text(), str(a["href"])
+        if shown.endswith("...") and href.startswith(shown[:-3]):
+            a.string = href
     for tag in soup.find_all(_BLOCKS):
         if tag.name == "li":
             tag.insert_before("• ")

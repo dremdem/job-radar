@@ -86,7 +86,27 @@ def python_risk(title: str, description: str | None) -> tuple[float, Reason] | N
     return PYTHON_BONUS, Reason("+", f"Python in description (x{check.mentions}{also})")
 
 
+# On escaped text: "&" only as "&amp;", so a quote (&#34;) or "<" ends the URL.
+URL = r"https?://(?:[^\s<>&()\[\]]|&amp;)+"
+URL_TRAILING = ".,;:!?"  # sentence punctuation after a URL is not part of it
+
+
+def link(url: str, label: str | None = None) -> str:
+    """An escaped http(s) URL as a link that opens in a new tab (#241)."""
+    return f'<a href="{url}" target="_blank" rel="noopener noreferrer">{label or url}</a>'
+
+
+def _mark(escaped: str) -> str:
+    return _PYTHON.sub(lambda m: f"<mark>{m.group(0)}</mark>", escaped)
+
+
 def highlight_python(text: str) -> Markup:
-    """Escaped description with every Python mention wrapped in <mark> (only markup added)."""
+    """Escaped description: every Python mention wrapped in <mark>, links clickable (#243)."""
     escaped = str(escape(text))
-    return Markup(_PYTHON.sub(lambda m: f"<mark>{m.group(0)}</mark>", escaped))
+    out, pos = [], 0
+    for m in re.finditer(URL, escaped):
+        url = m.group(0).rstrip(URL_TRAILING)
+        out += [_mark(escaped[pos : m.start()]), link(url)]
+        pos = m.start() + len(url)
+    out.append(_mark(escaped[pos:]))
+    return Markup("".join(out))
