@@ -201,6 +201,7 @@ def sync(
         SourceType.HIMALAYAS: pipeline.import_himalayas,
         SourceType.HACKERNEWS: pipeline.import_hackernews,
         SourceType.REMOTEOK: pipeline.import_remoteok,
+        SourceType.JOBICY: pipeline.import_jobicy,
     }
     if source in steps:
         step = steps[source]

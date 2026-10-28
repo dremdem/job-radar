@@ -190,6 +190,23 @@ def import_himalayas(session: Session, settings: Settings, echo: Echo, client=No
         echo(f"himalayas: could not read the API: {stats.error}")
 
 
+def import_jobicy(session: Session, settings: Settings, echo: Echo, client=None) -> None:
+    """Fresh Python jobs from the Jobicy API (docs/jobicy.md)."""
+    from .jobicy import JobicyClient
+    from .jobicy import import_jobicy as run
+
+    if not settings.jobicy:
+        echo("jobicy: disabled (JOB_RADAR_JOBICY=false).")
+        return
+    stats = run(session, client or JobicyClient())
+    echo(
+        f"jobicy: {stats.pages} pages, {stats.jobs} fresh jobs, {stats.new} new, "
+        f"{stats.known} already stored, {stats.skipped} skipped as noise"
+    )
+    if stats.error:
+        echo(f"jobicy: could not read the API: {stats.error}")
+
+
 def import_remoteok(session: Session, settings: Settings, echo: Echo, client=None) -> None:
     """Fresh Python jobs from the Remote OK feed (docs/remoteok.md)."""
     from .remoteok import RemoteOKClient
@@ -372,6 +389,7 @@ STEPS: list[tuple[str, str, str, str]] = [
     ("himalayas", "Himalayas", "himalayas", "first"),
     ("hackernews", "Hacker News", "hackernews", "first"),
     ("remoteok", "Remote OK", "remoteok", "first"),
+    ("jobicy", "Jobicy", "jobicy", "first"),
     ("mail", "Mail analysis", "", "all"),
     ("descriptions", "LinkedIn descriptions", "descriptions", "first"),
     ("ai", "AI analysis", "ai", "last"),
@@ -427,6 +445,7 @@ def run_sync(
         "himalayas": settings.himalayas,
         "hackernews": settings.hackernews,
         "remoteok": settings.remoteok,
+        "jobicy": settings.jobicy,
         "descriptions": settings.linkedin_public_search,
         "ai": settings.ai_analysis,
     }
@@ -500,6 +519,7 @@ def run_sync(
             run("himalayas", lambda e: import_himalayas(session, settings, e))
             run("hackernews", lambda e: import_hackernews(session, settings, e))
             run("remoteok", lambda e: import_remoteok(session, settings, e))
+            run("jobicy", lambda e: import_jobicy(session, settings, e))
             run("mail", mail)
             # Late: the rules for fetched descriptions see applications/rejections above.
             if start_descriptions is not None:
