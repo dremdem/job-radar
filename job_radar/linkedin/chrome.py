@@ -41,6 +41,9 @@ _BLOCK_URL = re.compile(
 _BLOCK_TITLE = re.compile(
     r"security verification|sign in|log in|sign up|captcha|let's do a quick|verify", re.IGNORECASE
 )
+# With the token the extension connects its own connect page to the client (#250).
+_CONNECT_PAGE = re.compile(r"^chrome-extension://[a-p]{32}/connect\.html")
+_TAB_LINE = re.compile(r"^- \d+:.*\]\((\S+)\)\s*$")
 _JOB_ID = re.compile(r"currentJobId=(\d+)|/jobs/view/(?:[^/?#]*-)?(\d+)")
 
 # Where the page is, how it loaded, and what it is: read before anything else is done.
@@ -77,6 +80,7 @@ EXPAND = """() => {
 class Browser(Protocol):
     """The few things the fill asks of the browser."""
 
+    async def list_tabs(self) -> list[str]: ...
     async def open_tab(self, url: str) -> None: ...
     async def navigate(self, url: str) -> None: ...
     async def evaluate(self, function: str) -> Any: ...
@@ -115,6 +119,11 @@ def block_reason(probe: dict[str, Any]) -> str | None:
     if _BLOCK_TITLE.search(title):
         return f"verification page ({title})"
     return None
+
+
+def parse_tabs(text: str) -> list[str]:
+    """Tab URLs from `browser_tabs list`: '- 0: (current) [Title](url)' per line."""
+    return [m.group(1) for line in text.splitlines() if (m := _TAB_LINE.match(line.strip()))]
 
 
 def own_payload(payload: dict[str, Any], job_id: str) -> dict[str, Any]:
@@ -178,6 +187,13 @@ async def fill_descriptions(
     stats.total = len(todo)
     progress()
     tab_url: str | None = None  # the page our own tab should be on; None: no tab yet
+    # The extension's connect page is the run's own tab: use it, and close it at the end,
+    # so nothing is left open (#250). Any other tab is the user's: open a new one instead.
+    try:
+        tabs = await browser.list_tabs() if todo else []
+    except Exception:  # unknown: be safe and open a tab of our own
+        tabs = []
+    reuse = len(tabs) == 1 and bool(_CONNECT_PAGE.match(tabs[0]))
     errors_in_a_row = 0
     try:
         for n, (opportunity, record) in enumerate(todo):
@@ -186,7 +202,9 @@ async def fill_descriptions(
                 break
             job_id = record.external_id
             url = JOB_URL.format(job_id=job_id)
-            if tab_url is None:
+            if tab_url is None and reuse:
+                await browser.navigate(url)
+            elif tab_url is None:
                 await browser.open_tab(url)
             else:
                 # The extension follows one tab; make sure it is still ours before leaving it.
@@ -278,6 +296,9 @@ class McpBrowser:
         if getattr(result, "isError", False):
             raise BrowserError(f"{tool}: {text[:300]}")
         return text
+
+    async def list_tabs(self) -> list[str]:
+        return parse_tabs(await self._call("browser_tabs", {"action": "list"}))
 
     async def open_tab(self, url: str) -> None:
         await self._call("browser_tabs", {"action": "new", "url": url})

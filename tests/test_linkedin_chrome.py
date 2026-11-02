@@ -33,8 +33,10 @@ class FakePage:
 class FakeBrowser:
     """One tab, like the extension. `pages` says what LinkedIn shows for each job id."""
 
-    def __init__(self, pages=None, *, after_open=None):
+    def __init__(self, pages=None, *, after_open=None, tabs=None):
         self.pages = pages or {}
+        # What the client sees at start: by default the user's tab picked in the dialog.
+        self.tabs = tabs if tabs is not None else ["https://github.com/dremdem/job-radar"]
         self.calls: list[tuple[str, str]] = []
         self.page: FakePage | None = None
         self.after_open = after_open  # e.g. the user clicks elsewhere: replace the page
@@ -44,6 +46,10 @@ class FakeBrowser:
         self.page = self.pages.get(job_id) or FakePage(job_id)
         if self.after_open:
             self.page = self.after_open(self.page) or self.page
+
+    async def list_tabs(self):
+        self.calls.append(("list_tabs", ""))
+        return list(self.tabs)
 
     async def open_tab(self, url):
         self.calls.append(("open_tab", url))
@@ -114,7 +120,7 @@ def test_own_tab_one_page_at_a_time_then_closed(session):
     vacancy(session, "102")
     browser = FakeBrowser()
     run(session, browser)
-    kinds = [c[0] for c in browser.calls]
+    kinds = [c[0] for c in browser.calls if c[0] != "list_tabs"]
     assert kinds[0] == "open_tab"  # never the tab you are working in
     assert kinds.count("open_tab") == 1 and kinds.count("navigate") == 1
     assert kinds[-1] == "close_tab"
@@ -325,3 +331,40 @@ def test_page_changed_while_reading_saves_nothing(session):
     browser.evaluate = evaluate
     stats = run(session, browser)
     assert stats.blocked and descriptions(session) == {}
+
+
+CONNECT_PAGE = "chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html?mcpRelayUrl=ws"
+
+
+def test_extension_connect_page_is_used_and_closed_so_nothing_is_left(session):
+    """#250: with the token the extension connects its own connect page; reuse it."""
+    vacancy(session, "101")
+    vacancy(session, "102")
+    browser = FakeBrowser(tabs=[CONNECT_PAGE])
+    stats = run(session, browser)
+    kinds = [k for k, _ in browser.calls]
+    assert stats.saved == 2
+    assert "open_tab" not in kinds  # no second tab next to the connect page
+    assert kinds.count("navigate") == 2 and kinds[-1] == "close_tab"
+
+
+def test_a_users_tab_is_never_navigated(session):
+    cases = (["https://mail.google.com/mail/u/0/"], [CONNECT_PAGE, "https://x.com/"], [])
+    for n, tabs in enumerate(cases):
+        vacancy(session, f"20{n}")  # one fresh vacancy without a description per case
+        browser = FakeBrowser(tabs=tabs)
+        assert run(session, browser).saved == 1, tabs
+        kinds = [k for k, _ in browser.calls]
+        assert kinds.index("open_tab") < kinds.index("read"), tabs
+        assert "navigate" not in kinds, tabs
+
+
+def test_parse_tabs():
+    from job_radar.linkedin.chrome import parse_tabs
+
+    text = (
+        "### Open tabs\n- 0: (current) [Playwright MCP extension](" + CONNECT_PAGE + ")\n"
+        "- 1: [Issues · dremdem/yt_archive](https://github.com/dremdem/yt_archive/issues)\n"
+    )
+    assert parse_tabs(text) == [CONNECT_PAGE, "https://github.com/dremdem/yt_archive/issues"]
+    assert parse_tabs("### Result\nNo open tabs") == []

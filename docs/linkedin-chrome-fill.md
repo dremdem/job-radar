@@ -28,7 +28,7 @@ pinned to the version that was measured).
 
 1. It takes the To review vacancies from LinkedIn that have no description, best score
    first, up to 50.
-2. It opens **a tab of its own** with the first one, and does not touch your tabs.
+2. It works in **a tab of its own** and never touches your tabs. With the token, the extension connects its own connect page (`chrome-extension://…/connect.html`), and the run uses that page (#250). If the extension was given one of your tabs instead (the connect dialog), the run opens a new tab and leaves yours alone.
 3. For each vacancy it:
    - waits for the page (2.5–5 s);
    - checks the page: on an authwall, login, checkpoint, captcha or verification page, or
@@ -43,7 +43,7 @@ pinned to the version that was measured).
    - waits the random pause from **Settings → LinkedIn** (10–40 s by default), then goes on
      to the next vacancy in the same tab. Before leaving the page, it checks again that the
      tab is still its own.
-4. At the end it closes its tab.
+4. At the end it closes its tab, so nothing is left open.
 
 Three pages in a row without a description stop the run: LinkedIn's layout has probably
 changed, and the bookmarklet needs the same fix.
