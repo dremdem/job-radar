@@ -14,20 +14,24 @@ import random
 import re
 import threading
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 from sqlalchemy.orm import Session
 
-from ..models import LinkedInFetch
+from ..models import AppSetting, LinkedInFetch
 from .capture import import_capture
-from .public import _without_description
+from .public import PauseSettings, _without_description
 
 READER = (Path(__file__).parent.parent / "web" / "capture_read.js").read_text().strip()
 JOB_URL = "https://www.linkedin.com/jobs/view/{job_id}/"
 MAX_PER_RUN = 50
+# Its own pause between pages, apart from the guest one (#252): by hand the user opens a
+# vacancy and clicks the bookmarklet within seconds.
+PAUSE_KEY = "linkedin_chrome"
+DEFAULT_PAUSE = PauseSettings(2.0, 4.0)
 LOAD_WAIT = (2.5, 5.0)  # seconds after opening a page, as a person waits for it to load
 EXPAND_WAIT = (0.8, 1.6)
 MAX_ERRORS_IN_A_ROW = 3  # the page layout probably changed: stop rather than keep going
@@ -100,6 +104,21 @@ class FillStats:
     blocked: bool = False
     reason: str | None = None  # why it stopped early: "HTTP 429", "authwall", "another page"
     stopped: bool = False  # by the user
+
+
+def load_chrome_pause(session: Session) -> PauseSettings:
+    row = session.get(AppSetting, PAUSE_KEY)
+    if row is None or not isinstance(row.value, dict):
+        return DEFAULT_PAUSE
+    known = {k: v for k, v in row.value.items() if k in PauseSettings.__dataclass_fields__}
+    return PauseSettings(**{**asdict(DEFAULT_PAUSE), **known})
+
+
+def save_chrome_pause(session: Session, value: PauseSettings) -> None:
+    row = session.get(AppSetting, PAUSE_KEY) or AppSetting(key=PAUSE_KEY)
+    row.value = asdict(value)
+    session.add(row)
+    session.commit()
 
 
 def job_id_of(href: str) -> str | None:

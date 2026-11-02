@@ -368,3 +368,45 @@ def test_parse_tabs():
     )
     assert parse_tabs(text) == [CONNECT_PAGE, "https://github.com/dremdem/yt_archive/issues"]
     assert parse_tabs("### Result\nNo open tabs") == []
+
+
+def test_chrome_fill_has_its_own_pause(engine, database_url, tmp_path, session):
+    """#252: 2-4 s by default, saved apart from the guest pause (10-40 s)."""
+    from job_radar.linkedin.chrome import load_chrome_pause
+    from job_radar.linkedin.public import PauseSettings, load_pause
+
+    assert load_chrome_pause(session) == PauseSettings(2, 4)
+    with web(database_url, tmp_path, lambda job: None, linkedin_chrome=True) as client:
+        page = client.get("/settings").text
+        assert 'name="chrome_from"' in page and 'name="chrome_to"' in page
+        client.post("/settings/chrome-fill", data={"chrome_from": "1.5", "chrome_to": "3"})
+        assert (
+            client.post(
+                "/settings/chrome-fill", data={"chrome_from": "5", "chrome_to": "1"}
+            ).status_code
+            == 422
+        )
+    session.expire_all()
+    assert load_chrome_pause(session) == PauseSettings(1.5, 3)
+    assert load_pause(session) == PauseSettings(10, 40)  # the guest pause is untouched
+
+
+def test_pipeline_uses_the_chrome_pause(monkeypatch, database_url, session):
+    from job_radar import pipeline
+    from job_radar.config import Settings
+    from job_radar.linkedin import chrome
+    from job_radar.web.description_job import DescriptionJob
+
+    seen = {}
+
+    async def fake_fill(session, browser, *, pause, **kw):
+        seen["pause"] = pause
+        return chrome.FillStats()
+
+    async def fake_run(command, env, fill):
+        return await fill(object())
+
+    monkeypatch.setattr(chrome, "fill_descriptions", fake_fill)
+    monkeypatch.setattr(chrome, "run_with_chrome", fake_run)
+    pipeline.chrome_fill_job(Settings(database_url=database_url), DescriptionJob())
+    assert seen["pause"] == (2, 4)

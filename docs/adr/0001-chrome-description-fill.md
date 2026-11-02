@@ -29,12 +29,15 @@ Allow exactly one kind of automation, the **Chrome fill**:
 - **How it reads:** with the bookmarklet's own reader (`web/capture_read.js`, one source for
   both paths), into the same `import_capture`. Only the vacancy itself is saved, never the
   "similar jobs" on its page.
-- **Pace:** one page at a time, with the random pause from Settings → LinkedIn between pages
-  (10–40 s by default), and at most 50 vacancies per run. There is no daily cap: a person
+- **Pace:** one page at a time, with a random pause of its own between pages (Settings →
+  Fill from Chrome, 2–4 s by default; #252: by hand the owner opens a vacancy and clicks the
+  bookmarklet within seconds), on top of the 2.5–5 s wait for each page to load, and at
+  most 50 vacancies per run. The guest pause (10–40 s) is separate and unchanged: requests
+  without a login get 429 much sooner. There is no daily cap: a person
   opens as many by hand.
 - **Stops at once on:** an authwall, login, checkpoint, captcha or any other verification
   page; HTTP 429 or 999; a different vacancy in the tab; the Stop button.
-- **Opt-in:** `JOB_RADAR_LINKEDIN_BROWSER=true`, off by default. Only the user's button
+- **Opt-in:** `JOB_RADAR_LINKEDIN_CHROME=true`, off by default. Only the user's button
   starts a run.
 
 Still forbidden: logging in, reading or setting cookies, requests to LinkedIn outside the

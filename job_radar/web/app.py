@@ -50,6 +50,7 @@ from ..description import (
 from ..language import language_risk
 from ..linkedin.alerts import LINKEDIN_SOURCES
 from ..linkedin.capture import import_capture
+from ..linkedin.chrome import load_chrome_pause, save_chrome_pause
 from ..linkedin.public import PauseSettings, load_pause, save_pause
 from ..models import (
     Application,
@@ -889,6 +890,19 @@ def create_app(
         context = _settings_context(session, settings) | {"message": "LinkedIn pause saved."}
         return templates.TemplateResponse(request, "settings.html", context)
 
+    @app.post("/settings/chrome-fill", response_class=HTMLResponse)
+    def save_chrome_fill_settings(
+        request: Request,
+        session: SessionDep,
+        chrome_from: Annotated[float, Form(ge=0, le=600)] = 2,
+        chrome_to: Annotated[float, Form(ge=0, le=600)] = 4,
+    ) -> HTMLResponse:
+        if chrome_from > chrome_to:
+            raise HTTPException(status_code=422, detail="From must not be more than To")
+        save_chrome_pause(session, PauseSettings(chrome_from, chrome_to))
+        context = _settings_context(session, settings) | {"message": "Chrome fill pause saved."}
+        return templates.TemplateResponse(request, "settings.html", context)
+
     @app.post("/settings/capture", response_class=HTMLResponse)
     def save_capture_settings(
         request: Request,
@@ -1098,6 +1112,8 @@ def _settings_context(session: Session, settings: Settings) -> dict:
         "claude_kinds": CLAUDE_KINDS,
         "claude": claude.load_claude_settings(session),
         "pause": load_pause(session),
+        "chrome_pause": load_chrome_pause(session),
+        "chrome_on": settings.linkedin_chrome,
         "close_after": load_close_after(session),
         "models": claude.MODELS,
         "languages": claude.LANGUAGES,

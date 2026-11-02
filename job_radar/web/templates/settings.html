@@ -78,6 +78,17 @@
   </form>
 </section>
 <section class="panel-card">
+  <h2 class="section-title">Fill from Chrome</h2>
+  <p class="small muted">Pause between vacancies when the Fill from Chrome button opens them in your Chrome, a random time in this range (#252). Separate from the guest pause above. {% if not chrome_on %}Off: set <code>JOB_RADAR_LINKEDIN_CHROME=true</code> in <code>.env</code>.{% endif %} docs/linkedin-chrome-fill.md</p>
+  <form method="post" action="/settings/chrome-fill">
+    <div class="form-grid">
+      <label>Pause from, s <input type="number" class="form-control form-control-sm" name="chrome_from" value="{{ chrome_pause.pause_from | round(1) }}" min="0" max="600" step="any"></label>
+      <label>Pause to, s <input type="number" class="form-control form-control-sm" name="chrome_to" value="{{ chrome_pause.pause_to | round(1) }}" min="0" max="600" step="any"></label>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+  </form>
+</section>
+<section class="panel-card">
   <h2 class="section-title">Capture</h2>
   <p class="small muted">After the bookmarklet saved a page, its tab shows the result and closes itself. <a href="/capture">Capture</a></p>
   <form method="post" action="/settings/capture">

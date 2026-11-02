@@ -40,7 +40,7 @@ pinned to the version that was measured).
    - reads the page with the bookmarklet's own reader (`web/capture_read.js`) and saves it
      as the bookmarklet would, but only the vacancy itself: the "similar jobs" on its page
      are not added to To review;
-   - waits the random pause from **Settings → LinkedIn** (10–40 s by default), then goes on
+   - waits its own random pause, **Settings → Fill from Chrome** (2–4 s by default, #252; the guest pause of the Descriptions button stays 10–40 s), then goes on
      to the next vacancy in the same tab. Before leaving the page, it checks again that the
      tab is still its own.
 4. At the end it closes its tab, so nothing is left open.

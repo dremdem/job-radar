@@ -86,8 +86,7 @@ def chrome_fill_job(settings: Settings, job) -> None:
     import asyncio
     import os
 
-    from .linkedin.chrome import fill_descriptions, run_with_chrome
-    from .linkedin.public import load_pause
+    from .linkedin import chrome
 
     env = dict(os.environ)
     if settings.playwright_mcp_extension_token:
@@ -95,10 +94,10 @@ def chrome_fill_job(settings: Settings, job) -> None:
     engine = make_engine(settings.database_url)
     try:
         with make_session_factory(engine)() as session:
-            pause = load_pause(session)
+            pause = chrome.load_chrome_pause(session)  # its own, not the guest one (#252)
 
             async def fill(browser):
-                return await fill_descriptions(
+                return await chrome.fill_descriptions(
                     session,
                     browser,
                     pause=(pause.pause_from, pause.pause_to),
@@ -111,7 +110,8 @@ def chrome_fill_job(settings: Settings, job) -> None:
                     echo=job.echo,
                 )
 
-            stats = asyncio.run(run_with_chrome(settings.linkedin_chrome_command, env, fill))
+            command = settings.linkedin_chrome_command
+            stats = asyncio.run(chrome.run_with_chrome(command, env, fill))
             job.finish(blocked=stats.blocked, reason=stats.reason, stopped=stats.stopped)
     finally:
         engine.dispose()
