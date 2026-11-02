@@ -1,0 +1,327 @@
+"""Chrome fill (#247) with a fake browser: what it opens, reads, saves, and when it stops."""
+
+import asyncio
+import threading
+
+from sqlalchemy import func, select
+
+from job_radar.linkedin.alerts import AlertJob, add_linkedin_job
+from job_radar.linkedin.chrome import (
+    EXPAND,
+    PROBE,
+    READER,
+    block_reason,
+    fill_descriptions,
+    parse_result,
+)
+from job_radar.models import JobSnapshot, LinkedInFetch, Opportunity, SourceType
+
+VISIBLE = "We build payments.\nRequirements:\n- Python, FastAPI"
+FOLDED = "\n- PostgreSQL\nFully remote, worldwide."
+
+
+class FakePage:
+    def __init__(self, job_id, *, status=200, href=None, title=None, folded=True, text=None):
+        self.job_id = job_id
+        self.status = status
+        self.href = href or f"https://www.linkedin.com/jobs/view/{job_id}/"
+        self.title = title or f"Senior Python Engineer | Acme {job_id} | LinkedIn"
+        self.folded = folded
+        self.text = text
+
+
+class FakeBrowser:
+    """One tab, like the extension. `pages` says what LinkedIn shows for each job id."""
+
+    def __init__(self, pages=None, *, after_open=None):
+        self.pages = pages or {}
+        self.calls: list[tuple[str, str]] = []
+        self.page: FakePage | None = None
+        self.after_open = after_open  # e.g. the user clicks elsewhere: replace the page
+
+    def _show(self, url):
+        job_id = url.rstrip("/").split("/")[-1]
+        self.page = self.pages.get(job_id) or FakePage(job_id)
+        if self.after_open:
+            self.page = self.after_open(self.page) or self.page
+
+    async def open_tab(self, url):
+        self.calls.append(("open_tab", url))
+        self._show(url)
+
+    async def navigate(self, url):
+        self.calls.append(("navigate", url))
+        self._show(url)
+
+    async def close_tab(self):
+        self.calls.append(("close_tab", ""))
+
+    async def evaluate(self, function):
+        p = self.page
+        if function == PROBE:
+            self.calls.append(("probe", ""))
+            return {"href": p.href, "title": p.title, "status": p.status}
+        if function == EXPAND:
+            self.calls.append(("expand", ""))
+            if p.folded:
+                p.folded = False
+                return "… more"
+            return ""
+        assert READER in function, "only the bookmarklet's own reader reads the page"
+        self.calls.append(("read", ""))
+        description = p.text if p.text is not None else VISIBLE + ("" if p.folded else FOLDED)
+        job_id = p.href.split("/jobs/view/")[-1].strip("/") if "/jobs/view/" in p.href else None
+        return {
+            "source_url": p.href,
+            "cards": [
+                {"job_id": p.job_id, "text": f"Senior Python Engineer\nAcme {p.job_id}\nRemote"},
+                {"job_id": "777", "text": "Similar job\nOther Co\nBerlin"},  # "similar jobs"
+            ],
+            "detail": {"job_id": job_id, "page_title": p.title, "description": description},
+        }
+
+
+def vacancy(session, job_id, title="Senior Python Engineer"):
+    add_linkedin_job(
+        session,
+        AlertJob(job_id, title, f"Acme {job_id}", "Remote", None, None),
+        SourceType.LINKEDIN_ALERT,
+    )
+    session.commit()
+
+
+def run(session, browser, **kw):
+    async def no_sleep(_):
+        return None
+
+    return asyncio.run(fill_descriptions(session, browser, pause=(0, 0), sleep=no_sleep, **kw))
+
+
+def descriptions(session):
+    return {s.source_record.external_id: s.raw_text for s in session.scalars(select(JobSnapshot))}
+
+
+def test_folded_description_is_expanded_before_reading(session):
+    vacancy(session, "101")
+    stats = run(session, FakeBrowser())
+    saved = descriptions(session)["101"]
+    assert saved == VISIBLE + FOLDED and len(saved) > len(VISIBLE)
+    assert (stats.total, stats.requests, stats.saved, stats.errors) == (1, 1, 1, 0)
+
+
+def test_own_tab_one_page_at_a_time_then_closed(session):
+    vacancy(session, "101")
+    vacancy(session, "102")
+    browser = FakeBrowser()
+    run(session, browser)
+    kinds = [c[0] for c in browser.calls]
+    assert kinds[0] == "open_tab"  # never the tab you are working in
+    assert kinds.count("open_tab") == 1 and kinds.count("navigate") == 1
+    assert kinds[-1] == "close_tab"
+    urls = [u for k, u in browser.calls if k in ("open_tab", "navigate")]
+    assert sorted(urls) == [
+        "https://www.linkedin.com/jobs/view/101/",
+        "https://www.linkedin.com/jobs/view/102/",
+    ]
+    # Expanding comes before reading on every page.
+    order = [k for k in kinds if k in ("expand", "read")]
+    assert order == ["expand", "read", "expand", "read"]
+
+
+def test_similar_jobs_on_the_page_are_not_imported(session):
+    vacancy(session, "101")
+    run(session, FakeBrowser())
+    assert session.scalar(select(func.count(Opportunity.id))) == 1
+
+
+def test_blocks_stop_the_run(session):
+    for page in (
+        FakePage("101", status=429),
+        FakePage("101", status=999),
+        FakePage("101", href="https://www.linkedin.com/authwall?trk=x"),
+        FakePage("101", href="https://www.linkedin.com/checkpoint/challenge/abc"),
+        FakePage("101", title="Security Verification | LinkedIn"),
+    ):
+        session.rollback()
+        for row in session.scalars(select(LinkedInFetch)):
+            session.delete(row)
+        if not session.scalar(select(func.count(Opportunity.id))):
+            vacancy(session, "101")
+            vacancy(session, "102")
+        browser = FakeBrowser({"101": page, "102": FakePage("102")})
+        stats = run(session, browser)
+        assert stats.blocked and stats.reason, page.__dict__
+        opened = [u for k, u in browser.calls if k in ("open_tab", "navigate")]
+        assert len(opened) == 1, f"went on after {stats.reason}"
+        assert ("read", "") not in browser.calls
+        assert ("close_tab", "") not in browser.calls  # left open for you to see
+        assert descriptions(session) == {}
+        assert session.scalar(select(LinkedInFetch.status)) == "blocked"
+
+
+def test_another_page_in_the_tab_saves_nothing(session):
+    vacancy(session, "101")
+    # You clicked another vacancy in the same tab before the run read it.
+    browser = FakeBrowser(
+        after_open=lambda page: FakePage(
+            page.job_id, href="https://www.linkedin.com/jobs/view/555/"
+        )
+    )
+    stats = run(session, browser)
+    assert stats.blocked and "another page" in stats.reason
+    assert descriptions(session) == {}
+    assert ("read", "") not in browser.calls and ("expand", "") not in browser.calls
+
+
+def test_tab_left_before_the_next_vacancy_stops_before_navigating(session):
+    vacancy(session, "101")
+    vacancy(session, "102")
+    browser = FakeBrowser()
+    original = browser.evaluate
+    probes = []
+
+    async def evaluate(function):
+        result = await original(function)
+        if function == PROBE:
+            probes.append(1)
+            if len(probes) == 2:  # the check before leaving page 1: you are on Gmail now
+                gmail = "https://mail.google.com/mail/u/0/"
+                return {"href": gmail, "title": "Inbox", "status": 200}
+        return result
+
+    browser.evaluate = evaluate
+    stats = run(session, browser)
+    assert stats.blocked and stats.saved == 1
+    assert [k for k, _ in browser.calls].count("navigate") == 0  # your tab is never navigated
+
+
+def test_rerun_skips_saved_and_does_not_duplicate(session):
+    vacancy(session, "101")
+    vacancy(session, "102")
+    run(session, FakeBrowser(), max_per_run=1)
+    assert len(descriptions(session)) == 1
+    changed = {n: FakePage(n, text="changed") for n in ("101", "102")}
+    browser = FakeBrowser(changed)
+    stats = run(session, browser)
+    assert stats.total == 1  # continues with what is left
+    assert session.scalar(select(func.count(JobSnapshot.id))) == 2
+    first = [d for d in descriptions(session).values() if d != "changed"]
+    assert len(first) == 1  # the first description is not overwritten
+    assert run(session, FakeBrowser()).total == 0
+
+
+def test_stop_button(session):
+    vacancy(session, "101")
+    stop = threading.Event()
+    stop.set()
+    stats = run(session, FakeBrowser(), stop=stop)
+    assert stats.stopped and stats.requests == 0
+
+
+def test_pages_without_description_stop_after_three(session):
+    for n in range(5):
+        vacancy(session, f"10{n}")
+    pages = {f"10{n}": FakePage(f"10{n}", text="") for n in range(5)}
+    stats = run(session, FakeBrowser(pages))
+    assert stats.blocked and stats.errors == 3 and stats.requests == 3
+
+
+def test_block_reason_and_parse_result():
+    job_page = "https://www.linkedin.com/jobs/view/1/"
+    assert block_reason({"href": job_page, "title": "x", "status": 200}) is None
+    assert block_reason({"href": "https://www.linkedin.com/uas/login", "title": "", "status": 200})
+    text = '### Result\n{\n  "a": 1\n}\n### Ran Playwright code\n```js\nawait page.evaluate()\n```'
+    assert parse_result(text) == {"a": 1}
+    assert parse_result('### Result\n"… more"\n### Page\n- x') == "… more"
+
+
+def test_bookmarklet_and_fill_share_one_reader():
+    from job_radar.web.app import bookmarklet
+
+    assert READER.startswith("function () {") and "return {" in READER
+    assert "window.open" not in READER and ".click(" not in READER
+    code = bookmarklet("http://127.0.0.1:8000")
+    assert "#job-details" in code and "__READ__" not in code
+
+
+# --- web -------------------------------------------------------------------
+
+
+def web(database_url, tmp_path, runner, **extra):
+    from fastapi.testclient import TestClient
+
+    from job_radar.config import Settings
+    from job_radar.web.app import create_app
+
+    settings = Settings(database_url=database_url, profile=tmp_path / "p.yaml", **extra)
+    return TestClient(create_app(settings, start_worker=False, chrome_runner=runner))
+
+
+def test_chrome_fill_is_off_by_default(engine, database_url, tmp_path):
+    with web(database_url, tmp_path, lambda job: None) as client:
+        assert "Fill from Chrome" not in client.get("/").text
+        assert "JOB_RADAR_LINKEDIN_CHROME=true" in client.post("/chrome-fill").text
+
+
+def test_button_starts_the_run_shows_progress_and_stops(engine, database_url, tmp_path):
+    import time
+
+    release = threading.Event()
+
+    def runner(job):
+        job.progress(total=30, requests=7, saved=6, errors=1)
+        job.echo("Acme — Engineer: description saved")
+        release.wait(5)
+        job.finish(stopped=job.stop_event.is_set())
+
+    with web(database_url, tmp_path, runner, linkedin_chrome=True) as client:
+        assert "Fill from Chrome" in client.get("/").text
+        client.post("/chrome-fill")
+        for _ in range(50):
+            text = client.get("/chrome-fill/status").text
+            if "7 of 30" in text:
+                break
+            time.sleep(0.05)
+        assert "7 of 30 opened" in text and "6 saved" in text and "23 left" in text
+        assert "description saved" in text and "/chrome-fill/stop" in text
+        client.post("/chrome-fill/stop")
+        release.set()
+        for _ in range(50):
+            text = client.get("/chrome-fill/status").text
+            if "stopped by you" in text:
+                break
+            time.sleep(0.05)
+        assert "stopped by you" in text
+
+
+def test_blocked_run_says_why(engine, database_url, tmp_path):
+    import time
+
+    def runner(job):
+        job.progress(total=5, requests=1, saved=0, errors=0)
+        job.finish(blocked=True, reason="HTTP 429")
+
+    with web(database_url, tmp_path, runner, linkedin_chrome=True) as client:
+        client.post("/chrome-fill")
+        for _ in range(50):
+            text = client.get("/chrome-fill/status").text
+            if "HTTP 429" in text:
+                break
+            time.sleep(0.05)
+        assert "stopped: HTTP 429" in text and "until tomorrow" not in text
+
+
+def test_page_changed_while_reading_saves_nothing(session):
+    vacancy(session, "101")
+    browser = FakeBrowser()
+    original = browser.evaluate
+
+    async def evaluate(function):
+        result = await original(function)
+        if function == EXPAND:  # you clicked another vacancy right after the check
+            browser.page = FakePage("101", href="https://www.linkedin.com/jobs/view/555/")
+        return result
+
+    browser.evaluate = evaluate
+    stats = run(session, browser)
+    assert stats.blocked and descriptions(session) == {}

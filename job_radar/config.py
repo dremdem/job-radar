@@ -2,6 +2,7 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,15 @@ class Settings(BaseSettings):
     linkedin_public_max_searches_per_day: int = 5
     linkedin_public_max_jobs: int = 25
     linkedin_public_max_descriptions_per_day: int = 100
+    # Chrome fill (#247): descriptions read in your own Chrome through Playwright MCP's
+    # extension; opt-in, see docs/linkedin-chrome-fill.md and docs/adr/0001.
+    linkedin_chrome: bool = False
+    linkedin_chrome_command: str = "npx -y @playwright/mcp@0.0.84 --extension"
+    linkedin_chrome_max_per_run: int = 50
+    # Shown by the Playwright extension; without it every run asks you to allow the connection.
+    playwright_mcp_extension_token: str | None = Field(
+        default=None, validation_alias="PLAYWRIGHT_MCP_EXTENSION_TOKEN"
+    )
     # Telegram via the existing telegram-mcp server (docs/telegram.md); off without a command.
     telegram_mcp_command: str | None = None
     telegram_sources: Path = Path("data/telegram.yaml")

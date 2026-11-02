@@ -84,8 +84,10 @@ from .description_job import DescriptionJob
 from .sync_job import Runner, SyncJob
 
 HISTORY_SHOWN = 8
+# What the bookmarklet reads, shared with the Chrome fill (#247): one reader for both.
+CAPTURE_READ = (Path(__file__).parent / "capture_read.js").read_text()
 BOOKMARKLETS = {
-    name: (Path(__file__).parent / f"{name}.js").read_text()
+    name: (Path(__file__).parent / f"{name}.js").read_text().replace("__READ__", CAPTURE_READ)
     for name in ("bookmarklet", "bookmarklet_debug")
 }
 
@@ -254,6 +256,7 @@ def create_app(
     claude_runner: ClaudeRunner | None = None,
     start_worker: bool = True,
     description_runner: Callable[[DescriptionJob], None] | None = None,
+    chrome_runner: Callable[[DescriptionJob], None] | None = None,
 ) -> FastAPI:
     """``start_worker=False``: tests drive the Claude worker with ``run_once``."""
     settings = settings or get_settings()
@@ -262,7 +265,13 @@ def create_app(
     description_runner = description_runner or (lambda job: pipeline.description_job(settings, job))
 
     def start_descriptions() -> bool:
+        if chrome_job.state == "running":  # one LinkedIn description run at a time
+            return False
         return description_job.start(description_runner)
+
+    # The Chrome fill (#247): descriptions read in your own Chrome; tests pass a fake.
+    chrome_job = DescriptionJob(blocked_note="stopped: {reason}")
+    chrome_runner = chrome_runner or (lambda job: pipeline.chrome_fill_job(settings, job))
 
     # The Sync button runs the same pipeline as `./jr sync`, but leaves the slow LinkedIn
     # descriptions to the background job (#205); tests pass a fake.
@@ -838,6 +847,28 @@ def create_app(
     @app.get("/descriptions/status", response_class=HTMLResponse)
     def description_job_status(request: Request) -> HTMLResponse:
         return descriptions_status(request)
+
+    def chrome_status(request: Request, off: bool = False, busy: bool = False) -> HTMLResponse:
+        context = {"job": chrome_job, "off": off, "busy": busy}
+        return templates.TemplateResponse(request, "_chrome_status.html", context)
+
+    @app.post("/chrome-fill", response_class=HTMLResponse)
+    def start_chrome_fill(request: Request) -> HTMLResponse:
+        if not settings.linkedin_chrome:
+            return chrome_status(request, off=True)
+        if description_job.state == "running":
+            return chrome_status(request, busy=True)
+        chrome_job.start(chrome_runner)  # a second click just shows the running one
+        return chrome_status(request)
+
+    @app.post("/chrome-fill/stop", response_class=HTMLResponse)
+    def stop_chrome_fill(request: Request) -> HTMLResponse:
+        chrome_job.stop()
+        return chrome_status(request)
+
+    @app.get("/chrome-fill/status", response_class=HTMLResponse)
+    def chrome_fill_status(request: Request) -> HTMLResponse:
+        return chrome_status(request)
 
     @app.get("/linkedin/log", response_class=HTMLResponse)
     def linkedin_log(request: Request, session: SessionDep, days: int = 7) -> HTMLResponse:

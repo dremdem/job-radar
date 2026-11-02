@@ -23,6 +23,8 @@ A new tab opens on `/capture` and shows what was received: jobs on the page, new
 3. The capture page posts the data to the local server (same origin, so LinkedIn's security policy is not involved) and clears the fragment.
 4. The server parses the card text (title, company, location, salary, Easy Apply; noise such as "Promoted", "Be an early applicant", "3 connections work here" is dropped), creates opportunities with `source_type = linkedin_capture` (dedup by LinkedIn job id across alert, search and capture), scores them like alert jobs and stores a description as a `JobSnapshot`.
 
+The reading itself lives in `job_radar/web/capture_read.js`; the bookmarklet wraps it, and the [Chrome fill](linkedin-chrome-fill.md) (#247) runs the very same function on the vacancy pages it opens, so the two never drift apart.
+
 LinkedIn changes its page layout from time to time. If cards come back empty or wrong, the capture page says so; send a screenshot and the parser gets a new rule and test.
 
 ## hh.ru vacancies

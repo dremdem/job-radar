@@ -81,6 +81,42 @@ def fetch_descriptions(
     )
 
 
+def chrome_fill_job(settings: Settings, job) -> None:
+    """The Chrome fill button's background run (#247): descriptions read in your own Chrome."""
+    import asyncio
+    import os
+
+    from .linkedin.chrome import fill_descriptions, run_with_chrome
+    from .linkedin.public import load_pause
+
+    env = dict(os.environ)
+    if settings.playwright_mcp_extension_token:
+        env["PLAYWRIGHT_MCP_EXTENSION_TOKEN"] = settings.playwright_mcp_extension_token
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            pause = load_pause(session)
+
+            async def fill(browser):
+                return await fill_descriptions(
+                    session,
+                    browser,
+                    pause=(pause.pause_from, pause.pause_to),
+                    stop=job.stop_event,
+                    max_per_run=settings.linkedin_chrome_max_per_run,
+                    on_wait=job.waiting,
+                    on_progress=lambda s: job.progress(
+                        total=s.total, requests=s.requests, saved=s.saved, errors=s.errors
+                    ),
+                    echo=job.echo,
+                )
+
+            stats = asyncio.run(run_with_chrome(settings.linkedin_chrome_command, env, fill))
+            job.finish(blocked=stats.blocked, reason=stats.reason, stopped=stats.stopped)
+    finally:
+        engine.dispose()
+
+
 def import_descriptions(session: Session, settings: Settings, echo: Echo) -> None:
     """Inline, for `./jr sync` and `job-radar import descriptions`."""
     if not settings.linkedin_public_search:

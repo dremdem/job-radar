@@ -1,0 +1,21 @@
+{# Chrome fill (#247): descriptions read in your own Chrome; see docs/linkedin-chrome-fill.md. #}
+{% set finished = job.state in ("done", "failed") %}
+<span id="chrome-status" class="small"{% if job.state == "running" %} hx-get="/chrome-fill/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  {% if off %}
+    <b>Chrome fill:</b> off; set <code>JOB_RADAR_LINKEDIN_CHROME=true</code> in <code>.env</code> (docs/linkedin-chrome-fill.md).
+  {% elif busy %}
+    <b>Chrome fill:</b> the Descriptions job is running; try again when it ends.
+  {% elif job.state == "running" %}
+    <b>Chrome fill:</b> {{ job.requests }} of {{ job.total }} opened · {{ job.saved }} saved · {{ job.total - job.requests }} left{% if job.errors %} · <span class="neg">{{ job.errors }} without description</span>{% endif %}{% if job.next_in is not none %} · next in {{ job.next_in }} s{% endif %}
+    · <button type="button" class="btn btn-sm btn-outline-secondary py-0" hx-post="/chrome-fill/stop" hx-target="#chrome-status" hx-swap="outerHTML">Stop</button>
+    {% if job.lines %}<span class="muted"> · {{ job.lines[-1] | truncate(80, true, "…") }}</span>{% endif %}
+  {% elif finished %}
+    <b>Chrome fill {{ (job.finished_at | local("%H:%M")) if job.finished_at else "" }}:</b>
+    <span{% if job.blocked or job.state == "failed" %} class="neg"{% endif %}>{{ job.outcome }}</span>
+    {% if job.total %} · {{ job.requests }} of {{ job.total }} opened · {{ job.saved }} saved{% if job.errors %} · {{ job.errors }} without description{% endif %}{% endif %}
+    {% if job.saved %} · <a href="/">reload</a>{% endif %}
+    · <a href="/linkedin/log">log</a>
+    {% if job.lines %}<span class="muted" title="{{ job.lines | join('\n') }}"> · {{ job.lines[-1] | truncate(80, true, "…") }}</span>{% endif %}
+    <button type="button" class="link status-dismiss" title="Hide until the next run" aria-label="Hide">✕</button>
+  {% endif %}
+</span>

@@ -25,6 +25,7 @@ class DescriptionJob:
     lines: list[str] = field(default_factory=list)
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    blocked_note: str = "LinkedIn blocked ({reason}), stopped until tomorrow"
     stop_event: threading.Event = field(default_factory=threading.Event, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
@@ -84,7 +85,7 @@ class DescriptionJob:
         if self.state == "failed":
             return f"failed: {self.error}"
         if self.blocked:
-            return f"LinkedIn blocked ({self.reason}), stopped until tomorrow"
+            return self.blocked_note.format(reason=self.reason)
         if self.stopped:
             return "stopped by you"
         if self.total == 0 and not self.limit_reached:
