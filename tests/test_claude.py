@@ -687,3 +687,32 @@ def test_status_says_when_the_pause_ends(client, session):
 
 def test_no_browser_notifications(client):
     assert "Notification" not in client.get("/").text  # #217
+
+
+def test_finished_skip_auto_ignores_when_the_reason_is_chosen(session, tmp_path):
+    from job_radar.auto_ignore import Rules, save_rules
+    from job_radar.models import OpportunityState
+
+    save_rules(session, Rules(countries=(), claude_kinds=("location",)))
+    eu, stack = vacancy(session, title="EU job"), vacancy(session, title="Stack job")
+    claude.enqueue(session, [eu.id, stack.id])
+    skip = dict(RESULT, verdict="skip")
+    w = worker(
+        session,
+        FakeRunner(
+            [
+                Reply("{}", skip | {"ignore_reason": {"kind": "location", "detail": "EU only"}},
+                      "s1", None),
+                Reply("{}", skip | {"ignore_reason": {"kind": "stack", "detail": "TensorFlow"}},
+                      "s2", None),
+            ]
+        ),
+        tmp_path,
+    )  # fmt: skip
+    assert w.run_once() and w.run_once()
+    session.expire_all()
+    assert (eu.state, eu.auto_ignore_reason) == (
+        OpportunityState.AUTO_IGNORE,
+        "Claude: location: EU only",
+    )
+    assert (stack.state, stack.auto_ignore_reason) == (OpportunityState.NEW, None)

@@ -19,7 +19,15 @@ from .. import applications as apps
 from .. import manual, pipeline
 from ..ai.analysis import latest_analysis, recheck_stack
 from ..ai.analysis import risks as ai_risks
-from ..auto_ignore import Rules, apply_to_review, load_rules, parse_countries, save_rules
+from ..auto_ignore import (
+    CLAUDE_KINDS,
+    Rules,
+    apply_to_review,
+    load_rules,
+    parse_claude_kinds,
+    parse_countries,
+    save_rules,
+)
 from ..claude import analysis as claude
 from ..claude import memory as claude_memory
 from ..claude.analysis import ClaudeSettings
@@ -626,6 +634,8 @@ def create_app(
         language: Annotated[str | None, Form()] = None,
         days: Annotated[int, Form(ge=1, le=3650)] = 90,
         countries: Annotated[str, Form()] = "",
+        claude_any: Annotated[str | None, Form()] = None,
+        claude_kinds: Annotated[list[str] | None, Form()] = None,
     ) -> HTMLResponse:
         rules = Rules(
             hybrid=hybrid is not None,
@@ -637,6 +647,8 @@ def create_app(
             language=language is not None,
             days=days,
             countries=parse_countries(countries),
+            claude_any=claude_any is not None,
+            claude_kinds=parse_claude_kinds(claude_kinds),
         )
         save_rules(session, rules)
         context = _settings_context(session, settings)
@@ -1052,6 +1064,7 @@ def save_close_after(session: Session, seconds: float) -> None:
 def _settings_context(session: Session, settings: Settings) -> dict:
     return {
         "rules": load_rules(session),
+        "claude_kinds": CLAUDE_KINDS,
         "claude": claude.load_claude_settings(session),
         "pause": load_pause(session),
         "close_after": load_close_after(session),

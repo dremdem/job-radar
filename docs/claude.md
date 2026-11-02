@@ -7,7 +7,7 @@ The local model (docs/ai.md) sorts every vacancy cheaply. For the few vacancies 
 1. **One vacancy:** press **✨ Claude** in its row. It is queued at once. The button is there only when the vacancy has a description: without one there is nothing to analyze, and the row says so (open the vacancy and click the bookmarklet). A row with a finished analysis has **↻ again** to run it once more (#146).
 2. **Several:** tick them, or press **Select ≥ 6.5** to tick every row with that score or more and a description. Vacancies without a description are skipped when queued; the status says how many. On a phone, the tick is the big **Select** toggle in the row's buttons, away from the title link (#123). While anything is ticked, a bar stays at the bottom of the screen with the count and **Analyze with Claude**, so there is no scrolling back to the top. Press it. The vacancies are queued and analyzed in the background, **4 at a time** by default (about 20–60 s each; see *Parallel analyses* below). You can keep working, reload the page or close it.
 3. Each finished vacancy updates its row by itself: a verdict badge (`apply` / `maybe` / `skip`), the match in %, and the analysis under **Claude**. The header shows the progress (`Claude: 2 queued, 1 running`). There are no browser notifications (#217): it all runs in the background.
-4. You decide. Nothing changes the vacancy's state by itself; "ignore with reason" stays a click away.
+4. You decide. Nothing changes the vacancy's state by itself, unless you switched on the auto-ignore rule **Claude said skip** for some reasons ([settings.md](settings.md#claude-said-skip), #245); "ignore with reason" stays a click away.
 
 ## What Claude gets
 
@@ -31,6 +31,7 @@ A fixed JSON structure (`--json-schema`):
 | `summary` | Two or three sentences |
 | `location` | `ok` / `risk` / `blocker` with a note and a quote |
 | `strengths`, `gaps`, `red_flags` | Each item with a quote from the description; a gap says whether it is must-have or nice-to-have and whether it is a blocker for you |
+| `ignore_reason` | When the verdict is `skip`: the one main reason, `kind` (`location`, `work_format`, `language`, `stack`, `seniority`, `salary`, `contract`, `other`) and a 1–3 word `detail` ("EU only"); `none` otherwise |
 | `questions` | What to ask the recruiter |
 | `cv_keywords` | Words from the vacancy worth having in the CV |
 

@@ -26,6 +26,16 @@
       <label class="form-check"><input type="checkbox" class="form-check-input" name="{{ name }}" {% if rules[name] %}checked{% endif %}> {{ label }}</label>
       {% endfor %}
     </div>
+    <fieldset class="claude-skip">
+      <legend class="small"><b>Claude said skip</b> <span class="muted">— auto-ignore when Claude's analysis says <code>skip</code> for one of these main reasons (#245)</span></legend>
+      <label class="form-check"><input type="checkbox" class="form-check-input" name="claude_any" {% if rules.claude_any %}checked{% endif %}> Any reason (every <code>skip</code>)</label>
+      <div class="chips small">
+        {% for kind, label in claude_kinds.items() %}
+        <label class="form-check form-check-inline"><input type="checkbox" class="form-check-input" name="claude_kinds" value="{{ kind }}"{% if kind in rules.claude_kinds %} checked{% endif %}> {{ label }}</label>
+        {% endfor %}
+      </div>
+      <span class="small muted">nothing ticked: off. A stack Claude calls a blocker may be close to your CV — leave it unticked to look yourself</span>
+    </fieldset>
     <div class="form-row">
       <label class="d-flex align-items-center gap-2 flex-grow-1">Countries <input type="text" class="form-control form-control-sm" name="countries" value="{{ rules.countries | join(', ') }}" placeholder="India, Pakistan"></label>
       <span class="small muted">a vacancy located there is ignored at once; India and Pakistan also by their big cities and states. Empty: off</span>

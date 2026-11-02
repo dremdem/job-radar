@@ -69,3 +69,19 @@ def test_countries_are_edited_on_settings(client, session):
     assert "India, Pakistan, Vietnam" in client.get("/settings").text
     client.post("/settings", data={"countries": "", "days": "90"})
     assert load_rules(session).countries == ()
+
+
+def test_claude_skip_reasons_are_chosen_on_settings(client, session):
+    text = client.get("/settings").text
+    assert 'name="claude_any"' in text and 'value="stack"' in text
+    client.post(
+        "/settings",
+        data={"claude_kinds": ["location", "work_format"], "days": "90", "countries": "India"},
+    )
+    rules = load_rules(session)
+    assert (rules.claude_any, rules.claude_kinds) == (False, ("location", "work_format"))
+    text = client.get("/settings").text
+    assert 'value="location" checked' in text and 'value="stack" checked' not in text
+    client.post("/settings", data={"claude_any": "on", "claude_kinds": ["bogus"], "days": "90"})
+    rules = load_rules(session)
+    assert (rules.claude_any, rules.claude_kinds) == (True, ())

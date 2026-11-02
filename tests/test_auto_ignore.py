@@ -263,3 +263,65 @@ def test_new_india_vacancy_goes_to_auto_ignored_on_import(session):
     o = session.scalars(select(Opportunity)).one()
     assert o.state is OpportunityState.AUTO_IGNORE
     assert o.auto_ignore_reason == "country: India (Hyderabad (Remote))"
+
+
+def claude_says(session, o, verdict="skip", kind="location", detail="EU only"):
+    from job_radar.models import ClaudeAnalysis
+
+    result = {"verdict": verdict, "match": 20, "summary": "Нет."}
+    if kind is not None:
+        result["ignore_reason"] = {"kind": kind, "detail": detail}
+    session.add(
+        ClaudeAnalysis(
+            opportunity_id=o.id, model="sonnet", prompt_version="3", state="done", result=result
+        )
+    )
+    session.commit()
+
+
+def test_claude_skip_rule_only_for_the_chosen_reasons(session):
+    rules = Rules(countries=(), claude_kinds=("location", "work_format"))
+    eu, hybrid, stack = opp(session), opp(session, company="B"), opp(session, company="C")
+    claude_says(session, eu, kind="location", detail="EU only")
+    claude_says(session, hybrid, kind="work_format", detail="hybrid London")
+    claude_says(session, stack, kind="stack", detail="C# .NET")
+    assert reason_for(session, eu, rules, NOW) == "Claude: location: EU only"
+    assert reason_for(session, hybrid, rules, NOW) == "Claude: hybrid / on-site: hybrid London"
+    assert reason_for(session, stack, rules, NOW) is None  # stack: you look yourself
+    assert reason_for(session, eu, Rules(countries=()), NOW) is None  # off by default
+
+
+def test_claude_skip_rule_any_reason(session):
+    rules = Rules(countries=(), claude_any=True)
+    stack, old = opp(session), opp(session, company="Old")
+    claude_says(session, stack, kind="stack", detail="")
+    claude_says(session, old, kind=None)  # an analysis from before ignore_reason
+    assert reason_for(session, stack, rules, NOW) == "Claude: stack"
+    assert reason_for(session, old, rules, NOW) == "Claude: skip"
+    # Picked reasons alone never match an analysis without one.
+    assert reason_for(session, old, Rules(countries=(), claude_kinds=("other",)), NOW) is None
+
+
+def test_claude_skip_rule_ignores_apply_and_maybe_and_uses_the_latest(session):
+    rules = Rules(countries=(), claude_any=True)
+    o = opp(session)
+    claude_says(session, o, verdict="maybe", kind="none", detail="")
+    assert reason_for(session, o, rules, NOW) is None
+    claude_says(session, o)  # skip
+    claude_says(session, o, verdict="apply", kind="none", detail="")  # analysed again
+    assert reason_for(session, o, rules, NOW) is None
+
+
+def test_claude_skip_rule_round_trip_and_apply_to_review(session):
+    rules = Rules(countries=(), claude_kinds=("location",))
+    save_rules(session, rules)
+    assert load_rules(session) == rules
+    new, mine = opp(session), opp(session, company="B", state=OpportunityState.INTERESTED)
+    claude_says(session, new)
+    claude_says(session, mine)
+    assert apply_to_review(session, NOW) == 1
+    assert (new.state, new.auto_ignore_reason) == (
+        OpportunityState.AUTO_IGNORE,
+        "Claude: location: EU only",
+    )
+    assert mine.state is OpportunityState.INTERESTED  # your own state is never changed

@@ -13,13 +13,24 @@
 | Hybrid / on-site | "hybrid" or "on-site" appears in the title or location | `hybrid / on-site` |
 | No Python in the description | the vacancy has a description, Python is not in it, and not in the title either | `no Python in the description` |
 | Description not in English | the description (or the title) is in a language other than English or Russian ([applications.md](applications.md#vacancy-language)) | `language: German` |
+| Claude said skip | Claude's latest finished analysis says `skip`, and its main reason (`ignore_reason.kind`) is one you picked — or any reason at all ([below](#claude-said-skip), #245) | `Claude: location: EU only` |
 | AI: hybrid / country-only | the local model found, with a quote checked against the description, that the job is hybrid / on-site or limited to some countries ([ai.md](ai.md)); works only with `JOB_RADAR_AI_ANALYSIS=true`, off by default | `AI: only for UK` |
 
 Checked in this order; the first match gives the reason. **Window**: 90 days by default (setting), so a company comes back to To review three months later. The countries rule is **on** with India and Pakistan; all other rules are **off** until switched on.
 
+## Claude said skip
+
+Claude's analysis names the one main reason for a `skip` ([claude.md](claude.md#what-comes-back)). Some reasons are clear-cut, others need your eyes: a stack Claude calls a blocker may be close to something in your CV. So the rule lets you choose:
+
+- **Any reason**: every `skip` verdict auto-ignores the vacancy.
+- Or tick the reasons: **location** (only some country or region, e.g. "EU only" — any country, not a list), **hybrid / on-site** (`work_format`), **language**, **stack**, **seniority**, **salary**, **contract**, **other**.
+
+Nothing ticked: the rule is off (the default). `apply` and `maybe` never trigger it, and an old analysis without a named reason triggers only **Any reason**. It runs when an analysis finishes — the vacancy leaves To review by itself if it is still `new` — and with **Apply to To review now**.
+
 ## When they run
 
 - On every new vacancy entering the queue: alert emails, public search, bookmarklet; the Python rule also when the bookmarklet brings the description of a vacancy already in To review.
+- When a Claude analysis finishes, for the **Claude said skip** rule.
 - **Apply to To review now** on the Settings page runs them over the vacancies currently `new`.
 - Your own states are never changed: only `new` vacancies are auto-ignored.
 

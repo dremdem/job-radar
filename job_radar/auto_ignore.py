@@ -12,6 +12,7 @@ from .models import (
     Application,
     ApplicationReview,
     AppSetting,
+    ClaudeAnalysis,
     Opportunity,
     OpportunityState,
     Rejection,
@@ -36,6 +37,17 @@ COUNTRY_PLACES = {
         "Hyderabad", "Quetta", "Sialkot",
     ),
 }  # fmt: skip
+# The main reasons Claude names for a `skip` (claude/prompt.py), as shown in Settings (#245).
+CLAUDE_KINDS = {
+    "location": "location (only some country / region)",
+    "work_format": "hybrid / on-site",
+    "language": "language",
+    "stack": "stack",
+    "seniority": "seniority",
+    "salary": "salary",
+    "contract": "contract",
+    "other": "other",
+}
 
 
 @dataclass(frozen=True)
@@ -49,6 +61,8 @@ class Rules:
     language: bool = False  # title or description not in English / Russian
     days: int = 90
     countries: tuple[str, ...] = DEFAULT_COUNTRIES  # empty: the rule is off (#229)
+    claude_any: bool = False  # every `skip` from Claude (#245)
+    claude_kinds: tuple[str, ...] = ()  # or only these main reasons of a `skip`
 
     @property
     def any(self) -> bool:
@@ -62,6 +76,8 @@ class Rules:
                 self.ai_location,
                 self.language,
                 self.countries,
+                self.claude_any,
+                self.claude_kinds,
             )
         )
 
@@ -94,8 +110,9 @@ def load_rules(session: Session) -> Rules:
     if row is None or not isinstance(row.value, dict):
         return Rules()
     known = {k: v for k, v in row.value.items() if k in Rules.__dataclass_fields__}
-    if isinstance(known.get("countries"), list):  # JSON has no tuples
-        known["countries"] = tuple(known["countries"])
+    for name in ("countries", "claude_kinds"):
+        if isinstance(known.get(name), list):  # JSON has no tuples
+            known[name] = tuple(known[name])
     return Rules(**known)
 
 
@@ -104,6 +121,50 @@ def save_rules(session: Session, rules: Rules) -> None:
     row.value = asdict(rules)
     session.add(row)
     session.commit()
+
+
+def parse_claude_kinds(values: list[str] | None) -> tuple[str, ...]:
+    """Known reasons only, in the order of CLAUDE_KINDS."""
+    chosen = set(values or ())
+    return tuple(k for k in CLAUDE_KINDS if k in chosen)
+
+
+def claude_reason(session: Session, opportunity: Opportunity, rules: Rules) -> str | None:
+    """`Claude: location: EU only` when Claude's latest analysis says skip for a chosen reason."""
+    if not (rules.claude_any or rules.claude_kinds) or opportunity.id is None:
+        return None
+    result = session.scalar(
+        select(ClaudeAnalysis.result)
+        .where(
+            ClaudeAnalysis.opportunity_id == opportunity.id,
+            ClaudeAnalysis.state == "done",
+            ClaudeAnalysis.result.is_not(None),
+        )
+        .order_by(ClaudeAnalysis.id.desc())
+        .limit(1)
+    )
+    if not isinstance(result, dict) or result.get("verdict") != "skip":
+        return None
+    reason = result.get("ignore_reason")
+    kind = reason.get("kind") if isinstance(reason, dict) else None
+    if kind not in CLAUDE_KINDS:  # no named reason: an old analysis, or "none"
+        return "Claude: skip" if rules.claude_any else None
+    if not rules.claude_any and kind not in rules.claude_kinds:
+        return None
+    label = "hybrid / on-site" if kind == "work_format" else kind
+    detail = " ".join(str(reason.get("detail") or "").split())[:60]
+    return f"Claude: {label}" + (f": {detail}" if detail else "")
+
+
+def apply_claude_rule(session: Session, opportunity: Opportunity) -> bool:
+    """Run only the Claude rule, when an analysis finishes. Only `new` vacancies move."""
+    if opportunity.state is not OpportunityState.NEW:
+        return False
+    reason = claude_reason(session, opportunity, load_rules(session))
+    if reason is None:
+        return False
+    opportunity.state, opportunity.auto_ignore_reason = OpportunityState.AUTO_IGNORE, reason
+    return True
 
 
 def _utc(value: datetime) -> datetime:
@@ -182,6 +243,8 @@ def reason_for(
 
         if found := vacancy_language(opportunity.title, latest_description(opportunity)):
             return f"language: {found}"
+    if reason := claude_reason(session, opportunity, rules):
+        return reason
     if rules.ai_location:
         from .ai.analysis import auto_ignore_reason
 

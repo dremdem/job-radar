@@ -13,6 +13,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..ai.analysis import quote_in_text
+from ..auto_ignore import apply_claude_rule
 from ..description import latest_description
 from ..models import AppSetting, ClaudeAnalysis, ClaudeMessage, Opportunity
 from ..stack import current_profile
@@ -418,6 +419,8 @@ class Worker:
                 job.cost_usd = reply.cost_usd
             job.finished_at = datetime.now(UTC)
             session.commit()
+            if error is None and apply_claude_rule(session, o):  # #245
+                session.commit()
             return True
 
     def _answer_once(self) -> bool:
