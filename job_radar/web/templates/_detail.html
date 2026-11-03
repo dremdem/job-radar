@@ -6,7 +6,7 @@
   <div class="detail-head">
     <div class="detail-headline">
       <h2 class="detail-title">{{ o.title }}</h2>
-      <div class="detail-meta">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if o.salary %} · {{ o.salary }}{% endif %} · <b>{{ o.state.value }}</b></div>
+      <div class="detail-meta" title="{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if o.salary %} · {{ o.salary }}{% endif %}">{{ o.company.name }}{% if o.location %} · {{ o.location }}{% endif %}{% if o.salary %} · {{ o.salary }}{% endif %} · <b>{{ o.state.value }}</b></div>
       {% if links or panel %}
       <div class="detail-links">{# big targets, not inline text links (#164) #}
         {% for r in links %}<a class="btn btn-sm btn-outline-info link-btn"{% if loop.first %} data-open-key="o"{% endif %} href="{{ r.url }}" target="_blank" rel="noopener noreferrer">Open on {{ r.url.split("/")[2] | replace("www.", "") }} ↗{% if loop.first and panel %} <kbd>O</kbd>{% endif %}</a>{% endfor %}
