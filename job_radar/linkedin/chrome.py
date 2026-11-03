@@ -38,7 +38,7 @@ DEFAULT_PAUSE = PauseSettings(2.0, 4.0)
 # a short random step at a time, at most LOAD_TIMEOUT seconds (#254).
 LOAD_STEP = (0.4, 0.8)
 LOAD_TIMEOUT = 10.0
-EXPAND_WAIT = (0.4, 0.8)  # unfolding is in the page itself, no request
+EXPAND_WAIT = (0.6, 1.0)  # the click comes 0.3 s after EXPAND returns; unfolding is in-page
 MAX_ERRORS_IN_A_ROW = 3  # the page layout probably changed: stop rather than keep going
 # Only these Playwright MCP tools are ever called (#247): no clicks by reference, no typing.
 ALLOWED_TOOLS = frozenset({"browser_tabs", "browser_navigate", "browser_evaluate"})
@@ -77,6 +77,8 @@ PROBE = """() => {
 }""".replace("__BOXES__", DESCRIPTION_BOXES)
 # Unfold the description: only a "more" button inside the description box itself, never
 # anything else on the page (e.g. "Show more options" opens the job's action menu).
+# The click comes just after the evaluate has returned (#258): LinkedIn sends requests on
+# the click, and MCP would wait for them up to 5 s before answering.
 EXPAND = """() => {
   const boxes = document.querySelectorAll('__BOXES__');
   const more = /^\\s*(\\u2026\\s*)?((see|show)\\s+)?more\\s*$/i;
@@ -87,14 +89,14 @@ EXPAND = """() => {
         const label = (b.innerText || b.getAttribute('aria-label') || '').trim();
         const aria = b.getAttribute('aria-label') || '';
         if (more.test(label) && !/option/i.test(label + ' ' + aria)) {
-          b.click();
+          setTimeout(() => b.click(), CLICK_DELAY_MS);
           return label;
         }
       }
     }
   }
   return '';
-}""".replace("__BOXES__", DESCRIPTION_BOXES)
+}""".replace("__BOXES__", DESCRIPTION_BOXES).replace("CLICK_DELAY_MS", "300")
 
 
 class Browser(Protocol):
@@ -290,6 +292,7 @@ async def fill_descriptions(
                 break
             if await browser.evaluate(EXPAND):
                 await wait(EXPAND_WAIT)
+            expanded = time.monotonic()
             payload = await browser.evaluate(f"() => ({READER})()")
             detail = (payload or {}).get("detail") or {}
             if str(detail.get("job_id")) != job_id:  # the page changed under us
@@ -301,7 +304,7 @@ async def fill_descriptions(
             result = import_capture(session, own_payload(payload, job_id))
             timing = (
                 f"open {opened - started:.1f} s · load {ready - opened:.1f} s"
-                f" · read {time.monotonic() - ready:.1f} s"
+                f" · expand {expanded - ready:.1f} s · read {time.monotonic() - expanded:.1f} s"
             )
             say(f"{result.vacancy or f'job {job_id}'} ({timing})")
             if result.descriptions:

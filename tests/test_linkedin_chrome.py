@@ -486,4 +486,4 @@ def test_step_durations_are_in_the_log(session):
     vacancy(session, "101")
     run_timed(session, FakeBrowser())
     detail = session.scalar(select(LinkedInFetch.detail).where(LinkedInFetch.status == "ok"))
-    assert detail and all(word in detail for word in ("open", "load", "read")), detail
+    assert detail and all(word in detail for word in ("open", "load", "expand", "read")), detail

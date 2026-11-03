@@ -60,8 +60,10 @@ last vacancy it handled, and **Stop**. Stop takes effect during the pause, at th
 after the current page. The finished line says why it ended (`done`, `stopped by you`,
 `stopped: HTTP 429`, `stopped: another page in the tab: stopped`), and links to the
 **LinkedIn log**, where every page is listed with kind `chrome`. A saved page shows how
-long each step took (`ok · open 0.3 s · load 0.9 s · read 1.1 s`): opening it, waiting
-for the description, unfolding and reading it.
+long each step took (`ok · open 0.3 s · load 0.9 s · expand 0.8 s · read 0.2 s`): opening it, waiting
+for the description, unfolding it and reading it. The "more" click comes 0.3 s after the
+step that finds the button has answered: LinkedIn sends requests on that click, and
+Playwright MCP would otherwise wait up to 5 s for them (#258).
 
 A vacancy that already has a description is never opened again, so a rerun continues where
 the last one stopped, and nothing is duplicated or overwritten. Only one LinkedIn
