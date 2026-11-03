@@ -1,6 +1,7 @@
 """Chrome fill (#247) with a fake browser: what it opens, reads, saves, and when it stops."""
 
 import asyncio
+import re
 import threading
 
 from sqlalchemy import func, select
@@ -14,7 +15,7 @@ from job_radar.linkedin.chrome import (
     fill_descriptions,
     parse_result,
 )
-from job_radar.models import JobSnapshot, LinkedInFetch, Opportunity, SourceType
+from job_radar.models import JobSnapshot, LinkedInFetch, Opportunity, SourceRecord, SourceType
 
 VISIBLE = "We build payments.\nRequirements:\n- Python, FastAPI"
 FOLDED = "\n- PostgreSQL\nFully remote, worldwide."
@@ -25,6 +26,7 @@ class FakePage:
         self, job_id, *, status=200, href=None, title=None, folded=True, text=None, ready_after=0
     ):
         self.job_id = job_id
+        self.hh = bool(href and "hh.ru" in href)
         self.ready_after = ready_after  # probes before the description box is on the page
         self.status = status
         self.href = href or f"https://www.linkedin.com/jobs/view/{job_id}/"
@@ -46,7 +48,10 @@ class FakeBrowser:
 
     def _show(self, url):
         job_id = url.rstrip("/").split("/")[-1]
-        self.page = self.pages.get(job_id) or FakePage(job_id)
+        hh = "hh.ru/vacancy/" in url
+        default = FakePage(job_id, href=url, title=f"Вакансия Python-разработчик {job_id}") if hh \
+            else FakePage(job_id)  # fmt: skip
+        self.page = self.pages.get(job_id) or default
         if self.after_open:
             self.page = self.after_open(self.page) or self.page
 
@@ -80,6 +85,17 @@ class FakeBrowser:
             return ""
         assert READER in function, "only the bookmarklet's own reader reads the page"
         self.calls.append(("read", ""))
+        if p.hh:  # the bookmarklet's reader on an hh.ru vacancy page (#136)
+            m = re.search(r"hh\.ru/vacancy/(\d+)", p.href)
+            return {
+                "source": "hh",
+                "source_url": p.href,
+                "cards": [],
+                "detail": {"job_id": m.group(1) if m else None,
+                           "title": "Python-разработчик", "company": f"Компания {p.job_id}",
+                           "work_format": "удалённо", "address": "Москва",
+                           "description": p.text if p.text is not None else "Пишем на Python."},
+            }  # fmt: skip
         description = p.text if p.text is not None else VISIBLE + ("" if p.folded else FOLDED)
         job_id = p.href.split("/jobs/view/")[-1].strip("/") if "/jobs/view/" in p.href else None
         return {
@@ -487,3 +503,82 @@ def test_step_durations_are_in_the_log(session):
     run_timed(session, FakeBrowser())
     detail = session.scalar(select(LinkedInFetch.detail).where(LinkedInFetch.status == "ok"))
     assert detail and all(word in detail for word in ("open", "load", "expand", "read")), detail
+
+
+# --- hh.ru (#260) ------------------------------------------------------------
+
+
+def hh_vacancy(session, vacancy_id, score=5.0):
+    from job_radar.dedup import get_or_create_company
+
+    o = Opportunity(
+        title="Python-разработчик",
+        score=score,
+        company=get_or_create_company(session, f"Компания {vacancy_id}"),
+    )
+    session.add(
+        SourceRecord(
+            source_type=SourceType.HH,
+            external_id=vacancy_id,
+            url=f"https://hh.ru/vacancy/{vacancy_id}",
+            opportunity=o,
+        )
+    )
+    session.commit()  # fmt: skip
+    return o
+
+
+def test_hh_vacancy_is_opened_read_and_saved(session):
+    hh_vacancy(session, "4235")
+    browser = FakeBrowser()
+    stats = run(session, browser)
+    assert (stats.total, stats.saved) == (1, 1)
+    assert ("open_tab", "https://hh.ru/vacancy/4235") in browser.calls
+    assert ("expand", "") not in browser.calls  # nothing to unfold or click on hh.ru
+    assert descriptions(session) == {"4235": "Пишем на Python."}
+    assert session.scalar(select(func.count(Opportunity.id))) == 1  # no second vacancy
+
+
+def test_linkedin_and_hh_in_one_run_best_score_first(session):
+    vacancy(session, "101")  # LinkedIn, scored by its title
+    li_score = session.scalar(select(Opportunity.score))
+    hh_vacancy(session, "4235", score=li_score + 1)
+    hh_vacancy(session, "4236", score=li_score - 1)
+    browser = FakeBrowser()
+    stats = run(session, browser)
+    opened = [u for k, u in browser.calls if k in ("open_tab", "navigate")]
+    assert opened == [
+        "https://hh.ru/vacancy/4235",
+        "https://www.linkedin.com/jobs/view/101/",
+        "https://hh.ru/vacancy/4236",
+    ]
+    assert stats.saved == 3
+
+
+def test_hh_captcha_and_login_stop_the_run(session):
+    for page in (
+        FakePage("4235", href="https://hh.ru/account/captcha?backurl=%2Fvacancy%2F4235"),
+        FakePage("4235", href="https://hh.ru/account/login?backurl=%2Fvacancy%2F4235"),
+        FakePage("4235", href="https://hh.ru/vacancy/4235", status=403),
+        FakePage("4235", href="https://hh.ru/vacancy/4235", title="Подтвердите, что вы не робот"),
+    ):
+        session.rollback()
+        for row in session.scalars(select(LinkedInFetch)):
+            session.delete(row)
+        if not session.scalar(select(func.count(Opportunity.id))):
+            hh_vacancy(session, "4235", score=9)
+            vacancy(session, "101")
+        browser = FakeBrowser({"4235": page})
+        stats = run(session, browser)
+        assert stats.blocked and stats.reason, page.__dict__
+        assert ("read", "") not in browser.calls and descriptions(session) == {}
+        opened = [u for k, u in browser.calls if k in ("open_tab", "navigate")]
+        assert len(opened) == 1, f"went on to LinkedIn after {stats.reason}"
+
+
+def test_hh_page_of_another_vacancy_saves_nothing(session):
+    hh_vacancy(session, "4235")
+    browser = FakeBrowser({"4235": FakePage("4235", href="https://hh.ru/vacancy/999")})
+    stats = run(session, browser)
+    assert stats.blocked and "another page" in stats.reason
+    assert descriptions(session) == {}

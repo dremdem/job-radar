@@ -47,7 +47,7 @@ Each digest is imported once, then marked `hh_digest_done`; older digests stay `
 
 ## Descriptions: the bookmarklet (#136)
 
-The official API cannot be used: since 2025-12-15 dev.hh.ru registers apps only for employers (#101), and anonymous requests to `api.hh.ru` get 403. Job Radar does not fetch hh.ru pages by itself either.
+The official API cannot be used: since 2025-12-15 dev.hh.ru registers apps only for employers (#101), and anonymous requests to `api.hh.ru` get 403. Job Radar does not fetch hh.ru pages by itself either; the one exception is the **Fill from Chrome** button, which opens the To review hh.ru vacancies without a description in your own Chrome and reads them with this same reader (#260, [ADR 0002](adr/0002-chrome-fill-hh.md), [linkedin-chrome-fill.md](linkedin-chrome-fill.md)).
 
 Instead, open a vacancy on hh.ru (`hh.ru/vacancy/<id>`, any hh.ru subdomain) and click the same **→ Job Radar** bookmarklet as for LinkedIn ([linkedin-capture.md](linkedin-capture.md)).
 

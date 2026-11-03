@@ -1,4 +1,4 @@
-# Chrome fill: LinkedIn descriptions from your own Chrome (#247)
+# Chrome fill: LinkedIn and hh.ru descriptions from your own Chrome (#247, #260)
 
 Vacancies from alert emails and from search lists reach To review without a description.
 The **Fill from Chrome** button (in the header) opens them in your Chrome one at a time,
@@ -30,17 +30,19 @@ a vacancy take 11–20 s instead of a few.
 
 ## What a run does
 
-1. It takes the To review vacancies from LinkedIn that have no description, best score
-   first, up to 50.
+1. It takes the To review vacancies from LinkedIn and hh.ru that have no description, best
+   score first (both sites together), up to 50. hh.ru: since #260,
+   [ADR 0002](adr/0002-chrome-fill-hh.md); the page is `https://hh.ru/vacancy/<id>`.
 2. It works in **a tab of its own** and never touches your tabs. With the token, the extension connects its own connect page (`chrome-extension://…/connect.html`), and the run uses that page (#250). If the extension was given one of your tabs instead (the connect dialog), the run opens a new tab and leaves yours alone.
 3. For each vacancy it:
    - waits for the page to load and for the description to appear on it (checked every
      0.4–0.8 s, at most 10 s; #254);
-   - checks the page: on an authwall, login, checkpoint, captcha or verification page, or
-     on HTTP 429 / 999, it stops at once and leaves the tab open for you to see;
+   - checks the page: on an authwall, login, checkpoint, captcha ("не робот") or verification page, or
+     on HTTP 403 / 429 / 999, it stops at once and leaves the tab open for you to see;
    - checks that the tab shows **this** vacancy. If it shows anything else (you clicked
      around), it stops and saves nothing;
-   - presses the "… more" button **inside the description**, if there is one. Folded text
+   - on LinkedIn, presses the "… more" button **inside the description**, if there is
+     one (hh.ru shows the whole description, nothing is clicked there). Folded text
      is not in what the page shows, so without this the end of the description is lost;
    - reads the page with the bookmarklet's own reader (`web/capture_read.js`) and saves it
      as the bookmarklet would, but only the vacancy itself: the "similar jobs" on its page

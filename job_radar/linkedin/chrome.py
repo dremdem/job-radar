@@ -21,14 +21,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import AppSetting, LinkedInFetch
+from ..models import (
+    AppSetting,
+    LinkedInFetch,
+    Opportunity,
+    OpportunityState,
+    SourceRecord,
+    SourceType,
+)
 from .capture import import_capture
 from .public import PauseSettings, _without_description
 
 READER = (Path(__file__).parent.parent / "web" / "capture_read.js").read_text().strip()
 JOB_URL = "https://www.linkedin.com/jobs/view/{job_id}/"
+HH_URL = "https://hh.ru/vacancy/{job_id}"  # hh.ru vacancies too (#260, ADR 0002)
 MAX_PER_RUN = 50
 # Its own pause between pages, apart from the guest one (#252): by hand the user opens a
 # vacancy and clicks the bookmarklet within seconds.
@@ -49,12 +58,16 @@ ALLOWED_TOOLS = frozenset({"browser_tabs", "browser_navigate", "browser_evaluate
 SPEED_FLAGS = {"--snapshot-mode": "none", "--timeout-settle": "100"}
 
 _BLOCK_URL = re.compile(
-    r"authwall|/login|/signup|checkpoint|/uas/|challenge|captcha|security-verification",
+    r"authwall|/login|/signup|checkpoint|/uas/|challenge|captcha|security-verification"
+    r"|hh\.ru/account/",
     re.IGNORECASE,
 )
 _BLOCK_TITLE = re.compile(
-    r"security verification|sign in|log in|sign up|captcha|let's do a quick|verify", re.IGNORECASE
+    r"security verification|sign in|log in|sign up|captcha|let's do a quick|verify"
+    r"|не робот|подтвердите",
+    re.IGNORECASE,
 )
+_HH_PAGE = re.compile(r"^https?://(?:[\w-]+\.)?hh\.(?:ru|kz|by|uz)/vacancy/(\d+)")
 # With the token the extension connects its own connect page to the client (#250).
 _CONNECT_PAGE = re.compile(r"^chrome-extension://[a-p]{32}/connect\.html")
 _TAB_LINE = re.compile(r"^- \d+:.*\]\((\S+)\)\s*$")
@@ -70,7 +83,7 @@ DESCRIPTION_BOXES = (
 # read before anything else is done.
 PROBE = """() => {
   const nav = performance.getEntriesByType('navigation')[0];
-  const boxes = [...document.querySelectorAll('__BOXES__')];
+  const boxes = [...document.querySelectorAll('__BOXES__, [data-qa="vacancy-description"]')];
   return { href: location.href, title: document.title,
            status: nav && nav.responseStatus ? nav.responseStatus : null,
            ready: boxes.some((b) => b.innerText.trim() !== '') };
@@ -145,10 +158,19 @@ def job_id_of(href: str) -> str | None:
     return None
 
 
+def page_of(href: str) -> tuple[str, str] | None:
+    """("hh", id) for an hh.ru vacancy page, ("linkedin", id) for a LinkedIn one."""
+    if m := _HH_PAGE.match(href or ""):
+        return ("hh", m.group(1))
+    if "linkedin.com" in (href or "") and (job_id := job_id_of(href)):
+        return ("linkedin", job_id)
+    return None
+
+
 def block_reason(probe: dict[str, Any]) -> str | None:
-    """Why LinkedIn is not showing the vacancy, or None when it is."""
+    """Why the site is not showing the vacancy, or None when it is."""
     status = probe.get("status")
-    if status in (429, 999):
+    if status in (403, 429, 999):
         return f"HTTP {status}"
     href, title = str(probe.get("href") or ""), str(probe.get("title") or "")
     if _BLOCK_URL.search(href):
@@ -241,7 +263,7 @@ async def fill_descriptions(
         )  # fmt: skip
         session.commit()
 
-    todo = _without_description(session)[:max_per_run]
+    todo = _todo(session)[:max_per_run]
     stats.total = len(todo)
     progress()
     tab_url: str | None = None  # the page our own tab should be on; None: no tab yet
@@ -259,7 +281,10 @@ async def fill_descriptions(
                 stats.stopped = True
                 break
             job_id = record.external_id
-            url = JOB_URL.format(job_id=job_id)
+            hh = record.source_type == SourceType.HH
+            site = "hh.ru" if hh else "LinkedIn"
+            url = (HH_URL if hh else JOB_URL).format(job_id=job_id)
+            expected = ("hh" if hh else "linkedin", job_id)
             started = time.monotonic()
             if tab_url is None and reuse:
                 await browser.navigate(url)
@@ -268,7 +293,7 @@ async def fill_descriptions(
             else:
                 # The extension follows one tab; make sure it is still ours before leaving it.
                 here = await browser.evaluate(PROBE)
-                if job_id_of(str(here.get("href"))) != job_id_of(tab_url):
+                if page_of(str(here.get("href"))) != page_of(tab_url):
                     stats.blocked, stats.reason = True, "another page in the tab: stopped"
                     say(f"stopped: the tab shows {here.get('href')}, not our vacancy")
                     break
@@ -281,16 +306,16 @@ async def fill_descriptions(
             if reason := block_reason(probe):
                 stats.blocked, stats.reason = True, reason
                 log(job_id, opportunity.id, "blocked", reason)
-                say(f"LinkedIn: {reason} — stopped; the tab is left open for you to see")
+                say(f"{site}: {reason} — stopped; the tab is left open for you to see")
                 tab_url = None  # leave it open
                 break
-            if job_id_of(str(probe.get("href"))) != job_id:
+            if page_of(str(probe.get("href"))) != expected:
                 stats.blocked, stats.reason = True, "another page in the tab: stopped"
                 log(job_id, opportunity.id, "error", f"tab shows {probe.get('href')}")
                 say(f"stopped: expected job {job_id}, the tab shows {probe.get('href')}")
                 tab_url = None
                 break
-            if await browser.evaluate(EXPAND):
+            if not hh and await browser.evaluate(EXPAND):  # hh.ru shows it all (#260)
                 await wait(EXPAND_WAIT)
             expanded = time.monotonic()
             payload = await browser.evaluate(f"() => ({READER})()")
@@ -326,6 +351,21 @@ async def fill_descriptions(
             with contextlib.suppress(Exception):  # the tab may be gone already
                 await browser.close_tab()
     return stats
+
+
+def _todo(session: Session) -> list[tuple[Opportunity, SourceRecord]]:
+    """LinkedIn and hh.ru vacancies in To review without a description, best score first."""
+    hh = []
+    for o in session.scalars(select(Opportunity).where(Opportunity.state == OpportunityState.NEW)):
+        if any(r.snapshots for r in o.source_records):
+            continue
+        record = next((r for r in o.source_records if r.source_type == SourceType.HH), None)
+        if record is not None and record.external_id.isdigit():
+            hh.append((o, record))
+    linkedin = _without_description(session)
+    seen = {o.id for o, _ in linkedin}
+    both = linkedin + [pair for pair in hh if pair[0].id not in seen]
+    return sorted(both, key=lambda pair: -(pair[0].score if pair[0].score is not None else -1))
 
 
 def _text(result: Any) -> str:

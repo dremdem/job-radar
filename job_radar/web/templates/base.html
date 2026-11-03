@@ -244,7 +244,7 @@
     </div>
     <button type="button" class="btn btn-sm btn-primary" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML">Sync</button>
     <button type="button" class="btn btn-sm btn-outline-primary" hx-post="/descriptions" hx-target="#desc-status" hx-swap="outerHTML" title="Fetch LinkedIn descriptions for To review in the background">Descriptions</button>
-    {% if request.app.state.settings.linkedin_chrome %}<button type="button" class="btn btn-sm btn-outline-primary" hx-post="/chrome-fill" hx-target="#chrome-status" hx-swap="outerHTML" title="Open LinkedIn vacancies without a description in your Chrome, one by one, and save their descriptions (#247)">Fill from Chrome</button>{% endif %}
+    {% if request.app.state.settings.linkedin_chrome %}<button type="button" class="btn btn-sm btn-outline-primary" hx-post="/chrome-fill" hx-target="#chrome-status" hx-swap="outerHTML" title="Open LinkedIn and hh.ru vacancies without a description in your Chrome, one by one, and save their descriptions (#247, #260)">Fill from Chrome</button>{% endif %}
   </nav>
   <div><span id="sync-status" class="small" hx-get="/sync/status" hx-trigger="load" hx-swap="outerHTML"></span></div>
   <div><span id="desc-status" class="small" hx-get="/descriptions/status" hx-trigger="load" hx-swap="outerHTML"></span></div>
