@@ -49,6 +49,9 @@ def db_merge_hh_duplicates(
 @db_app.command("merge-applied-duplicates")
 def db_merge_applied_duplicates(
     apply: Annotated[bool, typer.Option("--apply", help="Merge; without it only list.")] = False,
+    skip: Annotated[
+        str, typer.Option(help="Applied vacancy ids to leave apart, comma-separated: 221,1628.")
+    ] = "",
 ) -> None:
     """Merge copies of a vacancy you applied to into the applied one (#269)."""
     from .applied_duplicates import merge_applied_duplicates
@@ -58,7 +61,8 @@ def db_merge_applied_duplicates(
     engine = make_engine(settings.database_url)
     try:
         with make_session_factory(engine)() as session:
-            plan = merge_applied_duplicates(session, apply=False)
+            left = frozenset(int(i) for i in skip.replace(" ", "").split(",") if i)
+            plan = merge_applied_duplicates(session, apply=False, skip=left)
             for keep, copies in plan:
                 o = session.get(Opportunity, keep)
                 typer.echo(f"#{keep} {o.title} · {o.company.name}")
@@ -66,7 +70,7 @@ def db_merge_applied_duplicates(
                     d = session.get(Opportunity, dup)
                     typer.echo(f"    <- #{dup} {d.state.value} · {d.title}")
             if apply:
-                merge_applied_duplicates(session, apply=True)
+                merge_applied_duplicates(session, apply=True, skip=left)
     finally:
         engine.dispose()
     copies = sum(len(c) for _, c in plan)

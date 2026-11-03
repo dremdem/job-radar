@@ -116,3 +116,18 @@ def test_merge_command_lists_then_merges_existing_copies(session):
     assert len(session.get(Opportunity, original.id).source_records) == 4
     assert session.scalar(select(OpportunityNote.opportunity_id)) == original.id
     assert merge_applied_duplicates(session, apply=False) == []
+
+
+def test_skipped_groups_stay_apart(session):
+    from job_radar.applied_duplicates import merge_applied_duplicates
+
+    a = applied(session)
+    a_copy = applied(session, state=S.AUTO_IGNORE)
+    b = applied(session, title="Software Engineer")
+    b_copy = applied(session, title="software engineer", state=S.AUTO_IGNORE)
+    assert merge_applied_duplicates(session, apply=True, skip=frozenset({b.id})) == [
+        (a.id, [a_copy.id])
+    ]
+    session.expire_all()
+    assert session.get(Opportunity, a_copy.id) is None
+    assert session.get(Opportunity, b_copy.id) is not None  # left for you to look at

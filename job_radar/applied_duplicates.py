@@ -70,9 +70,11 @@ def fold_into_applied(
     return keep
 
 
-def merge_applied_duplicates(session: Session, *, apply: bool) -> list[tuple[int, list[int]]]:
+def merge_applied_duplicates(
+    session: Session, *, apply: bool, skip: frozenset[int] = frozenset()
+) -> list[tuple[int, list[int]]]:
     """Copies of applied vacancies already stored: (applied id, copy ids) per group. With
-    apply=False nothing changes (a dry run)."""
+    apply=False nothing changes (a dry run). ``skip``: applied ids whose group stays apart."""
     groups: dict[tuple[int, str], list[Opportunity]] = defaultdict(list)
     for o in session.scalars(select(Opportunity).order_by(Opportunity.id)):
         groups[(o.company_id, same_title(o.title))].append(o)
@@ -80,7 +82,7 @@ def merge_applied_duplicates(session: Session, *, apply: bool) -> list[tuple[int
     for members in groups.values():
         originals = [o for o in members if o.state is S.APPLIED]
         copies = [o for o in members if o.state in MERGEABLE]
-        if len(originals) == 1 and copies:
+        if len(originals) == 1 and copies and originals[0].id not in skip:
             plan.append((originals[0], copies))
     if apply:
         now = datetime.now(UTC)
