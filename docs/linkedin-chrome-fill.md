@@ -22,7 +22,11 @@ this is allowed and where the line is: [ADR 0001](adr/0001-chrome-description-fi
 
 Optional: `JOB_RADAR_LINKEDIN_CHROME_MAX_PER_RUN` (default 50), and
 `JOB_RADAR_LINKEDIN_CHROME_COMMAND` (default `npx -y @playwright/mcp@0.0.84 --extension`,
-pinned to the version that was measured).
+pinned to the version that was measured). The run adds `--snapshot-mode none
+--timeout-settle 100` unless the command sets them itself (#254): without them every page
+open sends back a full snapshot of LinkedIn's big page, which the fill never reads, and
+every step waits 1–6 s for LinkedIn's background requests to finish. Together that made
+a vacancy take 11–20 s instead of a few.
 
 ## What a run does
 
@@ -30,7 +34,8 @@ pinned to the version that was measured).
    first, up to 50.
 2. It works in **a tab of its own** and never touches your tabs. With the token, the extension connects its own connect page (`chrome-extension://…/connect.html`), and the run uses that page (#250). If the extension was given one of your tabs instead (the connect dialog), the run opens a new tab and leaves yours alone.
 3. For each vacancy it:
-   - waits for the page (2.5–5 s);
+   - waits for the page to load and for the description to appear on it (checked every
+     0.4–0.8 s, at most 10 s; #254);
    - checks the page: on an authwall, login, checkpoint, captcha or verification page, or
      on HTTP 429 / 999, it stops at once and leaves the tab open for you to see;
    - checks that the tab shows **this** vacancy. If it shows anything else (you clicked
@@ -54,7 +59,9 @@ Under the header: `Chrome fill: 7 of 30 opened · 6 saved · 23 left · next in 
 last vacancy it handled, and **Stop**. Stop takes effect during the pause, at the latest
 after the current page. The finished line says why it ended (`done`, `stopped by you`,
 `stopped: HTTP 429`, `stopped: another page in the tab: stopped`), and links to the
-**LinkedIn log**, where every page is listed with kind `chrome`.
+**LinkedIn log**, where every page is listed with kind `chrome`. A saved page shows how
+long each step took (`ok · open 0.3 s · load 0.9 s · read 1.1 s`): opening it, waiting
+for the description, unfolding and reading it.
 
 A vacancy that already has a description is never opened again, so a rerun continues where
 the last one stopped, and nothing is duplicated or overwritten. Only one LinkedIn

@@ -31,7 +31,8 @@ Allow exactly one kind of automation, the **Chrome fill**:
   "similar jobs" on its page.
 - **Pace:** one page at a time, with a random pause of its own between pages (Settings →
   Fill from Chrome, 2–4 s by default; #252: by hand the owner opens a vacancy and clicks the
-  bookmarklet within seconds), on top of the 2.5–5 s wait for each page to load, and at
+  bookmarklet within seconds), on top of the time each page takes to load and show its
+  description (polled, at most 10 s; #254 replaced a fixed 2.5–5 s wait), and at
   most 50 vacancies per run. The guest pause (10–40 s) is separate and unchanged: requests
   without a login get 429 much sooner. There is no daily cap: a person
   opens as many by hand.

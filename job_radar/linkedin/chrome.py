@@ -12,7 +12,9 @@ import contextlib
 import json
 import random
 import re
+import shlex
 import threading
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -32,11 +34,19 @@ MAX_PER_RUN = 50
 # vacancy and clicks the bookmarklet within seconds.
 PAUSE_KEY = "linkedin_chrome"
 DEFAULT_PAUSE = PauseSettings(2.0, 4.0)
-LOAD_WAIT = (2.5, 5.0)  # seconds after opening a page, as a person waits for it to load
-EXPAND_WAIT = (0.8, 1.6)
+# browser_navigate itself waits for the page's `load`; then the description is polled for,
+# a short random step at a time, at most LOAD_TIMEOUT seconds (#254).
+LOAD_STEP = (0.4, 0.8)
+LOAD_TIMEOUT = 10.0
+EXPAND_WAIT = (0.4, 0.8)  # unfolding is in the page itself, no request
 MAX_ERRORS_IN_A_ROW = 3  # the page layout probably changed: stop rather than keep going
 # Only these Playwright MCP tools are ever called (#247): no clicks by reference, no typing.
 ALLOWED_TOOLS = frozenset({"browser_tabs", "browser_navigate", "browser_evaluate"})
+# Added to the command unless it sets them itself (#254). Without them every navigate
+# sends back a full aria snapshot of the (big) page, which the fill never reads, and every
+# evaluate waits 0.5 s, then for each request the page started meanwhile (up to 5 s:
+# LinkedIn's beacons and long-poll), then 0.5 s more.
+SPEED_FLAGS = {"--snapshot-mode": "none", "--timeout-settle": "100"}
 
 _BLOCK_URL = re.compile(
     r"authwall|/login|/signup|checkpoint|/uas/|challenge|captcha|security-verification",
@@ -50,19 +60,25 @@ _CONNECT_PAGE = re.compile(r"^chrome-extension://[a-p]{32}/connect\.html")
 _TAB_LINE = re.compile(r"^- \d+:.*\]\((\S+)\)\s*$")
 _JOB_ID = re.compile(r"currentJobId=(\d+)|/jobs/view/(?:[^/?#]*-)?(\d+)")
 
-# Where the page is, how it loaded, and what it is: read before anything else is done.
+# The description's box on a job page; EXPAND looks for "more" only inside it.
+DESCRIPTION_BOXES = (
+    '[componentkey^="JobDetails_AboutTheJob"], [data-testid="expandable-text-box"], '
+    "#job-details, .jobs-description__content, .jobs-description-content__text, "
+    ".jobs-description"
+)
+# Where the page is, how it loaded, what it is, and whether the description is there yet:
+# read before anything else is done.
 PROBE = """() => {
   const nav = performance.getEntriesByType('navigation')[0];
+  const boxes = [...document.querySelectorAll('__BOXES__')];
   return { href: location.href, title: document.title,
-           status: nav && nav.responseStatus ? nav.responseStatus : null };
-}"""
+           status: nav && nav.responseStatus ? nav.responseStatus : null,
+           ready: boxes.some((b) => b.innerText.trim() !== '') };
+}""".replace("__BOXES__", DESCRIPTION_BOXES)
 # Unfold the description: only a "more" button inside the description box itself, never
 # anything else on the page (e.g. "Show more options" opens the job's action menu).
 EXPAND = """() => {
-  const boxes = document.querySelectorAll(
-    '[componentkey^="JobDetails_AboutTheJob"], [data-testid="expandable-text-box"], ' +
-    '#job-details, .jobs-description__content, .jobs-description-content__text, ' +
-    '.jobs-description');
+  const boxes = document.querySelectorAll('__BOXES__');
   const more = /^\\s*(\\u2026\\s*)?((see|show)\\s+)?more\\s*$/i;
   for (const box of boxes) {
     let scope = box;
@@ -78,7 +94,7 @@ EXPAND = """() => {
     }
   }
   return '';
-}"""
+}""".replace("__BOXES__", DESCRIPTION_BOXES)
 
 
 class Browser(Protocol):
@@ -145,6 +161,15 @@ def parse_tabs(text: str) -> list[str]:
     return [m.group(1) for line in text.splitlines() if (m := _TAB_LINE.match(line.strip()))]
 
 
+def mcp_argv(command: str) -> list[str]:
+    """The Playwright MCP command line, with SPEED_FLAGS unless it sets them itself."""
+    argv = shlex.split(command)
+    for flag, value in SPEED_FLAGS.items():
+        if not any(a == flag or a.startswith(flag + "=") for a in argv):
+            argv += [flag, value]
+    return argv
+
+
 def own_payload(payload: dict[str, Any], job_id: str) -> dict[str, Any]:
     """Only the vacancy itself: the "similar jobs" on its page are not imported."""
     cards = [c for c in payload.get("cards") or [] if str(c.get("job_id")) == job_id]
@@ -194,6 +219,18 @@ async def fill_descriptions(
             waited += step
         return not stop.is_set()
 
+    async def loaded() -> dict[str, Any]:
+        """The probe once the description is on the page, a block page shows, or time is
+        up: navigate already waited for `load`, LinkedIn fills the page after that."""
+        waited = 0.0
+        while True:
+            probe = await browser.evaluate(PROBE)
+            if probe.get("ready") or block_reason(probe) or waited >= LOAD_TIMEOUT:
+                return probe
+            step = random.uniform(*LOAD_STEP)
+            await sleep(step)
+            waited += step
+
     def log(job_id: str, opportunity_id: int, status: str, detail: str | None = None) -> None:
         session.add(
             LinkedInFetch(kind="chrome", job_id=job_id, start=0, opportunity_id=opportunity_id,
@@ -221,6 +258,7 @@ async def fill_descriptions(
                 break
             job_id = record.external_id
             url = JOB_URL.format(job_id=job_id)
+            started = time.monotonic()
             if tab_url is None and reuse:
                 await browser.navigate(url)
             elif tab_url is None:
@@ -235,8 +273,9 @@ async def fill_descriptions(
                 await browser.navigate(url)
             tab_url = url
             stats.requests += 1
-            await wait(LOAD_WAIT)
-            probe = await browser.evaluate(PROBE)
+            opened = time.monotonic()
+            probe = await loaded()
+            ready = time.monotonic()
             if reason := block_reason(probe):
                 stats.blocked, stats.reason = True, reason
                 log(job_id, opportunity.id, "blocked", reason)
@@ -260,11 +299,15 @@ async def fill_descriptions(
                 tab_url = None
                 break
             result = import_capture(session, own_payload(payload, job_id))
-            say(result.vacancy or f"job {job_id}")
+            timing = (
+                f"open {opened - started:.1f} s · load {ready - opened:.1f} s"
+                f" · read {time.monotonic() - ready:.1f} s"
+            )
+            say(f"{result.vacancy or f'job {job_id}'} ({timing})")
             if result.descriptions:
                 stats.saved += 1
                 errors_in_a_row = 0
-                log(job_id, opportunity.id, "ok")
+                log(job_id, opportunity.id, "ok", timing)
             else:
                 stats.errors += 1
                 errors_in_a_row += 1
@@ -336,12 +379,10 @@ async def run_with_chrome(
     command: str, env: dict[str, str], fill: Callable[[Browser], Awaitable[FillStats]]
 ) -> FillStats:
     """Start Playwright MCP once, connect to the extension once, run the fill."""
-    import shlex
-
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
-    argv = shlex.split(command)
+    argv = mcp_argv(command)
     params = StdioServerParameters(command=argv[0], args=argv[1:], env=env)
     async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
         await asyncio.wait_for(session.initialize(), timeout=90)

@@ -21,8 +21,11 @@ FOLDED = "\n- PostgreSQL\nFully remote, worldwide."
 
 
 class FakePage:
-    def __init__(self, job_id, *, status=200, href=None, title=None, folded=True, text=None):
+    def __init__(
+        self, job_id, *, status=200, href=None, title=None, folded=True, text=None, ready_after=0
+    ):
         self.job_id = job_id
+        self.ready_after = ready_after  # probes before the description box is on the page
         self.status = status
         self.href = href or f"https://www.linkedin.com/jobs/view/{job_id}/"
         self.title = title or f"Senior Python Engineer | Acme {job_id} | LinkedIn"
@@ -66,7 +69,9 @@ class FakeBrowser:
         p = self.page
         if function == PROBE:
             self.calls.append(("probe", ""))
-            return {"href": p.href, "title": p.title, "status": p.status}
+            ready = p.ready_after <= 0
+            p.ready_after -= 1
+            return {"href": p.href, "title": p.title, "status": p.status, "ready": ready}
         if function == EXPAND:
             self.calls.append(("expand", ""))
             if p.folded:
@@ -410,3 +415,75 @@ def test_pipeline_uses_the_chrome_pause(monkeypatch, database_url, session):
     monkeypatch.setattr(chrome, "run_with_chrome", fake_run)
     pipeline.chrome_fill_job(Settings(database_url=database_url), DescriptionJob())
     assert seen["pause"] == (2, 4)
+
+
+# --- speed (#254) ------------------------------------------------------------
+
+
+def run_timed(session, browser, **kw):
+    """Like run(), with the sleeps recorded: the pause between pages is (0, 0) here."""
+    slept: list[float] = []
+
+    async def sleep(seconds):
+        slept.append(seconds)
+
+    stats = asyncio.run(fill_descriptions(session, browser, pause=(0, 0), sleep=sleep, **kw))
+    return stats, slept
+
+
+def test_no_fixed_load_wait_when_the_description_is_there(session):
+    """navigate already waits for the page to load; no 2.5-5 s on top of it (#254)."""
+    vacancy(session, "101")
+    stats, slept = run_timed(session, FakeBrowser())
+    assert stats.saved == 1
+    assert sum(slept) < 1.5, slept
+
+
+def test_waits_until_the_description_appears(session):
+    vacancy(session, "101")
+    browser = FakeBrowser({"101": FakePage("101", ready_after=3)})
+    stats, _slept = run_timed(session, browser)
+    assert stats.saved == 1
+    kinds = [k for k, _ in browser.calls]
+    assert kinds.count("probe") == 4  # three not ready yet, then ready
+    assert kinds.index("expand") > max(i for i, k in enumerate(kinds) if k == "probe")
+
+
+def test_description_that_never_appears_is_waited_for_at_most_the_limit(session):
+    from job_radar.linkedin.chrome import LOAD_TIMEOUT
+
+    vacancy(session, "101")
+    browser = FakeBrowser({"101": FakePage("101", ready_after=10_000)})
+    _stats, slept = run_timed(session, browser)
+    assert LOAD_TIMEOUT - 1 <= sum(slept) <= LOAD_TIMEOUT + 2.5, sum(slept)
+    assert ("read", "") in browser.calls  # read anyway: the reader decides
+
+
+def test_block_page_stops_while_waiting_for_the_description(session):
+    vacancy(session, "101")
+    page = FakePage("101", href="https://www.linkedin.com/authwall?trk=x", ready_after=10_000)
+    stats, slept = run_timed(session, FakeBrowser({"101": page}))
+    assert stats.blocked and sum(slept) < 1.5
+
+
+def test_mcp_is_started_without_snapshots_and_with_a_short_settle():
+    """Every navigate sent a full aria snapshot of the page; every evaluate waited
+    0.5 s + the page's own requests (up to 5 s) + 0.5 s (#254)."""
+    from job_radar.config import Settings
+    from job_radar.linkedin.chrome import mcp_argv
+
+    argv = mcp_argv(Settings().linkedin_chrome_command)
+    assert argv[:3] == ["npx", "-y", "@playwright/mcp@0.0.84"]
+    assert "--extension" in argv
+    assert argv[argv.index("--snapshot-mode") + 1] == "none"
+    assert argv[argv.index("--timeout-settle") + 1] == "100"
+    # A custom command keeps its own choice.
+    custom = mcp_argv("mcp --extension --timeout-settle=300 --snapshot-mode full")
+    assert custom == ["mcp", "--extension", "--timeout-settle=300", "--snapshot-mode", "full"]
+
+
+def test_step_durations_are_in_the_log(session):
+    vacancy(session, "101")
+    run_timed(session, FakeBrowser())
+    detail = session.scalar(select(LinkedInFetch.detail).where(LinkedInFetch.status == "ok"))
+    assert detail and all(word in detail for word in ("open", "load", "read")), detail
