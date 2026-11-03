@@ -28,6 +28,9 @@ _REMOTE = re.compile(r"remote", re.IGNORECASE)
 _CLOSED = re.compile(r"\b(closed|filled)\b", re.IGNORECASE)
 _URL = re.compile(r"https?://\S+")
 _REMOTE_NOTE = re.compile(r"\(([^)]*remote[^)]*)\)", re.IGNORECASE)
+# A header part is a few words. A longer last part is the text running on: some posts put
+# the header and the text in one paragraph, with no line break between them (#256).
+MAX_HEADER_PART = 100
 
 
 class HackerNewsError(Exception):
@@ -111,6 +114,9 @@ def _header(raw_html: str) -> str:
 def parse_post(raw: dict[str, Any]) -> HackerNewsPost:
     header = _header(raw.get("text") or "")
     parts = [p for p in _SEPARATOR.split(header) if p.strip()] or [header]
+    if len(parts) > 1 and len(parts[-1]) > MAX_HEADER_PART:
+        parts = parts[:-1]
+        header = " | ".join(parts)
     company = " ".join(_REMOTE_NOTE.sub("", _URL.sub("", parts[0])).split())
     role = next(
         (
@@ -220,9 +226,13 @@ def import_hackernews(session: Session, client: Client) -> HackerNewsStats:
             )
         ):
             stats.known += 1
-            # Edited on HN, or read by an older version (#243): the new text becomes current.
+            # Edited on HN, or read by an older version (#243): the new text becomes current,
+            # and so does the location from the header (#256).
+            record = session.get(SourceRecord, known)
             if post.description:
-                add_snapshot(session, session.get(SourceRecord, known), post.description)
+                add_snapshot(session, record, post.description)
+            if record.opportunity.location != post.location:
+                record.opportunity.location = post.location
         else:
             _add(session, post)
             stats.new += 1

@@ -200,3 +200,42 @@ def test_a_stored_post_gets_the_new_text(session):
     from job_radar.description import latest_description
 
     assert latest_description(record.opportunity).endswith("Apply: jobs@example.org")
+
+
+# #256: the header and the text in one paragraph, no line break between them (MixRank,
+# November 2026). The last header part ran on into the text and became the location.
+MIXRANK = {
+    "id": 50339013,
+    "created_at_i": 1793491200,
+    "text": (
+        "MixRank (YC S11) | Software Engineers | 100% Remote (Global) | Full-Time MixRank "
+        "processes petabytes of data every month through web crawling. We&#x27;re a fully "
+        "remote company with a global footprint across 20+ countries. Positions are never "
+        "closed for the right person.<p>We use Python, Rust and PostgreSQL."
+    ),
+}
+
+
+def test_header_running_on_into_the_text_is_cut_off():
+    p = parse_post(MIXRANK)
+    assert (p.company, p.title, p.location) == (
+        "MixRank (YC S11)",
+        "Software Engineers",
+        "100% Remote (Global)",
+    )
+    assert "petabytes" not in p.header
+    assert wants(p)  # "closed" in the text is not a CLOSED header
+    assert "petabytes of data" in p.description and "Python, Rust" in p.description
+
+
+def test_a_stored_post_gets_the_new_location(session):
+    """A post read by the old parser gets its header fields on the next sync (#256)."""
+    run_on = {**MIXRANK}
+    item = {"children": [run_on]}
+    import_hackernews(session, FakeClient(item))
+    opportunity = session.scalar(select(Opportunity))
+    opportunity.location = "100% Remote (Global) · Full-Time MixRank processes petabytes…"
+    session.commit()
+    import_hackernews(session, FakeClient(item))
+    session.refresh(opportunity)
+    assert opportunity.location == "100% Remote (Global)"

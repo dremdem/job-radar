@@ -15,7 +15,7 @@ The official [Firebase HN API](https://github.com/HackerNews/API) has the same d
 
 - **Which thread:** the newest story by `whoishiring` whose title starts with `Ask HN: Who is hiring?`. The "Who wants to be hired?" and "Freelancer?" threads are skipped.
 - **What is read:** every top-level comment of that thread, on every sync. Replies to a post are not job posts and are skipped, and so are deleted comments. Posts already stored are counted as `known`, so the first sync of a month brings the whole thread so far and later syncs only what was added.
-- **The header line:** posts start with a line like `Company | Role | Location | Full-time | Salary` (sometimes `—` instead of `|`). From it:
+- **The header line:** posts start with a line like `Company | Role | Location | Full-time | Salary` (sometimes `—` instead of `|`). Some posts put the header and the text in one paragraph, with no line break (`… | Full-Time MixRank processes petabytes…`): a last part longer than 100 characters is the text running on and is not part of the header (#256). From it:
   - **Company:** the first part, without links.
   - **Title:** the first part that names a developer-type role (the same role filter as Telegram and Himalayas). When the header names no role (`Curai | Remote (US) | Full-time`), the title is `<Company>: roles in the post`.
   - **Location:** the parts about the work format. A part like `San Francisco HYBRID (3 days/wk) or REMOTE (US)` is cut at `or` and ` / `, and only the remote option is kept (`REMOTE (US)`), so the hybrid auto-ignore rule does not drop a post that can be done remotely. `Remote` in brackets after the company (`PrairieLearn (Remote US)`) counts too. Without a remote option the location is the on-site / hybrid part.
@@ -26,7 +26,7 @@ The official [Firebase HN API](https://github.com/HackerNews/API) has the same d
   - **Open:** the header does not say `CLOSED` or `FILLED`. Companies edit old posts this way.
 - **Vacancy fields:** the title, company and location above; the whole post text is the description, so the language, Python and auto-ignore rules work right away. Residence limits such as `REMOTE (US)` are not filtered here: the score asks to check whether Thailand fits, and Claude's analysis reads the full post.
 - **Links in the post:** HN shows a long link cut short with `...`; the description keeps the full address (#243). The way to apply (an email or a link) is in the post text itself: HN has no apply button.
-- **Already stored posts:** a post seen again whose text changed (edited on HN, or read by an older version) gets the new text as its description.
+- **Already stored posts:** a post seen again whose text changed (edited on HN, or read by an older version) gets the new text as its description, and the location from its header.
 - **Link:** the vacancy links to the comment on news.ycombinator.com. Source `hackernews`, `external_id` = the comment id. A post is never imported twice.
 
 Runs as part of **Sync** / `./jr sync`, or alone: `uv run job-radar sync hackernews`. Off with `JOB_RADAR_HACKERNEWS=false`.
