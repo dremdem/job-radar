@@ -1,6 +1,6 @@
 {# Chrome fill (#247): descriptions read in your own Chrome; see docs/linkedin-chrome-fill.md. #}
 {% set finished = job.state in ("done", "failed") %}
-<span id="chrome-status" class="small"{% if job.state == "running" %} hx-get="/chrome-fill/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+<span id="chrome-status" class="small"{% if job.state == "running" %} hx-get="/chrome-fill/status?polled=1" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
   {% if off %}
     <b>Chrome fill:</b> off; set <code>JOB_RADAR_LINKEDIN_CHROME=true</code> in <code>.env</code> (docs/linkedin-chrome-fill.md).
   {% elif busy %}

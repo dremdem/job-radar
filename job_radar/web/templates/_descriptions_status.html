@@ -1,6 +1,6 @@
 {# Background LinkedIn description job (#205); see docs/linkedin-public-search.md. #}
 {% set finished = job.state in ("done", "failed") %}
-<span id="desc-status" class="small"{% if job.state == "running" %} hx-get="/descriptions/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}{% if finished and job.finished_at and not off %} data-finished="{{ job.finished_at.isoformat() }}"{% endif %}>
+<span id="desc-status" class="small"{% if job.state == "running" %} hx-get="/descriptions/status?polled=1" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}{% if finished and job.finished_at and not off %} data-finished="{{ job.finished_at.isoformat() }}"{% endif %}>
   {% if off %}
     <b>Descriptions:</b> off; set <code>JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true</code> in <code>.env</code> (docs/linkedin-public-search.md).
   {% elif job.state == "running" %}

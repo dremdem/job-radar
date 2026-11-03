@@ -251,6 +251,19 @@ def get_session(request: Request) -> Iterator[Session]:
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
+QUEUE_REDRAW = "jr-refresh-queue"
+
+
+def _redraw_when_over(
+    response: HTMLResponse, polled: bool, state: str, saved: bool
+) -> HTMLResponse:
+    """The poll that sees a job end, while the page watched it run, asks the queue to redraw
+    its list and counters (#263). A page loaded later already shows the new state."""
+    if polled and saved and state in ("done", "failed"):
+        response.headers["HX-Trigger"] = QUEUE_REDRAW
+    return response
+
+
 def create_app(
     settings: Settings | None = None,
     sync_runner: Runner | None = None,
@@ -826,8 +839,9 @@ def create_app(
         return templates.TemplateResponse(request, "_sync_status.html", {"job": sync_job})
 
     @app.get("/sync/status", response_class=HTMLResponse)
-    def sync_status(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(request, "_sync_status.html", {"job": sync_job})
+    def sync_status(request: Request, polled: bool = False) -> HTMLResponse:
+        response = templates.TemplateResponse(request, "_sync_status.html", {"job": sync_job})
+        return _redraw_when_over(response, polled, sync_job.state, saved=True)
 
     def descriptions_status(request: Request, off: bool = False) -> HTMLResponse:
         context = {"job": description_job, "off": off}
@@ -846,8 +860,9 @@ def create_app(
         return descriptions_status(request)
 
     @app.get("/descriptions/status", response_class=HTMLResponse)
-    def description_job_status(request: Request) -> HTMLResponse:
-        return descriptions_status(request)
+    def description_job_status(request: Request, polled: bool = False) -> HTMLResponse:
+        job = description_job
+        return _redraw_when_over(descriptions_status(request), polled, job.state, job.saved > 0)
 
     def chrome_status(request: Request, off: bool = False, busy: bool = False) -> HTMLResponse:
         context = {"job": chrome_job, "off": off, "busy": busy}
@@ -868,8 +883,9 @@ def create_app(
         return chrome_status(request)
 
     @app.get("/chrome-fill/status", response_class=HTMLResponse)
-    def chrome_fill_status(request: Request) -> HTMLResponse:
-        return chrome_status(request)
+    def chrome_fill_status(request: Request, polled: bool = False) -> HTMLResponse:
+        job = chrome_job
+        return _redraw_when_over(chrome_status(request), polled, job.state, job.saved > 0)
 
     @app.get("/linkedin/log", response_class=HTMLResponse)
     def linkedin_log(request: Request, session: SessionDep, days: int = 7) -> HTMLResponse:

@@ -18,6 +18,10 @@
       <button type="button" class="btn btn-sm btn-outline-secondary" id="add-vacancy" title="Add a vacancy found elsewhere">+ Add</button>
       <button type="button" class="btn btn-sm btn-outline-primary" id="analyze-top" title="Queue vacancies here for Claude: pick the minimum score">Analyze…</button>
       {% include "_claude_status.html" %}
+      {# A background job the page watched has ended (#263): redraw like the search box. #}
+      <span hidden hx-get="/" hx-trigger="jr-refresh-queue from:body" hx-include=".col-filter"
+            hx-target="#queue-body" hx-select="#queue-body" hx-select-oob="#tabs,#desc-switch"
+            hx-swap="outerHTML"></span>
     </div>
   </div>
   <div class="inbox-body">
