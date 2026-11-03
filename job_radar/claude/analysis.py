@@ -9,13 +9,21 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..ai.analysis import quote_in_text
 from ..auto_ignore import apply_claude_rule
 from ..description import latest_description
-from ..models import AppSetting, ClaudeAnalysis, ClaudeMessage, Opportunity
+from ..models import (
+    AppSetting,
+    ClaudeAnalysis,
+    ClaudeMessage,
+    JobSnapshot,
+    Opportunity,
+    OpportunityState,
+    SourceRecord,
+)
 from ..stack import current_profile
 from . import memory
 from .prompt import PROMPT_VERSION, SCHEMA, analysis_prompt, chat_system_prompt, system_prompt
@@ -40,6 +48,7 @@ class ClaudeSettings:
     language: str = "Russian"
     parallel: int = 4  # analyses at once, 1..MAX_PARALLEL (#197)
     chat_web: bool = True  # the chat may search the web, never the analysis (#213)
+    auto_analyze: bool = True  # queue new descriptions without the Analyze button (#264)
 
 
 def load_claude_settings(session: Session) -> ClaudeSettings:
@@ -86,6 +95,22 @@ def enqueue(session: Session, opportunity_ids: list[int]) -> int:
         added += 1
     session.commit()
     return added
+
+
+def enqueue_new_descriptions(session: Session) -> int:
+    """Queue every To review vacancy that has a description and was never analyzed (#264),
+    whatever brought the description: Descriptions, Chrome fill, bookmarklet, Sync."""
+    ids = session.scalars(
+        select(Opportunity.id).where(
+            Opportunity.state == OpportunityState.NEW,
+            exists().where(
+                SourceRecord.opportunity_id == Opportunity.id,
+                JobSnapshot.source_record_id == SourceRecord.id,
+            ),
+            ~exists().where(ClaudeAnalysis.opportunity_id == Opportunity.id),
+        )
+    ).all()
+    return enqueue(session, list(ids)) if ids else 0
 
 
 def without_description(session: Session, opportunity_ids: list[int]) -> int:
@@ -327,6 +352,8 @@ class Worker:
             if self.paused_until is not None and now < self.paused_until:
                 return None
             settings = load_claude_settings(session)
+            if settings.auto_analyze:
+                enqueue_new_descriptions(session)
             running = session.scalar(
                 select(func.count(ClaudeAnalysis.id)).where(ClaudeAnalysis.state == "running")
             )

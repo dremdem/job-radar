@@ -710,10 +710,13 @@ def create_app(
         language: Annotated[str, Form()] = "Russian",
         parallel: Annotated[int, Form(ge=1, le=claude.MAX_PARALLEL)] = 4,
         chat_web: Annotated[str | None, Form()] = None,
+        auto_analyze: Annotated[str | None, Form()] = None,
     ) -> HTMLResponse:
         if model not in claude.MODELS or language not in claude.LANGUAGES:
             raise HTTPException(status_code=422, detail="Unknown model or language")
-        value = ClaudeSettings(model, daily_cap, language, parallel, chat_web is not None)
+        value = ClaudeSettings(
+            model, daily_cap, language, parallel, chat_web is not None, auto_analyze is not None
+        )
         claude.save_claude_settings(session, value)
         request.app.state.claude_worker.wake()  # a higher number starts more at once
         context = _settings_context(session, settings) | {"message": "Claude settings saved."}

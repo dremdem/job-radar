@@ -254,8 +254,9 @@ def test_queue_button_and_row_badges(client, session):
 def test_claude_settings(client, session):
     assert 'name="model"' in client.get("/settings").text
     client.post("/settings/claude", data={"model": "opus", "daily_cap": "5", "language": "English"})
-    # An unchecked box is not sent: the chat goes offline (#213).
-    off = claude.ClaudeSettings("opus", 5, "English", chat_web=False)
+    # An unchecked box is not sent: the chat goes offline (#213), and new descriptions are no
+    # longer queued by themselves (#264).
+    off = claude.ClaudeSettings("opus", 5, "English", chat_web=False, auto_analyze=False)
     assert claude.load_claude_settings(session) == off
     client.post("/settings/claude", data={"model": "opus", "chat_web": "on"})
     assert claude.load_claude_settings(session).chat_web is True
@@ -716,3 +717,62 @@ def test_finished_skip_auto_ignores_when_the_reason_is_chosen(session, tmp_path)
         "Claude: location: EU only",
     )
     assert (stack.state, stack.auto_ignore_reason) == (OpportunityState.NEW, None)
+
+
+# --- new descriptions are analyzed by themselves (#264) ------------------------
+
+
+def test_new_descriptions_are_queued_by_the_worker(session, tmp_path):
+    from job_radar.models import OpportunityState
+
+    fresh = vacancy(session, title="Fresh")
+    vacancy(session, title="No text", text=None)  # nothing to analyze yet
+    vacancy(session, title="Ignored").state = OpportunityState.IGNORE
+    done = vacancy(session, title="Done before")
+    session.add(ClaudeAnalysis(opportunity_id=done.id, model="sonnet", prompt_version="3",
+                                  state="failed"))  # fmt: skip
+    session.commit()
+    runner = FakeRunner([Reply("{}", dict(RESULT), "s1", None)])
+    w = worker(session, runner, tmp_path)
+    assert w.run_once() is True  # queued and run, no Analyze button pressed
+    assert len(runner.calls) == 1 and "Fresh" in runner.calls[0]["prompt"]
+    assert w.run_once() is False  # never twice, and not the others
+    session.expire_all()
+    assert claude.latest(session, fresh.id).state == "done"
+
+
+def test_a_description_arriving_later_is_queued_then(session, tmp_path):
+    from job_radar.dedup import add_snapshot
+
+    o = vacancy(session, text=None)
+    w = worker(session, FakeRunner([Reply("{}", dict(RESULT), "s1", None)]), tmp_path)
+    assert w.run_once() is False
+    add_snapshot(session, o.source_records[0], DESCRIPTION)  # Descriptions, Chrome fill, …
+    session.commit()
+    assert w.run_once() is True
+
+
+def test_auto_analysis_can_be_switched_off(session, tmp_path):
+    claude.save_claude_settings(session, ClaudeSettings(auto_analyze=False))
+    vacancy(session)
+    runner = FakeRunner([])
+    assert worker(session, runner, tmp_path).run_once() is False
+    assert runner.calls == [] and claude.status(session).queued == 0
+
+
+def test_auto_analysis_is_on_by_default_and_on_the_settings_page(client, session):
+    assert claude.load_claude_settings(session).auto_analyze is True
+    assert 'name="auto_analyze" checked' in client.get("/settings").text
+    client.post("/settings/claude", data={"model": "sonnet"})  # the box unticked
+    assert claude.load_claude_settings(session).auto_analyze is False
+    client.post("/settings/claude", data={"model": "sonnet", "auto_analyze": "on"})
+    assert claude.load_claude_settings(session).auto_analyze is True
+
+
+def test_auto_queue_respects_the_daily_cap(session, tmp_path):
+    claude.save_claude_settings(session, ClaudeSettings(daily_cap=1))
+    vacancy(session, title="A"), vacancy(session, title="B")
+    w = worker(session, FakeRunner([Reply("{}", dict(RESULT), "s", None)]), tmp_path)
+    assert w.run_once() is True and w.run_once() is False
+    status = claude.status(session)
+    assert status.queued == 1 and status.capped  # waits for tomorrow, like the button's
