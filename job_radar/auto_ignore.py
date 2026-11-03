@@ -254,7 +254,14 @@ def reason_for(
 
 
 def apply_rules(session: Session, opportunity: Opportunity, rules: Rules | None = None) -> bool:
-    """Auto-ignore a `new` vacancy if a rule matches. Your own states are never touched."""
+    """Auto-ignore a `new` vacancy if a rule matches. Your own states are never touched.
+
+    First, a copy of a vacancy you applied to joins that one and leaves the queue (#269);
+    True then too, and the caller's record now belongs to the applied vacancy."""
+    from .applied_duplicates import fold_into_applied
+
+    if fold_into_applied(session, opportunity) is not None:
+        return True
     rules = rules or load_rules(session)
     if not rules.any or opportunity.state is not OpportunityState.NEW:
         return False

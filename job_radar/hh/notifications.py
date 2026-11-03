@@ -7,10 +7,10 @@ import re
 from dataclasses import dataclass
 
 from bs4 import BeautifulSoup
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from ..dedup import get_or_create_company
+from ..dedup import get_or_create_company, merge_opportunities
 from ..linkedin.rejections import _REJECTION, FetchBody
 from ..models import (
     Application,
@@ -177,45 +177,13 @@ def merge_hh_duplicates(session: Session, *, apply: bool) -> list[tuple[int, int
             continue
         pairs.append((keep.id, dup.id))
         if apply:
-            _merge(session, keep, dup)
+            was_applied = dup.state is OpportunityState.APPLIED
+            merge_opportunities(session, keep, dup)
+            if was_applied:
+                _mark_applied(keep)
     if apply:
         session.commit()
     return pairs
-
-
-def _merge(session: Session, keep: Opportunity, dup: Opportunity) -> None:
-    from ..models import (
-        Application,
-        ClaudeAnalysis,
-        ClaudeMessage,
-        CompanyEvent,
-        DescriptionAnalysis,
-        OpportunityNote,
-        Rejection,
-        TelegramPost,
-    )
-
-    for model in (
-        SourceRecord,
-        Rejection,
-        Application,
-        OpportunityNote,
-        TelegramPost,
-        DescriptionAnalysis,
-        ClaudeAnalysis,
-        ClaudeMessage,
-        CompanyEvent,
-    ):
-        session.execute(
-            update(model).where(model.opportunity_id == dup.id).values(opportunity_id=keep.id)
-        )
-    if dup.state is OpportunityState.APPLIED:
-        _mark_applied(keep)
-    session.flush()
-    session.expire(keep)
-    session.expire(dup)
-    session.delete(dup)
-    session.flush()
 
 
 def _application(session: Session, email: EmailMessage, notice: Notice, company_id: int, o):

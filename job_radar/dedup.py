@@ -3,7 +3,7 @@
 import hashlib
 import re
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from .models import Company, JobSnapshot, Opportunity, SourceRecord, SourceType
@@ -79,3 +79,41 @@ def add_snapshot(
     session.add(snapshot)
     session.flush()
     return snapshot, True
+
+
+def merge_opportunities(session: Session, keep: Opportunity, dup: Opportunity) -> None:
+    """Move everything of ``dup`` (sources, mail, notes, analyses, chat, events) to ``keep``
+    and delete ``dup``. Source records move through the ORM, so a caller holding one sees
+    ``record.opportunity`` become ``keep`` (#172, #269)."""
+    from .models import (
+        Application,
+        ClaudeAnalysis,
+        ClaudeMessage,
+        CompanyEvent,
+        DescriptionAnalysis,
+        OpportunityNote,
+        Rejection,
+        TelegramPost,
+    )
+
+    for record in list(dup.source_records):
+        record.opportunity = keep
+    session.flush()
+    for model in (
+        Rejection,
+        Application,
+        OpportunityNote,
+        TelegramPost,
+        DescriptionAnalysis,
+        ClaudeAnalysis,
+        ClaudeMessage,
+        CompanyEvent,
+    ):
+        session.execute(
+            update(model).where(model.opportunity_id == dup.id).values(opportunity_id=keep.id)
+        )
+    session.flush()
+    session.expire(keep)
+    session.expire(dup)
+    session.delete(dup)
+    session.flush()

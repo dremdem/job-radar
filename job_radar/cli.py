@@ -7,7 +7,7 @@ from . import pipeline
 from .config import Settings
 from .db import make_engine, make_session_factory, upgrade_database
 from .demo import remove_demo, seed_demo
-from .models import SourceType
+from .models import Opportunity, SourceType
 
 app = typer.Typer(help="Job Radar: local-first job opportunity review.", no_args_is_help=True)
 db_app = typer.Typer(help="Database commands.", no_args_is_help=True)
@@ -44,6 +44,34 @@ def db_merge_hh_duplicates(
     for keep, dup in pairs:
         typer.echo(f"#{dup} -> #{keep}")
     typer.echo(f"{len(pairs)} {'merged' if apply else 'to merge (dry run, add --apply)'}")
+
+
+@db_app.command("merge-applied-duplicates")
+def db_merge_applied_duplicates(
+    apply: Annotated[bool, typer.Option("--apply", help="Merge; without it only list.")] = False,
+) -> None:
+    """Merge copies of a vacancy you applied to into the applied one (#269)."""
+    from .applied_duplicates import merge_applied_duplicates
+
+    settings = Settings()
+    upgrade_database(settings.database_url)
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            plan = merge_applied_duplicates(session, apply=False)
+            for keep, copies in plan:
+                o = session.get(Opportunity, keep)
+                typer.echo(f"#{keep} {o.title} · {o.company.name}")
+                for dup in copies:
+                    d = session.get(Opportunity, dup)
+                    typer.echo(f"    <- #{dup} {d.state.value} · {d.title}")
+            if apply:
+                merge_applied_duplicates(session, apply=True)
+    finally:
+        engine.dispose()
+    copies = sum(len(c) for _, c in plan)
+    done = "merged" if apply else "to merge (dry run, add --apply)"
+    typer.echo(f"{len(plan)} applied vacancies, {copies} copies {done}")
 
 
 @app.command()

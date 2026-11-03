@@ -16,6 +16,8 @@
 | Claude said skip | Claude's latest finished analysis says `skip`, and its main reason (`ignore_reason.kind`) is one you picked — or any reason at all ([below](#claude-said-skip), #245) | `Claude: location: EU only` |
 | AI: hybrid / country-only | the local model found, with a quote checked against the description, that the job is hybrid / on-site or limited to some countries ([ai.md](ai.md)); works only with `JOB_RADAR_AI_ANALYSIS=true`, off by default | `AI: only for UK` |
 
+**The same vacancy you applied to (#269)** is not a rule and needs no switch: a vacancy with the same company and the same title (case, spaces and punctuation ignored) as **exactly one** vacancy you marked applied never reaches To review, from any source. It joins the applied vacancy instead: its link, description and the rest move there, and the history gets a `seen again` event with the source. With two applied vacancies of that title (another city or team) nothing is joined. Copies stored before this: `uv run job-radar db merge-applied-duplicates` lists them (applied vacancy ← its copies), `--apply` merges them; only To review, auto-ignored and ignored copies, never interested ones. Back up `data/job_radar.db` first.
+
 Checked in this order; the first match gives the reason. **Window**: 90 days by default (setting), so a company comes back to To review three months later. The countries rule is **on** with India and Pakistan; all other rules are **off** until switched on.
 
 ## Claude said skip
