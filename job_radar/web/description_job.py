@@ -17,6 +17,7 @@ class DescriptionJob:
     saved: int = 0
     errors: int = 0
     sources: list[dict] = field(default_factory=list)  # per site, Chrome fill only (#272)
+    failed: list[dict] = field(default_factory=list)  # vacancies with a problem (#274)
     next_at: datetime | None = None  # the next request, while pausing
     blocked: bool = False
     reason: str | None = None
@@ -36,9 +37,9 @@ class DescriptionJob:
             if self.state == "running":
                 return False
             fresh = DescriptionJob(state="running", started_at=datetime.now(UTC))
-            for name in ("state", "total", "requests", "saved", "errors", "sources", "next_at",
-                         "blocked", "reason", "stopped", "limit_reached", "error", "lines",
-                         "started_at", "finished_at"):  # fmt: skip
+            for name in ("state", "total", "requests", "saved", "errors", "sources", "failed",
+                         "next_at", "blocked", "reason", "stopped", "limit_reached", "error",
+                         "lines", "started_at", "finished_at"):  # fmt: skip
                 setattr(self, name, getattr(fresh, name))
             self.stop_event = threading.Event()
         threading.Thread(target=self._run, args=(runner,), daemon=True).start()
@@ -56,11 +57,14 @@ class DescriptionJob:
         saved: int,
         errors: int,
         sources: list[dict] | None = None,
+        failed: list[dict] | None = None,
     ) -> None:
         with self._lock:
             self.total, self.requests, self.saved, self.errors = total, requests, saved, errors
             if sources is not None:
                 self.sources = sources
+            if failed is not None:
+                self.failed = failed
             self.next_at = None
 
     def waiting(self, seconds: float) -> None:

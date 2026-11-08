@@ -818,3 +818,31 @@ def test_repeated_problem_is_recorded_once(session):
     run(session, FakeBrowser({"4235": broken}))
     run(session, FakeBrowser({"4235": broken}))
     assert session.scalar(select(func.count(CompanyEvent.id))) == 1
+
+
+def test_failed_vacancies_are_listed_with_links(session):
+    """Which vacancies had a problem, not only how many (#274)."""
+    hh_vacancy(session, "4235", score=9)
+    hh_vacancy(session, "4236", score=8)
+    stats = run(session, FakeBrowser({"4235": unavailable_page("4235")}))
+    assert [f["url"] for f in stats.failed] == ["https://hh.ru/vacancy/4235"]
+    failed = stats.failed[0]
+    assert failed["opportunity_id"] == opportunity_of(session, "4235")
+    assert failed["title"] and "not available" in failed["reason"]
+
+
+def test_status_lists_the_failed_vacancies(engine, database_url, tmp_path):
+    def runner(job):
+        job.progress(
+            total=1, requests=1, saved=0, errors=1,
+            failed=[{"opportunity_id": 77, "title": "Dev <b>", "site": "hh.ru",
+                     "url": "https://hh.ru/vacancy/1", "reason": "not available to you"}],
+        )  # fmt: skip
+
+    with web(database_url, tmp_path, runner, linkedin_chrome=True) as client:
+        client.post("/chrome-fill")
+        deadline = time.time() + 5
+        while "done" not in (page := client.get("/chrome-fill/status").text):
+            assert time.time() < deadline
+    assert 'href="/opportunities/77"' in page and "Dev &lt;b&gt;" in page
+    assert 'href="https://hh.ru/vacancy/1"' in page and "not available to you" in page

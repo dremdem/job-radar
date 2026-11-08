@@ -155,6 +155,7 @@ class FillStats:
     reason: str | None = None  # why it stopped early: "HTTP 429", "authwall", "another page"
     stopped: bool = False  # by the user
     sources: dict[str, SourceProgress] = field(default_factory=dict)  # "linkedin", "hh"
+    failed: list[dict[str, Any]] = field(default_factory=list)  # which vacancies, why (#274)
 
 
 def load_chrome_pause(session: Session) -> PauseSettings:
@@ -290,7 +291,9 @@ async def fill_descriptions(
             await sleep(step)
             waited += step
 
-    def log(opportunity: Opportunity, job_id: str, status: str, detail: str | None = None) -> None:
+    def log(
+        opportunity: Opportunity, job_id: str, url: str, status: str, detail: str | None = None
+    ) -> None:
         session.add(
             LinkedInFetch(kind="chrome", job_id=job_id, start=0, opportunity_id=opportunity.id,
                           status=status, detail=detail and detail[:255], at=datetime.now(UTC),
@@ -298,6 +301,10 @@ async def fill_descriptions(
         )  # fmt: skip
         if status != "ok":
             _mark(session, opportunity, status, detail or status)
+            stats.failed.append(
+                {"opportunity_id": opportunity.id, "title": opportunity.title, "url": url,
+                 "site": "hh.ru" if "hh.ru" in url else "LinkedIn", "reason": detail or status}
+            )  # fmt: skip
         session.commit()
 
     def problem(source: SourceProgress) -> None:
@@ -341,20 +348,20 @@ async def fill_descriptions(
         ready = time.monotonic()
         if reason := unavailable_reason(probe):
             problem(source)
-            log(opportunity, job_id, "unavailable", reason)
+            log(opportunity, job_id, url, "unavailable", reason)
             say(f"{site}: vacancy {job_id}: {reason}; marked, going on")
             return True
         if reason := block_reason(probe):
             source.problems += 1
             stats.blocked, stats.reason = True, reason
-            log(opportunity, job_id, "blocked", reason)
+            log(opportunity, job_id, url, "blocked", reason)
             say(f"{site}: {reason} — stopped; the tab is left open for you to see")
             tab_url = None  # leave it open
             return False
         if page_of(str(probe.get("href"))) != expected:
             source.problems += 1
             stats.blocked, stats.reason = True, "another page in the tab: stopped"
-            log(opportunity, job_id, "error", f"tab shows {probe.get('href')}")
+            log(opportunity, job_id, url, "error", f"tab shows {probe.get('href')}")
             say(f"stopped: expected job {job_id}, the tab shows {probe.get('href')}")
             tab_url = None
             return False
@@ -366,7 +373,7 @@ async def fill_descriptions(
         if str(detail.get("job_id")) != job_id:  # the page changed under us
             source.problems += 1
             stats.blocked, stats.reason = True, "another page in the tab: stopped"
-            log(opportunity, job_id, "error", "the page changed while reading")
+            log(opportunity, job_id, url, "error", "the page changed while reading")
             say(f"stopped: the page changed while reading job {job_id}")
             tab_url = None
             return False
@@ -380,10 +387,10 @@ async def fill_descriptions(
             stats.saved += 1
             source.saved += 1
             errors_in_a_row = 0
-            log(opportunity, job_id, "ok", timing)
+            log(opportunity, job_id, url, "ok", timing)
         else:
             problem(source)
-            log(opportunity, job_id, "error", "no description on the page")
+            log(opportunity, job_id, url, "error", "no description on the page")
         return True
 
     todo = _todo(session)[:max_per_run]
@@ -424,7 +431,7 @@ async def fill_descriptions(
                 )
                 uncertain = True
                 problem(stats.sources["hh" if hh else "linkedin"])
-                log(opportunity, record.external_id, "error", reason)
+                log(opportunity, record.external_id, url, "error", reason)
                 say(f"job {record.external_id}: {reason}; marked, going on")
                 go_on = True
             progress()

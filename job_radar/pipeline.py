@@ -111,6 +111,7 @@ def chrome_fill_job(settings: Settings, job) -> None:
                         saved=s.saved,
                         errors=s.errors,
                         sources=[asdict(p) for p in s.sources.values()],
+                        failed=list(s.failed),
                     ),
                     echo=job.echo,
                 )

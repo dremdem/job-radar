@@ -11,6 +11,14 @@
     {% endfor %}
   </ul>
   {% endif %}
+  {% if job.failed %}
+  <details class="sync-log" open><summary>{{ job.failed | length }} with a problem</summary>
+  <ul class="sync-steps">
+    {% for f in job.failed %}<li><a href="/opportunities/{{ f.opportunity_id }}" target="_blank" rel="noopener">{{ f.title }}</a> · <a href="{{ f.url }}" target="_blank" rel="noopener noreferrer">{{ f.site }}</a> <span class="muted">— {{ f.reason }}</span></li>
+    {% endfor %}
+  </ul>
+  </details>
+  {% endif %}
 {% endmacro %}
 <span id="chrome-status" class="small"{% if job.state == "running" %} hx-get="/chrome-fill/status?polled=1" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
   {% if off %}

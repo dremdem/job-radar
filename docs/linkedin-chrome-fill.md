@@ -69,6 +69,10 @@ marks are not contacts: they do not count in the "contacted" badge or as your la
 | `unavailable` | hh.ru says the vacancy is not available to you, or a 404/410 | skipped, until you delete the mark (× in the history) |
 | `fill_problem` | timeout, browser error, no description, or the page that stopped the run | tried again |
 
+The status line lists the vacancies of this run that had a problem (#274): the title opens it
+in Job Radar, the site name opens the posting, and the reason follows. The list lasts until the
+next run or a server restart; the marks stay.
+
 To drop a vacancy for good, ignore it as usual; to try it again, delete its `unavailable` mark.
 
 ## Status, Stop and reruns
