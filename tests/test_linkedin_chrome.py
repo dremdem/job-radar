@@ -3,6 +3,8 @@
 import asyncio
 import re
 import threading
+import time
+from dataclasses import asdict
 
 from sqlalchemy import func, select
 
@@ -11,11 +13,21 @@ from job_radar.linkedin.chrome import (
     EXPAND,
     PROBE,
     READER,
+    BrowserError,
     block_reason,
     fill_descriptions,
     parse_result,
 )
-from job_radar.models import JobSnapshot, LinkedInFetch, Opportunity, SourceRecord, SourceType
+from job_radar.models import (
+    FILL_PROBLEM,
+    FILL_UNAVAILABLE,
+    CompanyEvent,
+    JobSnapshot,
+    LinkedInFetch,
+    Opportunity,
+    SourceRecord,
+    SourceType,
+)
 
 VISIBLE = "We build payments.\nRequirements:\n- Python, FastAPI"
 FOLDED = "\n- PostgreSQL\nFully remote, worldwide."
@@ -23,9 +35,12 @@ FOLDED = "\n- PostgreSQL\nFully remote, worldwide."
 
 class FakePage:
     def __init__(
-        self, job_id, *, status=200, href=None, title=None, folded=True, text=None, ready_after=0
-    ):
+        self, job_id, *, status=200, href=None, title=None, folded=True, text=None, ready_after=0,
+        unavailable=False, fail=None,
+    ):  # fmt: skip
         self.job_id = job_id
+        self.unavailable = unavailable  # hh.ru: "Вам недоступна эта вакансия" (#272)
+        self.fail = fail  # raised as soon as the page is opened
         self.hh = bool(href and "hh.ru" in href)
         self.ready_after = ready_after  # probes before the description box is on the page
         self.status = status
@@ -54,6 +69,8 @@ class FakeBrowser:
         self.page = self.pages.get(job_id) or default
         if self.after_open:
             self.page = self.after_open(self.page) or self.page
+        if self.page.fail:
+            raise self.page.fail
 
     async def list_tabs(self):
         self.calls.append(("list_tabs", ""))
@@ -76,7 +93,8 @@ class FakeBrowser:
             self.calls.append(("probe", ""))
             ready = p.ready_after <= 0
             p.ready_after -= 1
-            return {"href": p.href, "title": p.title, "status": p.status, "ready": ready}
+            return {"href": p.href, "title": p.title, "status": p.status, "ready": ready,
+                    "unavailable": p.unavailable}  # fmt: skip
         if function == EXPAND:
             self.calls.append(("expand", ""))
             if p.folded:
@@ -582,3 +600,221 @@ def test_hh_page_of_another_vacancy_saves_nothing(session):
     stats = run(session, browser)
     assert stats.blocked and "another page" in stats.reason
     assert descriptions(session) == {}
+
+
+# --- one vacancy's trouble is that vacancy's (#272) ------------------------------------
+
+
+def unavailable_page(vacancy_id):
+    """What hh.ru showed for vacancy 139171674: HTTP 403, the URL unchanged, title HeadHunter."""
+    return FakePage(
+        vacancy_id,
+        href=f"https://hh.ru/vacancy/{vacancy_id}",
+        title="HeadHunter",
+        status=403,
+        unavailable=True,
+    )
+
+
+def events(session):
+    return {
+        e.opportunity_id: e for e in session.scalars(select(CompanyEvent).order_by(CompanyEvent.id))
+    }
+
+
+def opportunity_of(session, external_id):
+    return session.scalar(
+        select(SourceRecord.opportunity_id).where(SourceRecord.external_id == external_id)
+    )
+
+
+def test_unavailable_hh_vacancy_is_marked_and_the_run_goes_on(session):
+    hh_vacancy(session, "4235", score=9)
+    hh_vacancy(session, "4236", score=8)
+    browser = FakeBrowser({"4235": unavailable_page("4235")})
+    stats = run(session, browser)
+    assert not stats.blocked and stats.reason is None
+    assert (stats.requests, stats.saved, stats.errors) == (2, 1, 1)
+    assert set(descriptions(session)) == {"4236"}
+    assert browser.calls[-1] == ("close_tab", "")  # no tab is left open for an ordinary miss
+    fetch = session.scalar(select(LinkedInFetch).where(LinkedInFetch.job_id == "4235"))
+    assert fetch.status == "unavailable" and "403" in fetch.detail
+    event = events(session)[opportunity_of(session, "4235")]
+    assert event.kind == FILL_UNAVAILABLE and "not available" in event.comment
+
+
+def test_unavailable_vacancy_is_not_opened_again_until_the_mark_is_deleted(session):
+    from job_radar.contacts import delete_history_item
+
+    hh_vacancy(session, "4235")
+    run(session, FakeBrowser({"4235": unavailable_page("4235")}))
+    again = FakeBrowser()
+    assert run(session, again).total == 0
+    assert not [c for c in again.calls if c[0] in ("open_tab", "navigate")]
+    event = events(session)[opportunity_of(session, "4235")]
+    assert delete_history_item(session, "event", event.id)
+    assert run(session, FakeBrowser()).saved == 1
+
+
+def test_a_vacancy_that_is_gone_is_marked_like_an_unavailable_one(session):
+    hh_vacancy(session, "4235", score=9)
+    hh_vacancy(session, "4236", score=8)
+    gone = FakePage("4235", href="https://hh.ru/vacancy/4235", status=404, ready_after=99)
+    stats = run(session, FakeBrowser({"4235": gone}))
+    assert not stats.blocked and stats.saved == 1
+    assert events(session)[opportunity_of(session, "4235")].kind == FILL_UNAVAILABLE
+
+
+def test_a_plain_403_still_stops_the_run_and_marks_the_vacancy(session):
+    hh_vacancy(session, "4235", score=9)
+    hh_vacancy(session, "4236", score=8)
+    plain = FakePage("4235", href="https://hh.ru/vacancy/4235", status=403)
+    stats = run(session, FakeBrowser({"4235": plain}))
+    assert stats.blocked and stats.reason == "HTTP 403" and stats.requests == 1
+    assert events(session)[opportunity_of(session, "4235")].kind == FILL_PROBLEM
+    # Not "unavailable": the next run tries it again.
+    assert run(session, FakeBrowser()).saved == 2
+
+
+def test_browser_error_on_one_vacancy_is_marked_and_the_run_goes_on(session):
+    hh_vacancy(session, "4235", score=9)
+    hh_vacancy(session, "4236", score=8)
+    broken = FakePage("4235", href="https://hh.ru/vacancy/4235", fail=BrowserError("net::ERR"))
+    stats = run(session, FakeBrowser({"4235": broken}))
+    assert not stats.blocked and (stats.requests, stats.saved, stats.errors) == (2, 1, 1)
+    event = events(session)[opportunity_of(session, "4235")]
+    assert event.kind == FILL_PROBLEM and "net::ERR" in event.comment
+    fetch = session.scalar(select(LinkedInFetch).where(LinkedInFetch.job_id == "4235"))
+    assert fetch.status == "error"
+
+
+def test_a_page_that_never_answers_times_out_and_the_run_goes_on(session, monkeypatch):
+    from job_radar.linkedin import chrome
+
+    monkeypatch.setattr(chrome, "PAGE_TIMEOUT", 0.05)
+
+    class Hanging(FakeBrowser):
+        async def open_tab(self, url):
+            if url.endswith("4235"):
+                await asyncio.Event().wait()
+            await super().open_tab(url)
+
+    hh_vacancy(session, "4235", score=9)
+    hh_vacancy(session, "4236", score=8)
+    stats = run(session, Hanging())
+    assert not stats.blocked and stats.saved == 1 and stats.errors == 1
+    assert "no answer" in events(session)[opportunity_of(session, "4235")].comment
+
+
+def test_failure_while_saving_leaves_the_session_usable(session, monkeypatch):
+    from job_radar.linkedin import chrome
+
+    real = chrome.import_capture
+
+    def boom(s, payload):
+        if payload["detail"]["job_id"] == "4235":
+            s.add(LinkedInFetch(start=None, status="x"))  # NOT NULL: the flush raises
+            s.flush()
+        return real(s, payload)
+
+    monkeypatch.setattr(chrome, "import_capture", boom)
+    hh_vacancy(session, "4235", score=9)
+    hh_vacancy(session, "4236", score=8)
+    stats = run(session, FakeBrowser())
+    assert stats.saved == 1 and stats.errors == 1
+    assert set(descriptions(session)) == {"4236"}
+
+
+def test_three_failures_in_a_row_stop_the_run(session):
+    for n in range(5):
+        hh_vacancy(session, f"423{n}", score=9 - n)
+    pages = {
+        f"423{n}": FakePage(
+            f"423{n}", href=f"https://hh.ru/vacancy/423{n}", fail=BrowserError("gone")
+        )
+        for n in range(5)
+    }
+    stats = run(session, FakeBrowser(pages))
+    assert stats.blocked and stats.requests == 3 and stats.errors == 3
+    assert "3" in stats.reason
+
+
+def test_after_a_failed_navigation_the_error_page_does_not_stop_the_run(session):
+    """Chrome shows chrome-error:// after net::ERR; the tab is still ours."""
+
+    class ErrorPage(FakeBrowser):
+        async def navigate(self, url):
+            if url.endswith("4236"):
+                self.calls.append(("navigate", url))
+                self.page = FakePage("4236", href="chrome-error://chromewebdata/")
+                raise BrowserError("net::ERR_FAILED")
+            await super().navigate(url)
+
+    for n, score in (("4235", 9), ("4236", 8), ("4237", 7)):
+        hh_vacancy(session, n, score=score)
+    stats = run(session, ErrorPage())
+    assert not stats.blocked and stats.saved == 2 and stats.errors == 1
+
+
+def test_progress_is_counted_per_source(session):
+    vacancy(session, "101")
+    hh_vacancy(session, "4235", score=9)
+    hh_vacancy(session, "4236", score=8)
+    seen = []
+    browser = FakeBrowser({"4235": unavailable_page("4235")})
+    stats = run(session, browser, on_progress=lambda s: seen.append(asdict(s)["sources"]))
+    assert seen[0]["hh"]["total"] == 2 and seen[0]["linkedin"]["total"] == 1
+    assert seen[0]["hh"]["opened"] == 0
+    hh, linkedin = stats.sources["hh"], stats.sources["linkedin"]
+    assert (hh.label, hh.total, hh.opened, hh.saved, hh.problems) == ("hh.ru", 2, 2, 1, 1)
+    assert (linkedin.label, linkedin.opened, linkedin.saved) == ("LinkedIn", 1, 1)
+
+
+def test_status_shows_a_bar_and_counts_per_source(engine, database_url, tmp_path):
+    release = threading.Event()
+
+    def runner(job):
+        job.progress(
+            total=4, requests=1, saved=0, errors=1,
+            sources=[{"label": "LinkedIn", "total": 3, "opened": 0, "saved": 0, "problems": 0},
+                     {"label": "hh.ru", "total": 1, "opened": 1, "saved": 0, "problems": 1}],
+        )  # fmt: skip
+        release.wait(5)
+
+    with web(database_url, tmp_path, runner, linkedin_chrome=True) as client:
+        client.post("/chrome-fill")
+        deadline = time.time() + 5
+        while "hh.ru" not in (page := client.get("/chrome-fill/status").text):
+            assert time.time() < deadline
+        release.set()
+    assert 'class="progress"' in page and 'aria-valuenow="25"' in page
+    assert re.search(r"LinkedIn:\s*0 of 3", page) and re.search(r"hh\.ru:\s*1 of 1", page)
+    assert "1 with a problem" in page
+
+
+def test_fill_marks_are_not_contacts_or_your_actions(engine, session):
+    from job_radar.contacts import company_history
+    from job_radar.web.app import _visible_history_count, last_actions
+
+    hh_vacancy(session, "4235")
+    run(session, FakeBrowser({"4235": unavailable_page("4235")}))
+    oid = opportunity_of(session, "4235")
+    company_id = session.get(Opportunity, oid).company_id
+    history = company_history(session, company_id)
+    assert [e.kind for e in history] == [FILL_UNAVAILABLE]  # shown with the vacancy
+    assert "HeadHunter" not in history[0].text and "not available" in history[0].text
+    assert _visible_history_count(history) == 0  # no "contacted · 1" badge
+    assert FILL_UNAVAILABLE.replace("_", " ") not in (last_actions(session).get(oid) or ("", ""))[1]
+
+
+def test_probe_asks_the_page_whether_the_vacancy_is_unavailable():
+    assert "недоступна" in PROBE and "unavailable" in PROBE
+
+
+def test_repeated_problem_is_recorded_once(session):
+    hh_vacancy(session, "4235", score=9)
+    hh_vacancy(session, "4236", score=8)
+    broken = FakePage("4235", href="https://hh.ru/vacancy/4235", fail=BrowserError("net::ERR"))
+    run(session, FakeBrowser({"4235": broken}))
+    run(session, FakeBrowser({"4235": broken}))
+    assert session.scalar(select(func.count(CompanyEvent.id))) == 1

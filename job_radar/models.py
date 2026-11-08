@@ -269,6 +269,13 @@ class OpportunityNote(Base):
     company: Mapped[Company] = relationship()
 
 
+# Marks the Chrome fill leaves on a vacancy (#272). Not contacts and not your actions.
+# "unavailable": later runs skip the vacancy until you delete the mark.
+FILL_UNAVAILABLE = "unavailable"
+FILL_PROBLEM = "fill_problem"
+FILL_EVENT_KINDS = frozenset({FILL_UNAVAILABLE, FILL_PROBLEM})
+
+
 class CompanyEvent(Base):
     """Something that happened with a company and is not in the mail: a call, an interview,
     a recruiter on Telegram. Added by hand (#182)."""

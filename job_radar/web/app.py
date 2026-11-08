@@ -53,6 +53,7 @@ from ..linkedin.capture import import_capture
 from ..linkedin.chrome import load_chrome_pause, save_chrome_pause
 from ..linkedin.public import PauseSettings, load_pause, save_pause
 from ..models import (
+    FILL_EVENT_KINDS,
     Application,
     ApplicationReview,
     AppSetting,
@@ -1243,7 +1244,7 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
     applied += [at for o, at in others if o.state is OpportunityState.APPLIED]
     return {
         "history": history[:HISTORY_SHOWN],
-        "history_count": len(history),
+        "history_count": _visible_history_count(history),
         "others": others,
         "applied_before": max(applied) if applied else None,
         "o": opportunity,
@@ -1374,6 +1375,11 @@ def _utc(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
+def _visible_history_count(history: list) -> int:
+    """How many contacts the "contacted" badge counts: the Chrome fill's marks are not (#272)."""
+    return sum(e.kind not in FILL_EVENT_KINDS for e in history)
+
+
 def last_actions(session: Session) -> dict[int, tuple[datetime, str]]:
     """Per vacancy: when you last did something with it, and what (#199)."""
     found: dict[int, tuple[datetime, str]] = {}
@@ -1398,7 +1404,9 @@ def last_actions(session: Session) -> dict[int, tuple[datetime, str]]:
     ):
         keep(oid, at, "note" if kind is NoteKind.NOTE else "ignored")
     for oid, at, kind in session.execute(
-        select(CompanyEvent.opportunity_id, CompanyEvent.at, CompanyEvent.kind)
+        select(CompanyEvent.opportunity_id, CompanyEvent.at, CompanyEvent.kind).where(
+            CompanyEvent.kind.not_in(FILL_EVENT_KINDS)
+        )
     ):
         keep(oid, at, kind.replace("_", " "))
     for oid, at in session.execute(

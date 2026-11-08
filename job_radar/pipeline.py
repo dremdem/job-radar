@@ -85,6 +85,7 @@ def chrome_fill_job(settings: Settings, job) -> None:
     """The Chrome fill button's background run (#247): descriptions read in your own Chrome."""
     import asyncio
     import os
+    from dataclasses import asdict
 
     from .linkedin import chrome
 
@@ -105,7 +106,11 @@ def chrome_fill_job(settings: Settings, job) -> None:
                     max_per_run=settings.linkedin_chrome_max_per_run,
                     on_wait=job.waiting,
                     on_progress=lambda s: job.progress(
-                        total=s.total, requests=s.requests, saved=s.saved, errors=s.errors
+                        total=s.total,
+                        requests=s.requests,
+                        saved=s.saved,
+                        errors=s.errors,
+                        sources=[asdict(p) for p in s.sources.values()],
                     ),
                     echo=job.echo,
                 )

@@ -65,6 +65,16 @@ with
 > (apply, respond, message, like, follow, save, connect). Apart from the Chrome fill, hh.ru is
 > never fetched automatically (its API is closed to job seekers, #101).
 
+## Amendment (#272, 2026-11-08): an unavailable vacancy is not a block
+
+Asked for by the owner; a changed requirement. hh.ru answers **HTTP 403** on the vacancy's own
+URL with the text "Вам недоступна эта вакансия" (a vacancy closed to this account), and "stops
+on any 403" made one such vacancy end every run at the same place. That page, and a 404/410 on
+a vacancy page, is now a problem of that vacancy: it is marked in the vacancy's event log and
+the run goes on. Later runs skip it until the mark is deleted. Captcha, login, 429, 999 and any
+other 403 still stop the run at once; three failed vacancies in a row stop it too, so a site
+that starts refusing everything is not walked through page by page.
+
 ## Consequences
 
 - hh.ru sees the user's own session open vacancy pages, at the pace of a person; it may show

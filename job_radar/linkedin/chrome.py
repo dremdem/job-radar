@@ -16,7 +16,7 @@ import shlex
 import threading
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -25,7 +25,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import (
+    FILL_PROBLEM,
+    FILL_UNAVAILABLE,
     AppSetting,
+    CompanyEvent,
     LinkedInFetch,
     Opportunity,
     OpportunityState,
@@ -48,7 +51,8 @@ DEFAULT_PAUSE = PauseSettings(2.0, 4.0)
 LOAD_STEP = (0.4, 0.8)
 LOAD_TIMEOUT = 10.0
 EXPAND_WAIT = (0.6, 1.0)  # the click comes 0.3 s after EXPAND returns; unfolding is in-page
-MAX_ERRORS_IN_A_ROW = 3  # the page layout probably changed: stop rather than keep going
+MAX_ERRORS_IN_A_ROW = 3  # the browser or the layout is at fault: stop rather than keep going
+PAGE_TIMEOUT = 60.0  # one vacancy, start to end; a normal one takes under 20 s (#272)
 # Only these Playwright MCP tools are ever called (#247): no clicks by reference, no typing.
 ALLOWED_TOOLS = frozenset({"browser_tabs", "browser_navigate", "browser_evaluate"})
 # Added to the command unless it sets them itself (#254). Without them every navigate
@@ -84,9 +88,13 @@ DESCRIPTION_BOXES = (
 PROBE = """() => {
   const nav = performance.getEntriesByType('navigation')[0];
   const boxes = [...document.querySelectorAll('__BOXES__, [data-qa="vacancy-description"]')];
+  const ready = boxes.some((b) => b.innerText.trim() !== '');
+  const text = document.body ? document.body.innerText : '';
   return { href: location.href, title: document.title,
            status: nav && nav.responseStatus ? nav.responseStatus : null,
-           ready: boxes.some((b) => b.innerText.trim() !== '') };
+           ready: ready,
+           unavailable: !ready && /(^|\\.)hh\\.(ru|kz|by|uz)$/.test(location.hostname)
+             && /вам\\s+недоступна\\s+эта\\s+вакансия/i.test(text) };
 }""".replace("__BOXES__", DESCRIPTION_BOXES)
 # Unfold the description: only a "more" button inside the description box itself, never
 # anything else on the page (e.g. "Show more options" opens the job's action menu).
@@ -127,6 +135,17 @@ class BrowserError(RuntimeError):
 
 
 @dataclass
+class SourceProgress:
+    """How far a run got with one site (#272)."""
+
+    label: str
+    total: int = 0
+    opened: int = 0
+    saved: int = 0
+    problems: int = 0
+
+
+@dataclass
 class FillStats:
     total: int = 0  # vacancies this run will try
     requests: int = 0  # pages opened
@@ -135,6 +154,7 @@ class FillStats:
     blocked: bool = False
     reason: str | None = None  # why it stopped early: "HTTP 429", "authwall", "another page"
     stopped: bool = False  # by the user
+    sources: dict[str, SourceProgress] = field(default_factory=dict)  # "linkedin", "hh"
 
 
 def load_chrome_pause(session: Session) -> PauseSettings:
@@ -177,6 +197,20 @@ def block_reason(probe: dict[str, Any]) -> str | None:
         return f"verification page ({href.split('?')[0]})"
     if _BLOCK_TITLE.search(title):
         return f"verification page ({title})"
+    return None
+
+
+def unavailable_reason(probe: dict[str, Any]) -> str | None:
+    """Why this one vacancy cannot be read, when the site itself is fine (#272): an hh.ru
+    page saying it is not available to you (HTTP 403 on the vacancy's own URL), or a 404/410
+    on a vacancy page. Anything else that fails is for block_reason."""
+    if page_of(str(probe.get("href") or "")) is None:
+        return None
+    status = probe.get("status")
+    if status in (404, 410):
+        return f"vacancy not available any more (HTTP {status})"
+    if probe.get("unavailable"):
+        return "vacancy not available to you" + (f" (HTTP {status})" if status else "")
     return None
 
 
@@ -249,24 +283,119 @@ async def fill_descriptions(
         waited = 0.0
         while True:
             probe = await browser.evaluate(PROBE)
-            if probe.get("ready") or block_reason(probe) or waited >= LOAD_TIMEOUT:
+            final = probe.get("ready") or unavailable_reason(probe) or block_reason(probe)
+            if final or waited >= LOAD_TIMEOUT:
                 return probe
             step = random.uniform(*LOAD_STEP)
             await sleep(step)
             waited += step
 
-    def log(job_id: str, opportunity_id: int, status: str, detail: str | None = None) -> None:
+    def log(opportunity: Opportunity, job_id: str, status: str, detail: str | None = None) -> None:
         session.add(
-            LinkedInFetch(kind="chrome", job_id=job_id, start=0, opportunity_id=opportunity_id,
-                          status=status, detail=detail, at=datetime.now(UTC),
+            LinkedInFetch(kind="chrome", job_id=job_id, start=0, opportunity_id=opportunity.id,
+                          status=status, detail=detail and detail[:255], at=datetime.now(UTC),
                           jobs=1 if status == "ok" else 0)
         )  # fmt: skip
+        if status != "ok":
+            _mark(session, opportunity, status, detail or status)
         session.commit()
+
+    def problem(source: SourceProgress) -> None:
+        nonlocal errors_in_a_row
+        stats.errors += 1
+        source.problems += 1
+        errors_in_a_row += 1
+
+    async def visit(opportunity: Opportunity, record: SourceRecord, url: str) -> bool:
+        """One vacancy, start to end. False when the whole run has to stop."""
+        nonlocal tab_url, attempted, uncertain, errors_in_a_row
+        job_id = record.external_id
+        hh = record.source_type == SourceType.HH
+        source = stats.sources["hh" if hh else "linkedin"]
+        site = source.label
+        expected = ("hh" if hh else "linkedin", job_id)
+        stats.requests += 1
+        source.opened += 1
+        progress()
+        started = time.monotonic()
+        if tab_url is None and reuse:
+            attempted = url
+            await browser.navigate(url)
+        elif tab_url is None:
+            attempted = url
+            await browser.open_tab(url)
+        else:
+            # The extension follows one tab; make sure it is still ours before leaving it.
+            here = str((await browser.evaluate(PROBE)).get("href"))
+            ours = page_of(here) in (page_of(tab_url), page_of(attempted or tab_url))
+            if not ours and not (uncertain and here.startswith("chrome-error:")):
+                stats.blocked, stats.reason = True, "another page in the tab: stopped"
+                say(f"stopped: the tab shows {here}, not our vacancy")
+                return False
+            attempted = url
+            await browser.navigate(url)
+        tab_url = url
+        uncertain = False
+        opened = time.monotonic()
+        probe = await loaded()
+        ready = time.monotonic()
+        if reason := unavailable_reason(probe):
+            problem(source)
+            log(opportunity, job_id, "unavailable", reason)
+            say(f"{site}: vacancy {job_id}: {reason}; marked, going on")
+            return True
+        if reason := block_reason(probe):
+            source.problems += 1
+            stats.blocked, stats.reason = True, reason
+            log(opportunity, job_id, "blocked", reason)
+            say(f"{site}: {reason} — stopped; the tab is left open for you to see")
+            tab_url = None  # leave it open
+            return False
+        if page_of(str(probe.get("href"))) != expected:
+            source.problems += 1
+            stats.blocked, stats.reason = True, "another page in the tab: stopped"
+            log(opportunity, job_id, "error", f"tab shows {probe.get('href')}")
+            say(f"stopped: expected job {job_id}, the tab shows {probe.get('href')}")
+            tab_url = None
+            return False
+        if not hh and await browser.evaluate(EXPAND):  # hh.ru shows it all (#260)
+            await wait(EXPAND_WAIT)
+        expanded = time.monotonic()
+        payload = await browser.evaluate(f"() => ({READER})()")
+        detail = (payload or {}).get("detail") or {}
+        if str(detail.get("job_id")) != job_id:  # the page changed under us
+            source.problems += 1
+            stats.blocked, stats.reason = True, "another page in the tab: stopped"
+            log(opportunity, job_id, "error", "the page changed while reading")
+            say(f"stopped: the page changed while reading job {job_id}")
+            tab_url = None
+            return False
+        result = import_capture(session, own_payload(payload, job_id))
+        timing = (
+            f"open {opened - started:.1f} s · load {ready - opened:.1f} s"
+            f" · expand {expanded - ready:.1f} s · read {time.monotonic() - expanded:.1f} s"
+        )
+        say(f"{result.vacancy or f'job {job_id}'} ({timing})")
+        if result.descriptions:
+            stats.saved += 1
+            source.saved += 1
+            errors_in_a_row = 0
+            log(opportunity, job_id, "ok", timing)
+        else:
+            problem(source)
+            log(opportunity, job_id, "error", "no description on the page")
+        return True
 
     todo = _todo(session)[:max_per_run]
     stats.total = len(todo)
+    for key, label in (("linkedin", "LinkedIn"), ("hh", "hh.ru")):
+        count = sum((record.source_type == SourceType.HH) == (key == "hh") for _, record in todo)
+        if count:
+            stats.sources[key] = SourceProgress(label, total=count)
     progress()
     tab_url: str | None = None  # the page our own tab should be on; None: no tab yet
+    attempted: str | None = None  # the page last asked for; it may have loaded after all
+    uncertain = False  # the last vacancy failed: the tab may show the browser's error page
     # The extension's connect page is the run's own tab: use it, and close it at the end,
     # so nothing is left open (#250). Any other tab is the user's: open a new one instead.
     try:
@@ -280,70 +409,30 @@ async def fill_descriptions(
             if stop.is_set() or (n and not await human_pause()):
                 stats.stopped = True
                 break
-            job_id = record.external_id
             hh = record.source_type == SourceType.HH
-            site = "hh.ru" if hh else "LinkedIn"
-            url = (HH_URL if hh else JOB_URL).format(job_id=job_id)
-            expected = ("hh" if hh else "linkedin", job_id)
-            started = time.monotonic()
-            if tab_url is None and reuse:
-                await browser.navigate(url)
-            elif tab_url is None:
-                await browser.open_tab(url)
-            else:
-                # The extension follows one tab; make sure it is still ours before leaving it.
-                here = await browser.evaluate(PROBE)
-                if page_of(str(here.get("href"))) != page_of(tab_url):
-                    stats.blocked, stats.reason = True, "another page in the tab: stopped"
-                    say(f"stopped: the tab shows {here.get('href')}, not our vacancy")
-                    break
-                await browser.navigate(url)
-            tab_url = url
-            stats.requests += 1
-            opened = time.monotonic()
-            probe = await loaded()
-            ready = time.monotonic()
-            if reason := block_reason(probe):
-                stats.blocked, stats.reason = True, reason
-                log(job_id, opportunity.id, "blocked", reason)
-                say(f"{site}: {reason} — stopped; the tab is left open for you to see")
-                tab_url = None  # leave it open
-                break
-            if page_of(str(probe.get("href"))) != expected:
-                stats.blocked, stats.reason = True, "another page in the tab: stopped"
-                log(job_id, opportunity.id, "error", f"tab shows {probe.get('href')}")
-                say(f"stopped: expected job {job_id}, the tab shows {probe.get('href')}")
-                tab_url = None
-                break
-            if not hh and await browser.evaluate(EXPAND):  # hh.ru shows it all (#260)
-                await wait(EXPAND_WAIT)
-            expanded = time.monotonic()
-            payload = await browser.evaluate(f"() => ({READER})()")
-            detail = (payload or {}).get("detail") or {}
-            if str(detail.get("job_id")) != job_id:  # the page changed under us
-                stats.blocked, stats.reason = True, "another page in the tab: stopped"
-                log(job_id, opportunity.id, "error", "the page changed while reading")
-                say(f"stopped: the page changed while reading job {job_id}")
-                tab_url = None
-                break
-            result = import_capture(session, own_payload(payload, job_id))
-            timing = (
-                f"open {opened - started:.1f} s · load {ready - opened:.1f} s"
-                f" · expand {expanded - ready:.1f} s · read {time.monotonic() - expanded:.1f} s"
-            )
-            say(f"{result.vacancy or f'job {job_id}'} ({timing})")
-            if result.descriptions:
-                stats.saved += 1
-                errors_in_a_row = 0
-                log(job_id, opportunity.id, "ok", timing)
-            else:
-                stats.errors += 1
-                errors_in_a_row += 1
-                log(job_id, opportunity.id, "error", "no description on the page")
+            url = (HH_URL if hh else JOB_URL).format(job_id=record.external_id)
+            # One vacancy's trouble stays that vacancy's (#272): its own time limit, and
+            # anything it raises is written down on it.
+            try:
+                go_on = await asyncio.wait_for(visit(opportunity, record, url), PAGE_TIMEOUT)
+            except Exception as e:  # a browser or import error of this page
+                session.rollback()  # or the failed flush poisons everything after it
+                reason = (
+                    f"no answer from the browser in {PAGE_TIMEOUT:.0f} s"
+                    if isinstance(e, TimeoutError)
+                    else f"{type(e).__name__}: {e}"
+                )
+                uncertain = True
+                problem(stats.sources["hh" if hh else "linkedin"])
+                log(opportunity, record.external_id, "error", reason)
+                say(f"job {record.external_id}: {reason}; marked, going on")
+                go_on = True
             progress()
+            if not go_on:
+                break
             if errors_in_a_row >= MAX_ERRORS_IN_A_ROW:
-                stats.blocked, stats.reason = True, f"{errors_in_a_row} pages without a description"
-                say("stopped: pages in a row had no description; the layout may have changed")
+                stats.blocked, stats.reason = True, f"{errors_in_a_row} vacancies in a row failed"
+                say("stopped: vacancies in a row failed; the browser or the layout may be at fault")
                 break
     finally:
         progress()
@@ -353,8 +442,37 @@ async def fill_descriptions(
     return stats
 
 
+def _mark(session: Session, opportunity: Opportunity, status: str, reason: str) -> None:
+    """Write the problem into the vacancy's event log, once per distinct problem (#272)."""
+    kind = FILL_UNAVAILABLE if status == "unavailable" else FILL_PROBLEM
+    comment = f"{opportunity.title}: {reason}"
+    known = session.scalar(
+        select(CompanyEvent.id).where(
+            CompanyEvent.opportunity_id == opportunity.id,
+            CompanyEvent.kind == kind,
+            CompanyEvent.comment == comment,
+        )
+    )
+    if known is None:
+        session.add(
+            CompanyEvent(
+                company_id=opportunity.company_id,
+                opportunity_id=opportunity.id,
+                kind=kind,
+                at=datetime.now(UTC),
+                comment=comment,
+            )
+        )
+
+
 def _todo(session: Session) -> list[tuple[Opportunity, SourceRecord]]:
-    """LinkedIn and hh.ru vacancies in To review without a description, best score first."""
+    """LinkedIn and hh.ru vacancies in To review without a description, best score first.
+    One marked unavailable waits until you delete the mark from its history (#272)."""
+    skip = set(
+        session.scalars(
+            select(CompanyEvent.opportunity_id).where(CompanyEvent.kind == FILL_UNAVAILABLE)
+        )
+    )
     hh = []
     for o in session.scalars(select(Opportunity).where(Opportunity.state == OpportunityState.NEW)):
         if any(r.snapshots for r in o.source_records):
@@ -365,6 +483,7 @@ def _todo(session: Session) -> list[tuple[Opportunity, SourceRecord]]:
     linkedin = _without_description(session)
     seen = {o.id for o, _ in linkedin}
     both = linkedin + [pair for pair in hh if pair[0].id not in seen]
+    both = [pair for pair in both if pair[0].id not in skip]
     return sorted(both, key=lambda pair: -(pair[0].score if pair[0].score is not None else -1))
 
 

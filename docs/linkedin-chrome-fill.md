@@ -37,8 +37,10 @@ a vacancy take 11–20 s instead of a few.
 3. For each vacancy it:
    - waits for the page to load and for the description to appear on it (checked every
      0.4–0.8 s, at most 10 s; #254);
-   - checks the page: on an authwall, login, checkpoint, captcha ("не робот") or verification page, or
-     on HTTP 403 / 429 / 999, it stops at once and leaves the tab open for you to see;
+   - checks the page: an hh.ru page saying "Вам недоступна эта вакансия" or a 404/410 on the
+     vacancy is **marked and skipped**, and the run goes on (#272, see [Problems](#problems-with-one-vacancy));
+   - on an authwall, login, checkpoint, captcha ("не робот") or verification page, or on any
+     other HTTP 403 / 429 / 999, it stops at once and leaves the tab open for you to see;
    - checks that the tab shows **this** vacancy. If it shows anything else (you clicked
      around), it stops and saves nothing;
    - on LinkedIn, presses the "… more" button **inside the description**, if there is
@@ -52,13 +54,28 @@ a vacancy take 11–20 s instead of a few.
      tab is still its own.
 4. At the end it closes its tab, so nothing is left open.
 
-Three pages in a row without a description stop the run: LinkedIn's layout has probably
-changed, and the bookmarklet needs the same fix.
+Three vacancies in a row that failed in any way stop the run: the browser has gone away, or
+the layout has changed and the bookmarklet needs the same fix.
+
+## Problems with one vacancy
+
+Each vacancy has its own limit (60 s from opening it to saving it) and its own error handler,
+so a page that hangs or breaks costs that vacancy only (#272). What went wrong is written in
+the vacancy's **Company history**, once per distinct problem, and in the LinkedIn log. These
+marks are not contacts: they do not count in the "contacted" badge or as your last action.
+
+| Kind | When | Next run |
+| --- | --- | --- |
+| `unavailable` | hh.ru says the vacancy is not available to you, or a 404/410 | skipped, until you delete the mark (× in the history) |
+| `fill_problem` | timeout, browser error, no description, or the page that stopped the run | tried again |
+
+To drop a vacancy for good, ignore it as usual; to try it again, delete its `unavailable` mark.
 
 ## Status, Stop and reruns
 
 Under the header: `Chrome fill: 7 of 30 opened · 6 saved · 23 left · next in 18 s`, the
-last vacancy it handled, and **Stop**. Stop takes effect during the pause, at the latest
+last vacancy it handled, **Stop**, a progress bar, and the counts per site (`LinkedIn: 5 of
+24 · 4 saved · 1 with a problem`, `hh.ru: 2 of 6 · 2 saved`; #272). Stop takes effect during the pause, at the latest
 after the current page. The finished line says why it ended (`done`, `stopped by you`,
 `stopped: HTTP 429`, `stopped: another page in the tab: stopped`), and links to the
 **LinkedIn log**, where every page is listed with kind `chrome`. A saved page shows how
