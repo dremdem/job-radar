@@ -477,10 +477,9 @@ def _mark(session: Session, opportunity: Opportunity, status: str, reason: str) 
 
 def _todo(session: Session) -> list[tuple[Opportunity, SourceRecord]]:
     """LinkedIn and hh.ru vacancies in To review without a description, best score first.
-    One marked unavailable waits until you clear the mark on its badge (#276)."""
-    skip = set(
-        session.scalars(select(Opportunity.id).where(Opportunity.unavailable_at.is_not(None)))
-    )
+    One marked unavailable or not accepting waits until you clear its badge (#276, #278)."""
+    closed = Opportunity.unavailable_at.is_not(None) | Opportunity.not_accepting_at.is_not(None)
+    skip = set(session.scalars(select(Opportunity.id).where(closed)))
     hh = []
     for o in session.scalars(select(Opportunity).where(Opportunity.state == OpportunityState.NEW)):
         if any(r.snapshots for r in o.source_records):

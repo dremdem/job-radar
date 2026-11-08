@@ -2,7 +2,13 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
-from job_radar.auto_ignore import UNAVAILABLE_REASON, Rules, load_rules, reason_for
+from job_radar.auto_ignore import (
+    NOT_ACCEPTING_REASON,
+    UNAVAILABLE_REASON,
+    Rules,
+    load_rules,
+    reason_for,
+)
 from job_radar.dedup import get_or_create_company
 from job_radar.models import Opportunity, OpportunityState
 
@@ -131,3 +137,22 @@ def test_badge_button_clears_the_mark(client, session):
         OpportunityState.NEW,
         None,
     )
+
+
+def test_not_accepting_badge_shows_with_a_description_too(client, session):
+    o = add(session, "Closed", "Remote")
+    o.not_accepting_at = datetime.now(UTC)
+    session.commit()
+    page = client.get(f"/opportunities/{o.id}").text
+    assert '<span class="badge reject">not accepting' in page
+    assert "verify manually" not in page
+    assert f'action="/opportunities/{o.id}/unavailable/clear"' in page
+    item = client.get("/?tab=review").text
+    assert ">not accepting<" in item and "line-skip" in item
+
+
+def test_rule_moves_a_vacancy_that_is_not_accepting(session):
+    o = add(session, "Closed", "Remote")
+    o.not_accepting_at = datetime.now(UTC)
+    assert reason_for(session, o, Rules(countries=())) == NOT_ACCEPTING_REASON
+    assert reason_for(session, o, Rules(countries=(), unavailable=False)) is None

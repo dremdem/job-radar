@@ -13,7 +13,7 @@
 | Hybrid / on-site | "hybrid" or "on-site" appears in the title or location | `hybrid / on-site` |
 | No Python in the description | the vacancy has a description, Python is not in it, and not in the title either | `no Python in the description` |
 | Description not in English | the description (or the title) is in a language other than English or Russian ([applications.md](applications.md#vacancy-language)) | `language: German` |
-| Vacancy not available | the Chrome fill found that the site says the vacancy is not available to you, or a 404/410 ([linkedin-chrome-fill.md](linkedin-chrome-fill.md#problems-with-one-vacancy), #276). **On by default**; the only rule besides Countries that is | `vacancy not available` |
+| Vacancy not available or not accepting | the Chrome fill found that the site says the vacancy is not available to you, or a 404/410 ([linkedin-chrome-fill.md](linkedin-chrome-fill.md#problems-with-one-vacancy), #276); or a LinkedIn page read by the Chrome fill or the bookmarklet says it is not accepting applications (#278). **On by default**; the only rule besides Countries that is | `vacancy not available`, `not accepting applications` |
 | Claude said skip | Claude's latest finished analysis says `skip`, and its main reason (`ignore_reason.kind`) is one you picked — or any reason at all ([below](#claude-said-skip), #245) | `Claude: location: EU only` |
 | AI: hybrid / country-only | the local model found, with a quote checked against the description, that the job is hybrid / on-site or limited to some countries ([ai.md](ai.md)); works only with `JOB_RADAR_AI_ANALYSIS=true`, off by default | `AI: only for UK` |
 

@@ -59,9 +59,22 @@ function () {
       }
       return '';
     };
+    /* Only the line on this vacancy (#278): a text node that is exactly it, on screen, outside
+       the description and other vacancies' cards. */
+    var notAccepting = function () {
+      var line = /^(not currently|no longer) accepting applications$/i;
+      var elsewhere = 'li,a[href*="/jobs/view/"],[data-job-id],[data-occludable-job-id],[componentkey^="job-card-component-ref-"],[componentkey^="JobDetails_AboutTheJob"],#job-details,[class*="jobs-description"]';
+      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), node, parent;
+      while ((node = walker.nextNode())) {
+        parent = node.parentElement;
+        if (line.test(node.nodeValue.trim()) && parent && parent.getClientRects().length && !parent.closest(elsewhere)) return true;
+      }
+      return false;
+    };
     detail = {
       job_id: cur[1],
       page_title: document.title,
+      not_accepting: notAccepting(),
       title: q('.job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title'),
       company: q('.job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name'),
       description: text('[componentkey^="JobDetails_AboutTheJob"]|[data-testid="expandable-text-box"]|#job-details|.jobs-description__content|.jobs-description-content__text|[class*="jobs-description"]').slice(0, 20000)

@@ -72,6 +72,13 @@ The status line lists the vacancies of this run that had a problem (#274): the t
 in Job Radar, the site name opens the posting, and the reason follows. The list lasts until the
 next run or a server restart; the marks stay.
 
+A LinkedIn page that says **Not currently accepting applications** or **No longer accepting
+applications** is not a problem: the description is saved as usual, and the vacancy gets a red
+**not accepting** badge and goes to **Auto-ignored** under the same rule (#278). Only that line
+on the vacancy itself counts, in English, exactly as written; a sentence in the description or
+another vacancy's card does not. Vacancies read earlier stay as they are until they are read
+again. × on the badge clears it.
+
 To try an unavailable vacancy again, press × on its badge on the vacancy page: the badge goes,
 the vacancy returns to To review if this rule had moved it, and the next run opens it.
 

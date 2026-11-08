@@ -835,6 +835,18 @@ def test_fill_marks_are_not_contacts_or_your_actions(engine, session):
     assert FILL_PROBLEM.replace("_", " ") not in (last_actions(session).get(oid) or ("", ""))[1]
 
 
+def test_not_accepting_vacancy_is_not_opened_again_until_cleared(session):
+    save_rules(session, Rules(unavailable=False))
+    hh_vacancy(session, "4235")
+    opportunity = session.get(Opportunity, opportunity_of(session, "4235"))
+    opportunity.not_accepting_at = datetime.now(UTC)
+    session.commit()
+    assert run(session, FakeBrowser()).total == 0
+    clear_unavailable(opportunity)
+    session.commit()
+    assert run(session, FakeBrowser()).total == 1
+
+
 def test_probe_asks_the_page_whether_the_vacancy_is_unavailable():
     assert "недоступна" in PROBE and "unavailable" in PROBE
 

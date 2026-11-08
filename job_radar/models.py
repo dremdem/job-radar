@@ -112,6 +112,7 @@ class Opportunity(Base):
     easy_apply: Mapped[bool | None]
     auto_ignore_reason: Mapped[str | None] = mapped_column(String(255))
     unavailable_at: Mapped[datetime | None]  # the site says it is not available to you (#276)
+    not_accepting_at: Mapped[datetime | None]  # LinkedIn: not accepting applications (#278)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
     state_changed_at: Mapped[datetime | None]  # your last state change, for sorting (#199)

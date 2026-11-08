@@ -147,6 +147,11 @@ def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
         outcome = []
         if created:
             outcome.append("new")
+        if record is not None and detail.get("not_accepting"):  # before the rules below
+            from ..auto_ignore import mark_not_accepting
+
+            mark_not_accepting(session, record.opportunity)
+            outcome.append("not accepting applications")
         if record is None:
             outcome.append("not recognised (no title or company on the page)")
         elif not description:

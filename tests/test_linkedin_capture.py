@@ -1,8 +1,9 @@
 from sqlalchemy import func, select
 
+from job_radar.auto_ignore import NOT_ACCEPTING_REASON, Rules, clear_unavailable, save_rules
 from job_radar.linkedin.alerts import AlertJob, add_linkedin_job
 from job_radar.linkedin.capture import import_capture, parse_card_text
-from job_radar.models import JobSnapshot, Opportunity, SourceRecord, SourceType
+from job_radar.models import JobSnapshot, Opportunity, OpportunityState, SourceRecord, SourceType
 
 # Card texts as LinkedIn's logged-in search page shows them (innerText), from the user's screen.
 PFIZER = """Staff Software Engineer (AI Backend Services)
@@ -238,3 +239,48 @@ def test_vacancy_page_is_not_reported_unreadable(session):
 def test_vacancy_page_without_description(session):
     page = {**VACANCY_PAGE, "detail": {**VACANCY_PAGE["detail"], "description": ""}}
     assert import_capture(session, page).vacancy.endswith("no description found on the page")
+
+
+def not_accepting_payload(flag):
+    detail = {"job_id": "77", "page_title": "Engineer | Acme | LinkedIn", "description": "Python"}
+    return {"source_url": "u", "cards": [], "detail": detail | {"not_accepting": flag}}
+
+
+def captured(session):
+    return session.scalar(select(Opportunity))
+
+
+def test_not_accepting_page_keeps_the_description_and_is_auto_ignored(session):
+    stats = import_capture(session, not_accepting_payload(True))
+    o = captured(session)
+    assert stats.descriptions == 1 and "not accepting" in stats.vacancy
+    assert o.not_accepting_at is not None
+    assert (o.state, o.auto_ignore_reason) == (
+        OpportunityState.AUTO_IGNORE,
+        NOT_ACCEPTING_REASON,
+    )
+
+
+def test_not_accepting_stays_in_review_when_the_rule_is_off(session):
+    save_rules(session, Rules(unavailable=False))
+    import_capture(session, not_accepting_payload(True))
+    o = captured(session)
+    assert o.not_accepting_at is not None
+    assert (o.state, o.auto_ignore_reason) == (OpportunityState.NEW, None)
+
+
+def test_a_page_without_the_line_is_not_marked(session):
+    import_capture(session, not_accepting_payload(False))
+    o = captured(session)
+    assert o.not_accepting_at is None and o.state is OpportunityState.NEW
+
+
+def test_clearing_undoes_only_this_rule(session):
+    import_capture(session, not_accepting_payload(True))
+    o = captured(session)
+    clear_unavailable(o)
+    assert (o.not_accepting_at, o.state, o.auto_ignore_reason) == (
+        None,
+        OpportunityState.NEW,
+        None,
+    )

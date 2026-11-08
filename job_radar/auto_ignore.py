@@ -20,6 +20,7 @@ from .models import (
 
 SETTINGS_KEY = "auto_ignore"
 UNAVAILABLE_REASON = "vacancy not available"
+NOT_ACCEPTING_REASON = "not accepting applications"
 _HYBRID = re.compile(r"\b(hybrid|on-?site)\b", re.IGNORECASE)
 DEFAULT_COUNTRIES = ("India", "Pakistan")
 # LinkedIn often names only the city or the state ("Bengaluru (Remote)"), so for these
@@ -64,7 +65,7 @@ class Rules:
     countries: tuple[str, ...] = DEFAULT_COUNTRIES  # empty: the rule is off (#229)
     claude_any: bool = False  # every `skip` from Claude (#245)
     claude_kinds: tuple[str, ...] = ()  # or only these main reasons of a `skip`
-    unavailable: bool = True  # the site says the vacancy is not available (#276)
+    unavailable: bool = True  # the site says not available (#276) or not accepting (#278)
 
     @property
     def any(self) -> bool:
@@ -173,17 +174,26 @@ def apply_claude_rule(session: Session, opportunity: Opportunity) -> bool:
 def mark_unavailable(session: Session, opportunity: Opportunity) -> None:
     """The site says this vacancy is not available (#276): flag it, and auto-ignore it if `new`."""
     opportunity.unavailable_at = datetime.now(UTC)
+    _auto_ignore_closed(session, opportunity, UNAVAILABLE_REASON)
+
+
+def mark_not_accepting(session: Session, opportunity: Opportunity) -> None:
+    """LinkedIn says it takes no applications (#278): flag it, and auto-ignore it if `new`."""
+    opportunity.not_accepting_at = datetime.now(UTC)
+    _auto_ignore_closed(session, opportunity, NOT_ACCEPTING_REASON)
+
+
+def _auto_ignore_closed(session: Session, opportunity: Opportunity, reason: str) -> None:
     if opportunity.state is OpportunityState.NEW and load_rules(session).unavailable:
-        opportunity.state = OpportunityState.AUTO_IGNORE
-        opportunity.auto_ignore_reason = UNAVAILABLE_REASON
+        opportunity.state, opportunity.auto_ignore_reason = OpportunityState.AUTO_IGNORE, reason
 
 
 def clear_unavailable(opportunity: Opportunity) -> None:
-    """Try it again: drop the flag, and undo the auto-ignore only if this rule set it."""
-    opportunity.unavailable_at = None
-    if (
-        opportunity.state is OpportunityState.AUTO_IGNORE
-        and opportunity.auto_ignore_reason == UNAVAILABLE_REASON
+    """Drop the flags, and undo the auto-ignore only if this rule set it."""
+    opportunity.unavailable_at = opportunity.not_accepting_at = None
+    if opportunity.state is OpportunityState.AUTO_IGNORE and opportunity.auto_ignore_reason in (
+        UNAVAILABLE_REASON,
+        NOT_ACCEPTING_REASON,
     ):
         opportunity.state, opportunity.auto_ignore_reason = OpportunityState.NEW, None
 
@@ -202,6 +212,8 @@ def reason_for(
 
     if rules.unavailable and opportunity.unavailable_at is not None:
         return UNAVAILABLE_REASON
+    if rules.unavailable and opportunity.not_accepting_at is not None:
+        return NOT_ACCEPTING_REASON
     if country := country_of(opportunity.location, rules.countries):
         return f"country: {country} ({opportunity.location})"
     if rules.rejected:
