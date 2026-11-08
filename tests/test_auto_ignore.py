@@ -246,7 +246,7 @@ def test_country_list_is_yours_and_empty_turns_it_off(session):
         "country: Vietnam (Hanoi, Vietnam)"
     )
     assert reason_for(session, opp(session, location="India (Remote)"), vietnam, NOW) is None
-    off = Rules(countries=())
+    off = Rules(countries=(), unavailable=False)  # the other rule that is on by default (#276)
     assert not off.any
     assert reason_for(session, opp(session, location="India (Remote)"), off, NOW) is None
     save_rules(session, vietnam)

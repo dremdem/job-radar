@@ -30,6 +30,7 @@ One vacancy, independent of where it was seen.
 | `title`, `company_id` | |
 | `state` | `new` → `interested` / `ignore` / `applied`, changed by the user; `auto_ignore` set only by the rules in [settings.md](settings.md) |
 | `auto_ignore_reason` | Why a rule auto-ignored it; cleared when you change the state |
+| `unavailable_at` | When the Chrome fill found the site says this vacancy is not available (#276); null otherwise |
 | `score` | Nullable float, 0–10; rule-based for now (#13). Intrinsic (title/location) score; the rejection penalty is applied at display time, see [Rejection](#rejection) |
 | `score_reasons` | JSON list of `{"sign": "+" or "-", "text": ...}` explaining the score |
 | `location`, `salary` | As shown by the source, free text |

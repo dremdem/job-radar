@@ -111,6 +111,7 @@ class Opportunity(Base):
     salary: Mapped[str | None] = mapped_column(String(64))
     easy_apply: Mapped[bool | None]
     auto_ignore_reason: Mapped[str | None] = mapped_column(String(255))
+    unavailable_at: Mapped[datetime | None]  # the site says it is not available to you (#276)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
     state_changed_at: Mapped[datetime | None]  # your last state change, for sorting (#199)
@@ -269,11 +270,10 @@ class OpportunityNote(Base):
     company: Mapped[Company] = relationship()
 
 
-# Marks the Chrome fill leaves on a vacancy (#272). Not contacts and not your actions.
-# "unavailable": later runs skip the vacancy until you delete the mark.
-FILL_UNAVAILABLE = "unavailable"
+# The mark the Chrome fill leaves in a vacancy's history (#272). Not a contact, not your action.
+# A vacancy the site says is not available is Opportunity.unavailable_at instead (#276).
 FILL_PROBLEM = "fill_problem"
-FILL_EVENT_KINDS = frozenset({FILL_UNAVAILABLE, FILL_PROBLEM})
+FILL_EVENT_KINDS = frozenset({FILL_PROBLEM})
 
 
 class CompanyEvent(Base):

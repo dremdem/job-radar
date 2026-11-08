@@ -5,9 +5,11 @@ import re
 import threading
 import time
 from dataclasses import asdict
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 
+from job_radar.auto_ignore import UNAVAILABLE_REASON, Rules, clear_unavailable, save_rules
 from job_radar.linkedin.alerts import AlertJob, add_linkedin_job
 from job_radar.linkedin.chrome import (
     EXPAND,
@@ -20,11 +22,11 @@ from job_radar.linkedin.chrome import (
 )
 from job_radar.models import (
     FILL_PROBLEM,
-    FILL_UNAVAILABLE,
     CompanyEvent,
     JobSnapshot,
     LinkedInFetch,
     Opportunity,
+    OpportunityState,
     SourceRecord,
     SourceType,
 )
@@ -639,21 +641,46 @@ def test_unavailable_hh_vacancy_is_marked_and_the_run_goes_on(session):
     assert browser.calls[-1] == ("close_tab", "")  # no tab is left open for an ordinary miss
     fetch = session.scalar(select(LinkedInFetch).where(LinkedInFetch.job_id == "4235"))
     assert fetch.status == "unavailable" and "403" in fetch.detail
-    event = events(session)[opportunity_of(session, "4235")]
-    assert event.kind == FILL_UNAVAILABLE and "not available" in event.comment
+    opportunity = session.get(Opportunity, opportunity_of(session, "4235"))
+    assert opportunity.unavailable_at is not None
+    assert opportunity_of(session, "4235") not in events(session)  # not in the history (#276)
+    assert (opportunity.state, opportunity.auto_ignore_reason) == (
+        OpportunityState.AUTO_IGNORE,
+        UNAVAILABLE_REASON,
+    )
 
 
-def test_unavailable_vacancy_is_not_opened_again_until_the_mark_is_deleted(session):
-    from job_radar.contacts import delete_history_item
+def test_unavailable_vacancy_stays_in_review_when_the_rule_is_off(session):
+    save_rules(session, Rules(unavailable=False))
+    hh_vacancy(session, "4235")
+    run(session, FakeBrowser({"4235": unavailable_page("4235")}))
+    opportunity = session.get(Opportunity, opportunity_of(session, "4235"))
+    assert opportunity.unavailable_at is not None
+    assert (opportunity.state, opportunity.auto_ignore_reason) == (OpportunityState.NEW, None)
 
+
+def test_unavailable_vacancy_is_not_opened_again_until_cleared(session):
+    save_rules(session, Rules(unavailable=False))
     hh_vacancy(session, "4235")
     run(session, FakeBrowser({"4235": unavailable_page("4235")}))
     again = FakeBrowser()
     assert run(session, again).total == 0
     assert not [c for c in again.calls if c[0] in ("open_tab", "navigate")]
-    event = events(session)[opportunity_of(session, "4235")]
-    assert delete_history_item(session, "event", event.id)
+    clear_unavailable(session.get(Opportunity, opportunity_of(session, "4235")))
+    session.commit()
     assert run(session, FakeBrowser()).saved == 1
+
+
+def test_clearing_brings_back_a_vacancy_only_this_rule_moved(session):
+    hh_vacancy(session, "4235")
+    run(session, FakeBrowser({"4235": unavailable_page("4235")}))
+    opportunity = session.get(Opportunity, opportunity_of(session, "4235"))
+    clear_unavailable(opportunity)
+    assert opportunity.unavailable_at is None
+    assert (opportunity.state, opportunity.auto_ignore_reason) == (OpportunityState.NEW, None)
+    opportunity.unavailable_at, opportunity.state = datetime.now(UTC), OpportunityState.IGNORE
+    clear_unavailable(opportunity)
+    assert opportunity.state is OpportunityState.IGNORE  # your own state is yours
 
 
 def test_a_vacancy_that_is_gone_is_marked_like_an_unavailable_one(session):
@@ -662,7 +689,7 @@ def test_a_vacancy_that_is_gone_is_marked_like_an_unavailable_one(session):
     gone = FakePage("4235", href="https://hh.ru/vacancy/4235", status=404, ready_after=99)
     stats = run(session, FakeBrowser({"4235": gone}))
     assert not stats.blocked and stats.saved == 1
-    assert events(session)[opportunity_of(session, "4235")].kind == FILL_UNAVAILABLE
+    assert session.get(Opportunity, opportunity_of(session, "4235")).unavailable_at is not None
 
 
 def test_a_plain_403_still_stops_the_run_and_marks_the_vacancy(session):
@@ -797,14 +824,15 @@ def test_fill_marks_are_not_contacts_or_your_actions(engine, session):
     from job_radar.web.app import _visible_history_count, last_actions
 
     hh_vacancy(session, "4235")
-    run(session, FakeBrowser({"4235": unavailable_page("4235")}))
+    broken = FakePage("4235", href="https://hh.ru/vacancy/4235", fail=BrowserError("net::ERR"))
+    run(session, FakeBrowser({"4235": broken}))
     oid = opportunity_of(session, "4235")
     company_id = session.get(Opportunity, oid).company_id
     history = company_history(session, company_id)
-    assert [e.kind for e in history] == [FILL_UNAVAILABLE]  # shown with the vacancy
-    assert "HeadHunter" not in history[0].text and "not available" in history[0].text
+    assert [e.kind for e in history] == [FILL_PROBLEM]  # shown with the vacancy
+    assert "HeadHunter" not in history[0].text and "net::ERR" in history[0].text
     assert _visible_history_count(history) == 0  # no "contacted · 1" badge
-    assert FILL_UNAVAILABLE.replace("_", " ") not in (last_actions(session).get(oid) or ("", ""))[1]
+    assert FILL_PROBLEM.replace("_", " ") not in (last_actions(session).get(oid) or ("", ""))[1]
 
 
 def test_probe_asks_the_page_whether_the_vacancy_is_unavailable():

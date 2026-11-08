@@ -1,6 +1,8 @@
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 
-from job_radar.auto_ignore import load_rules
+from job_radar.auto_ignore import UNAVAILABLE_REASON, Rules, load_rules, reason_for
 from job_radar.dedup import get_or_create_company
 from job_radar.models import Opportunity, OpportunityState
 
@@ -85,3 +87,47 @@ def test_claude_skip_reasons_are_chosen_on_settings(client, session):
     client.post("/settings", data={"claude_any": "on", "claude_kinds": ["bogus"], "days": "90"})
     rules = load_rules(session)
     assert (rules.claude_any, rules.claude_kinds) == (True, ())
+
+
+def test_unavailable_rule_is_on_by_default_and_can_be_switched_off(client, session):
+    assert load_rules(session).unavailable
+    text = client.get("/settings").text
+    assert 'name="unavailable" checked' in text
+    client.post("/settings", data={"days": "90"})
+    assert not load_rules(session).unavailable
+    assert 'name="unavailable" checked' not in client.get("/settings").text
+
+
+def test_rule_moves_an_unavailable_vacancy(session):
+    o = add(session, "Gone", "Remote")
+    assert reason_for(session, o, Rules(countries=())) is None
+    o.unavailable_at = datetime.now(UTC)
+    assert reason_for(session, o, Rules(countries=())) == UNAVAILABLE_REASON
+    assert reason_for(session, o, Rules(countries=(), unavailable=False)) is None
+
+
+def test_unavailable_badge_replaces_verify_manually(client, session):
+    o = add(session, "Gone", "Remote")
+    assert "verify manually" in client.get(f"/opportunities/{o.id}").text
+    o.unavailable_at = datetime.now(UTC)
+    session.commit()
+    page = client.get(f"/opportunities/{o.id}").text
+    assert '<span class="badge reject">unavailable' in page
+    assert "verify manually" not in page
+    assert f'action="/opportunities/{o.id}/unavailable/clear"' in page
+    item = client.get("/?tab=review").text
+    assert "line-skip" in item and ">unavailable<" in item and "no description" not in item
+
+
+def test_badge_button_clears_the_mark(client, session):
+    o = add(session, "Gone", "Remote", OpportunityState.AUTO_IGNORE, UNAVAILABLE_REASON)
+    o.unavailable_at = datetime.now(UTC)
+    session.commit()
+    response = client.post(f"/opportunities/{o.id}/unavailable/clear", follow_redirects=False)
+    assert response.status_code == 303
+    session.refresh(o)
+    assert (o.unavailable_at, o.state, o.auto_ignore_reason) == (
+        None,
+        OpportunityState.NEW,
+        None,
+    )

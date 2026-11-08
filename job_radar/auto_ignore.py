@@ -19,6 +19,7 @@ from .models import (
 )
 
 SETTINGS_KEY = "auto_ignore"
+UNAVAILABLE_REASON = "vacancy not available"
 _HYBRID = re.compile(r"\b(hybrid|on-?site)\b", re.IGNORECASE)
 DEFAULT_COUNTRIES = ("India", "Pakistan")
 # LinkedIn often names only the city or the state ("Bengaluru (Remote)"), so for these
@@ -63,6 +64,7 @@ class Rules:
     countries: tuple[str, ...] = DEFAULT_COUNTRIES  # empty: the rule is off (#229)
     claude_any: bool = False  # every `skip` from Claude (#245)
     claude_kinds: tuple[str, ...] = ()  # or only these main reasons of a `skip`
+    unavailable: bool = True  # the site says the vacancy is not available (#276)
 
     @property
     def any(self) -> bool:
@@ -78,6 +80,7 @@ class Rules:
                 self.countries,
                 self.claude_any,
                 self.claude_kinds,
+                self.unavailable,
             )
         )
 
@@ -167,6 +170,24 @@ def apply_claude_rule(session: Session, opportunity: Opportunity) -> bool:
     return True
 
 
+def mark_unavailable(session: Session, opportunity: Opportunity) -> None:
+    """The site says this vacancy is not available (#276): flag it, and auto-ignore it if `new`."""
+    opportunity.unavailable_at = datetime.now(UTC)
+    if opportunity.state is OpportunityState.NEW and load_rules(session).unavailable:
+        opportunity.state = OpportunityState.AUTO_IGNORE
+        opportunity.auto_ignore_reason = UNAVAILABLE_REASON
+
+
+def clear_unavailable(opportunity: Opportunity) -> None:
+    """Try it again: drop the flag, and undo the auto-ignore only if this rule set it."""
+    opportunity.unavailable_at = None
+    if (
+        opportunity.state is OpportunityState.AUTO_IGNORE
+        and opportunity.auto_ignore_reason == UNAVAILABLE_REASON
+    ):
+        opportunity.state, opportunity.auto_ignore_reason = OpportunityState.NEW, None
+
+
 def _utc(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
@@ -179,6 +200,8 @@ def reason_for(
     since = now - timedelta(days=rules.days)
     company_id, company = opportunity.company_id, opportunity.company.name
 
+    if rules.unavailable and opportunity.unavailable_at is not None:
+        return UNAVAILABLE_REASON
     if country := country_of(opportunity.location, rules.countries):
         return f"country: {country} ({opportunity.location})"
     if rules.rejected:

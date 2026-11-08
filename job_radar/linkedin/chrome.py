@@ -24,9 +24,9 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..auto_ignore import mark_unavailable
 from ..models import (
     FILL_PROBLEM,
-    FILL_UNAVAILABLE,
     AppSetting,
     CompanyEvent,
     LinkedInFetch,
@@ -450,13 +450,16 @@ async def fill_descriptions(
 
 
 def _mark(session: Session, opportunity: Opportunity, status: str, reason: str) -> None:
-    """Write the problem into the vacancy's event log, once per distinct problem (#272)."""
-    kind = FILL_UNAVAILABLE if status == "unavailable" else FILL_PROBLEM
+    """Flag an unavailable vacancy (#276); write any other problem into its event log, once
+    per distinct problem (#272)."""
+    if status == "unavailable":
+        mark_unavailable(session, opportunity)
+        return
     comment = f"{opportunity.title}: {reason}"
     known = session.scalar(
         select(CompanyEvent.id).where(
             CompanyEvent.opportunity_id == opportunity.id,
-            CompanyEvent.kind == kind,
+            CompanyEvent.kind == FILL_PROBLEM,
             CompanyEvent.comment == comment,
         )
     )
@@ -465,7 +468,7 @@ def _mark(session: Session, opportunity: Opportunity, status: str, reason: str) 
             CompanyEvent(
                 company_id=opportunity.company_id,
                 opportunity_id=opportunity.id,
-                kind=kind,
+                kind=FILL_PROBLEM,
                 at=datetime.now(UTC),
                 comment=comment,
             )
@@ -474,11 +477,9 @@ def _mark(session: Session, opportunity: Opportunity, status: str, reason: str) 
 
 def _todo(session: Session) -> list[tuple[Opportunity, SourceRecord]]:
     """LinkedIn and hh.ru vacancies in To review without a description, best score first.
-    One marked unavailable waits until you delete the mark from its history (#272)."""
+    One marked unavailable waits until you clear the mark on its badge (#276)."""
     skip = set(
-        session.scalars(
-            select(CompanyEvent.opportunity_id).where(CompanyEvent.kind == FILL_UNAVAILABLE)
-        )
+        session.scalars(select(Opportunity.id).where(Opportunity.unavailable_at.is_not(None)))
     )
     hh = []
     for o in session.scalars(select(Opportunity).where(Opportunity.state == OpportunityState.NEW)):

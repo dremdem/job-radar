@@ -23,6 +23,7 @@ from ..auto_ignore import (
     CLAUDE_KINDS,
     Rules,
     apply_to_review,
+    clear_unavailable,
     load_rules,
     parse_claude_kinds,
     parse_countries,
@@ -379,6 +380,13 @@ def create_app(
         context["show_row"] = states is None or opportunity.state in states
         return templates.TemplateResponse(request, "_row_and_tabs.html", context)
 
+    @app.post("/opportunities/{opportunity_id}/unavailable/clear")
+    def clear_unavailable_mark(opportunity_id: int, session: SessionDep) -> RedirectResponse:
+        # The cross on the "unavailable" badge: the next Chrome fill may try it again (#276).
+        clear_unavailable(_get_opportunity(session, opportunity_id))
+        session.commit()
+        return RedirectResponse(f"/opportunities/{opportunity_id}", status_code=303)
+
     @app.get("/opportunities/{opportunity_id}/row", response_class=HTMLResponse)
     def opportunity_row(
         request: Request,
@@ -656,6 +664,7 @@ def create_app(
         no_python: Annotated[str | None, Form()] = None,
         ai_location: Annotated[str | None, Form()] = None,
         language: Annotated[str | None, Form()] = None,
+        unavailable: Annotated[str | None, Form()] = None,
         days: Annotated[int, Form(ge=1, le=3650)] = 90,
         countries: Annotated[str, Form()] = "",
         claude_any: Annotated[str | None, Form()] = None,
@@ -669,6 +678,7 @@ def create_app(
             no_python=no_python is not None,
             ai_location=ai_location is not None,
             language=language is not None,
+            unavailable=unavailable is not None,
             days=days,
             countries=parse_countries(countries),
             claude_any=claude_any is not None,

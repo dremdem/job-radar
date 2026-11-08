@@ -21,6 +21,7 @@
         ("no_python", "The description has no Python (only vacancies with a saved description)"),
         ("hybrid", "“Hybrid” or “on-site” in the title or location"),
         ("language", "The title or description is not in English (or Russian)"),
+        ("unavailable", "The site says the vacancy is not available to you (found by Fill from Chrome)"),
         ("ai_location", "AI: the description says hybrid / on-site or only some countries (local model, see docs/ai.md)"),
       ] %}
       <label class="form-check"><input type="checkbox" class="form-check-input" name="{{ name }}" {% if rules[name] %}checked{% endif %}> {{ label }}</label>

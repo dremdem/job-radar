@@ -8,6 +8,8 @@
   {% set line, line_cls = "rejected · " ~ (rejected_at | local("%Y-%m-%d")), "line-skip" %}
 {% elif o.auto_ignore_reason %}
   {% set line, line_cls = "auto-ignored: " ~ o.auto_ignore_reason, "line-muted" %}
+{% elif o.unavailable_at and not description %}
+  {% set line, line_cls = "unavailable", "line-skip" %}
 {% elif suggestions %}
   {% set line, line_cls = "ignore? " ~ reason_icon(suggestions[0].kind) ~ " " ~ suggestions[0].label, "line-ignore" %}
 {% elif not description %}

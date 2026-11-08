@@ -60,20 +60,20 @@ the layout has changed and the bookmarklet needs the same fix.
 ## Problems with one vacancy
 
 Each vacancy has its own limit (60 s from opening it to saving it) and its own error handler,
-so a page that hangs or breaks costs that vacancy only (#272). What went wrong is written in
-the vacancy's **Company history**, once per distinct problem, and in the LinkedIn log. These
-marks are not contacts: they do not count in the "contacted" badge or as your last action.
+so a page that hangs or breaks costs that vacancy only (#272). What went wrong is in the
+LinkedIn log, and on the vacancy:
 
-| Kind | When | Next run |
-| --- | --- | --- |
-| `unavailable` | hh.ru says the vacancy is not available to you, or a 404/410 | skipped, until you delete the mark (× in the history) |
-| `fill_problem` | timeout, browser error, no description, or the page that stopped the run | tried again |
+| Kind | When | On the vacancy | Next run |
+| --- | --- | --- | --- |
+| unavailable | hh.ru says the vacancy is not available to you, or a 404/410 | red **unavailable** badge instead of *verify manually* (#276); it goes to **Auto-ignored** unless that rule is off in [Settings](settings.md) | skipped, until you press × on the badge |
+| `fill_problem` | timeout, browser error, no description, or the page that stopped the run | a mark in the **Company history**, once per distinct problem; not a contact, so it does not count in the "contacted" badge or as your last action | tried again |
 
 The status line lists the vacancies of this run that had a problem (#274): the title opens it
 in Job Radar, the site name opens the posting, and the reason follows. The list lasts until the
 next run or a server restart; the marks stay.
 
-To drop a vacancy for good, ignore it as usual; to try it again, delete its `unavailable` mark.
+To try an unavailable vacancy again, press × on its badge on the vacancy page: the badge goes,
+the vacancy returns to To review if this rule had moved it, and the next run opens it.
 
 ## Status, Stop and reruns
 
