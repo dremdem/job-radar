@@ -7,6 +7,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+BUSY_TIMEOUT_MS = 30_000
 
 
 def _ensure_sqlite_dir(database_url: str) -> None:
@@ -21,7 +22,11 @@ def make_engine(database_url: str) -> Engine:
     if engine.dialect.name == "sqlite":
 
         @event.listens_for(engine, "connect")
-        def _enable_foreign_keys(dbapi_connection, _record) -> None:
+        def _configure_sqlite(dbapi_connection, _record) -> None:
+            # docs/architecture.md#database: background threads and web requests share the
+            # file; WAL lets reads and writes overlap, busy_timeout makes a writer wait.
+            dbapi_connection.execute("PRAGMA journal_mode=WAL")
+            dbapi_connection.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
             dbapi_connection.execute("PRAGMA foreign_keys=ON")
 
     return engine

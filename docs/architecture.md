@@ -71,6 +71,22 @@ sequenceDiagram
 
 Everything that talks to the outside world sits behind a small `Protocol` (`Model`, `Runner`, board and Gmail clients), so tests pass fakes and never touch the network.
 
+## Database
+
+One SQLite file, `data/job_radar.db`, shared by the web requests and the background threads (Sync, up to four Claude analyses, the chat). `db.make_engine` sets up every connection (#22):
+
+- `journal_mode=WAL`: changes go to a write-ahead log first, so reading and writing no longer block each other. A page opens while an analysis is being saved, and a commit does not wait for open reads. Two writers still take turns.
+- `busy_timeout=30000`: a writer that finds the database busy waits up to 30 s instead of failing with `database is locked` at once.
+- `foreign_keys=ON`: SQLite does not enforce foreign keys by default.
+
+WAL keeps two files next to the database, `job_radar.db-wal` and `job_radar.db-shm`. They belong to the database: never delete them. Recent changes can live only in `-wal` until SQLite copies them into the main file, so a plain `cp` of `job_radar.db` while the server runs can miss them. Back up with SQLite's backup API instead, which is safe while the server runs:
+
+```sh
+uv run python -c "import sqlite3; sqlite3.connect('data/job_radar.db').backup(sqlite3.connect('data/job_radar.db.bak'))"
+```
+
+(or `sqlite3 data/job_radar.db ".backup data/job_radar.db.bak"` if the `sqlite3` tool is installed).
+
 ## Modules
 
 | Area | Modules |
