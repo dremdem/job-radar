@@ -55,6 +55,11 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: none
           queries: security-extended
+          # Tests assert on URLs with `"host" in url`, which the URL sanitizing query
+          # reports as unsafe checks; they never guard anything.
+          config: |
+            paths-ignore:
+              - tests
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:${{ matrix.language }}

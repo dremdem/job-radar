@@ -383,9 +383,10 @@ def create_app(
     @app.post("/opportunities/{opportunity_id}/unavailable/clear")
     def clear_unavailable_mark(opportunity_id: int, session: SessionDep) -> RedirectResponse:
         # The cross on the "unavailable" badge: the next Chrome fill may try it again (#276).
-        clear_unavailable(_get_opportunity(session, opportunity_id))
+        opportunity = _get_opportunity(session, opportunity_id)
+        clear_unavailable(opportunity)
         session.commit()
-        return RedirectResponse(f"/opportunities/{opportunity_id}", status_code=303)
+        return RedirectResponse(f"/opportunities/{opportunity.id}", status_code=303)
 
     @app.get("/opportunities/{opportunity_id}/row", response_class=HTMLResponse)
     def opportunity_row(

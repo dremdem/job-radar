@@ -28,7 +28,8 @@ _SALARY = re.compile(r"[$€£¥₹]|/\s*(yr|year|hr|hour|mo|month)\b", re.IGNOR
 _MAX_TEXT = 20000
 
 
-_VERIFIED = re.compile(r"\s*\((verified job|with verification)\)\s*$", re.IGNORECASE)
+# Matched at the end of a stripped line: a leading \s* would be slow on long runs of spaces.
+_VERIFIED = re.compile(r"\((verified job|with verification)\)$", re.IGNORECASE)
 
 
 def _lines(text: str) -> list[str]:
@@ -37,7 +38,7 @@ def _lines(text: str) -> list[str]:
     for raw in text.splitlines():
         for part in raw.split(" · "):
             # Semantic search repeats the title as "<title> (Verified job)".
-            line = _VERIFIED.sub("", part.strip().strip("·").strip())
+            line = _VERIFIED.sub("", part.strip().strip("·").strip()).rstrip()
             if not line or _NOISE.match(line) or (out and line == out[-1]):
                 continue
             out.append(line)
@@ -46,7 +47,11 @@ def _lines(text: str) -> list[str]:
 
 def parse_card_text(job_id: str, text: str) -> AlertJob | None:
     """Title, company, location, salary and Easy Apply from a search card's visible text."""
-    easy_apply = bool(re.search(r"(^|\n|·)\s*easy apply\s*($|\n|·)", text, re.IGNORECASE))
+    easy_apply = any(
+        item.strip().lower() == "easy apply"
+        for line in (text or "").splitlines()
+        for item in line.split("·")
+    )
     lines = _lines(text or "")
     salary = next((line for line in lines if _SALARY.search(line)), None)
     lines = [line for line in lines if line != salary]
