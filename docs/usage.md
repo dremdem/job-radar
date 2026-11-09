@@ -45,7 +45,7 @@ A second `./jr start` does not start a second server.
 |---|---|
 | `job-radar db upgrade` | Apply Alembic migrations to the configured database |
 | `job-radar serve [--host] [--port] [--reload]` | Run the web UI (review queue) |
-| `job-radar demo [--remove]` | Add a few demo opportunities (companies marked `(demo)`) to try the queue; `--remove` deletes only them |
+| `job-radar demo [--remove]` | Add five made-up vacancies (companies marked `(demo)`) with descriptions, score reasons and sample Claude analyses, without calling Claude; `--remove` deletes only them ([queue.md](queue.md#demo)) |
 | `job-radar gmail auth` | One-time Gmail OAuth consent (read-only), see [docs/gmail.md](gmail.md) |
 | `job-radar sync gmail [--query NAME] [--since DATE]` | The whole sync: read-only Gmail import, then every other source and analysis (see [docs/queue.md](queue.md#sync)) |
 | `job-radar import linkedin` | Turn stored LinkedIn alert emails into opportunities, see [docs/linkedin-alerts.md](linkedin-alerts.md) |

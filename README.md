@@ -8,7 +8,7 @@ A local-first assistant for a job search. It collects vacancies from a dozen sou
 
 I built it for my own search for a remote Senior Python Backend role and use it every day. Everything runs on my machine: a SQLite file, a FastAPI app on `127.0.0.1`, no cloud account.
 
-![The review queue](docs/images/queue.png)
+![The review queue with the demo data: score reasons and a Claude analysis](docs/images/queue.png)
 
 **Human in the loop.** Job Radar reads and suggests. It never applies, never writes to recruiters, never logs in to LinkedIn or hh.ru, and never changes mail.
 
@@ -73,7 +73,7 @@ Requires [uv](https://docs.astral.sh/uv/).
 git clone https://github.com/dremdem/job-radar && cd job-radar
 uv sync
 uv run job-radar db upgrade   # create the SQLite database in data/
-uv run job-radar demo         # a few demo vacancies to look around
+uv run job-radar demo         # demo vacancies with sample analyses, no Claude call
 uv run job-radar serve        # http://127.0.0.1:8000
 ```
 
