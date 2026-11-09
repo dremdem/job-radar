@@ -138,3 +138,14 @@ Some things never reach the mail or the sources Job Radar reads (#182).
 - The rest are stored as company events. They show in the history; like every history record they have a **×** to delete them ([applications.md](applications.md#deleting-a-record-225)).
 
 **A vacancy.** **+ Add** next to **Analyze…** opens a dialog: title and company (required), link, location, state (To review, Interested or Applied) and a comment. The link decides the source: a LinkedIn job (`/jobs/view/…-<id>`) or an hh.ru vacancy is stored by its id, so a later alert or notice about it joins the same vacancy; any other link is stored as is. The score comes from the same title and location rules as the imports. A link Job Radar already has is refused with the vacancy it belongs to ("Already here: #1567 …"). The new vacancy's page opens.
+
+## Demo
+
+`uv run job-radar demo` fills an empty queue with five made-up vacancies so you can look around before importing anything. Every company ends in `(demo)` and every link points to `example.com`.
+
+- Each vacancy has a location, a salary or none, a description and a score whose reasons come from the same rules as real imports.
+- Every demo vacancy in To review carries a finished Claude analysis: one `apply`, two `maybe` (one with a blocker gap and a red flag). The quotes are checked against the description the same way a real answer is. They are written by hand, not real Claude answers. Because every one is already analyzed, the background analysis (#264) has nothing to send, so `demo` and `serve` make no Claude call; only **↻ again** or the chat would.
+- One has a local AI finding ("only for EU" with its quote), as the Ollama step would store it.
+- Running `demo` again adds only what is missing.
+
+`uv run job-radar demo --remove` deletes the demo companies with everything attached to them: vacancies, descriptions, analyses, your notes and chat on them. Real data is never touched.
