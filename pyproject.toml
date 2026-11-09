@@ -19,7 +19,7 @@ dependencies = [
     "python-multipart>=0.0.33",
     "pyyaml>=6.0.3",
     "sqlalchemy>=2.1.8",
-    "typer>=0.27.3",
+    "typer>=0.28.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
