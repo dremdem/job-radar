@@ -79,3 +79,11 @@ def test_bookmarklet_knows_hh():
 
     code = bookmarklet("http://127.0.0.1:8000")
     assert "hh\\.(ru|kz|by|uz)" in code and 'data-qa="vacancy-description"' in code
+
+
+def test_city_is_the_first_part_of_the_address():
+    from job_radar.hh.capture import _city
+
+    assert _city(" Москва , Тверская улица, 1 ") == "Москва"
+    assert _city("") == "" and _city("   ") == ""
+    assert _city(" " * 50_000 + ",x") == ""  # linear: CodeQL py/polynomial-redos (#11)

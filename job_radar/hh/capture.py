@@ -4,7 +4,6 @@ The bookmarklet reads only the page the user opened; nothing is fetched from hh.
 See docs/hh.md#descriptions-the-bookmarklet-136.
 """
 
-import re
 from typing import Any
 
 from sqlalchemy import select
@@ -32,7 +31,7 @@ def location_for(work_format: str, city: str) -> str:
 
 
 def _city(address: str) -> str:
-    return re.split(r"\s*,\s*", address.strip())[0] if address.strip() else ""
+    return address.split(",")[0].strip()
 
 
 def import_hh_capture(session: Session, payload: dict[str, Any], stats) -> None:
