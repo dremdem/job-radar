@@ -42,7 +42,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - name: pip-audit
         run: |
           uv export --locked --no-hashes --no-emit-project --format requirements-txt > requirements.txt
@@ -53,6 +53,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - name: bandit
         run: uvx bandit -c pyproject.toml -r job_radar -ll
