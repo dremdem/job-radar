@@ -1,120 +1,99 @@
 # Job Radar
 
-Local-first assistant for reviewing job opportunities: collects vacancies (LinkedIn alert emails, Gmail history, hh.ru notifications, Telegram channels, Himalayas, Hacker News "Who is hiring?", Remote OK, Jobicy, Remotive, Working Nomads, We Work Remotely), deduplicates them, scores with explanations and keeps application history per company.
+[![CI](https://github.com/dremdem/job-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/dremdem/job-radar/actions/workflows/ci.yml)
+[![Security](https://github.com/dremdem/job-radar/actions/workflows/security.yml/badge.svg)](https://github.com/dremdem/job-radar/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Human-in-the-loop only: no auto-apply, no LinkedIn scraping.
+A local-first assistant for a job search. It collects vacancies from a dozen sources, scores them with an explanation for every point, asks an LLM for a grounded second opinion on the ones worth a look, and keeps the whole history with each company in one place.
 
-Plan and scope: [Epic #9](https://github.com/dremdem/job-radar/issues/9). Rules for contributors and agents: [CLAUDE.md](CLAUDE.md).
+I built it for my own search for a remote Senior Python Backend role and use it every day. Everything runs on my machine: a SQLite file, a FastAPI app on `127.0.0.1`, no cloud account.
 
-## Setup
+![The review queue](docs/images/queue.png)
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+.
+**Human in the loop.** Job Radar reads and suggests. It never applies, never writes to recruiters, never logs in to LinkedIn or hh.ru, and never changes mail.
 
-```sh
-uv sync                      # install deps into .venv
-cp .env.example .env         # optional: override settings
-uv run job-radar db upgrade  # create / migrate the SQLite database
-uv run job-radar serve       # http://127.0.0.1:8000 — review queue
-```
+## What it does
 
-How the queue works (tabs, buttons, **Sync** button): [docs/queue.md](docs/queue.md). Deep analysis of chosen vacancies with Claude: [docs/claude.md](docs/claude.md). Which missing technologies would open the most vacancies: [docs/skills.md](docs/skills.md). Auto-ignore rules (hybrid, already applied, …): [docs/settings.md](docs/settings.md). Send LinkedIn pages you open to the queue with the bookmarklet: [docs/linkedin-capture.md](docs/linkedin-capture.md).
+- **Collects** vacancies from LinkedIn alert emails and hh.ru notifications (read-only Gmail), Telegram channels (through an MCP server), and public APIs and feeds: Himalayas, Hacker News "Who is hiring?", Remote OK, Jobicy, Remotive, Working Nomads, We Work Remotely.
+- **Stores** each vacancy once per source (re-running an import never duplicates it), with every description snapshot kept; a repost of a vacancy you already applied to is folded into the original.
+- **Scores** each one with rules (title, seniority, location, Python in the description), each rule adding a visible reason.
+- **Analyzes** the promising ones with Claude: verdict, match %, strengths, gaps, red flags, questions for the recruiter, all with quotes that are checked against the vacancy text.
+- **Tracks** applications, rejections and recruiter mail per company, recognized from ATS emails (Greenhouse, Lever, Ashby, Workable and more).
+- **Shows the skills gap**: which missing technologies would open the most vacancies.
+- **Auto-ignores** what you already said no to (hybrid, wrong country, already applied), always with the reason.
 
-The queue is empty until a source is imported. To look around first: `uv run job-radar demo`.
+## How AI is used
 
-## Everyday commands: `./jr`
+Two models, each with a narrow job, and code that checks what they say.
 
-A small wrapper so you do not have to remember the commands below:
-
-| Command | What it does |
-|---|---|
-| `./jr start` | Start the web UI in the background (log `data/server.log`) and open http://127.0.0.1:8000 |
-| `./jr stop` / `./jr restart` | Stop / restart it |
-| `./jr status` | Is it running, on which address |
-| `./jr logs` | Follow the server log |
-| `./jr sync` | Sync every source: Gmail, LinkedIn, Telegram, Himalayas, Hacker News, Remote OK, Jobicy, other boards, AI analysis (same as the **Sync** button) |
-| `./jr auth` | One-time Gmail consent (read-only) |
-| `./jr update` | `git pull`, install dependencies, restart the server |
-| `./jr check` | `ruff` + `pytest` |
-| `./jr autostart on` / `off` | Start Job Radar with the machine and restart it if it crashes (a systemd **user** service, no root) / turn that off |
-| `./jr unit` | Print that service file without installing it |
-| `./jr help` | This list |
-
-A second `./jr start` does not start a second server.
-
-**Autostart.** `./jr autostart on` writes `~/.config/systemd/user/job-radar.service` and enables it. The service runs `uv run job-radar serve` in this folder on 127.0.0.1:8000, logs to `data/server.log` and uses the `PATH` of the shell you ran it from, so `claude` and `uv` are found. After that, `./jr start` / `stop` / `restart` / `status` go through `systemctl --user`. The service starts at boot without a login when *linger* is on for your user (`loginctl show-user $USER -p Linger`); otherwise it starts when you log in. Run `./jr autostart on` again after moving the folder or changing `PATH`.
-
-## CLI
-
-| Command | What it does |
-|---|---|
-| `job-radar db upgrade` | Apply Alembic migrations to the configured database |
-| `job-radar serve [--host] [--port] [--reload]` | Run the web UI (review queue) |
-| `job-radar demo [--remove]` | Add a few demo opportunities (companies marked `(demo)`) to try the queue; `--remove` deletes only them |
-| `job-radar gmail auth` | One-time Gmail OAuth consent (read-only), see [docs/gmail.md](docs/gmail.md) |
-| `job-radar sync gmail [--query NAME] [--since DATE]` | The whole sync: read-only Gmail import, then every other source and analysis (see [docs/queue.md](docs/queue.md#sync)) |
-| `job-radar import linkedin` | Turn stored LinkedIn alert emails into opportunities, see [docs/linkedin-alerts.md](docs/linkedin-alerts.md) |
-| `job-radar import applications` | Past applications from mail, see [docs/applications.md](docs/applications.md) |
-| `job-radar import contacts` | Link mail to companies and label it, for company history in the queue |
-| `job-radar import linkedin-search` | Opt-in: first 25 jobs of each new alert search from LinkedIn's public guest search, see [docs/linkedin-public-search.md](docs/linkedin-public-search.md) |
-| `job-radar import descriptions` | Opt-in: descriptions for To review from public job pages, see [docs/linkedin-public-search.md](docs/linkedin-public-search.md#descriptions-public-job-page) |
-| `job-radar sync telegram` | Vacancies from allowlisted Telegram channels via telegram-mcp, see [docs/telegram.md](docs/telegram.md) |
-| `job-radar sync himalayas` | Fresh worldwide Python vacancies from the Himalayas public API, see [docs/himalayas.md](docs/himalayas.md) |
-| `job-radar sync hackernews` | Remote Python posts from the monthly "Ask HN: Who is hiring?" thread, see [docs/hackernews.md](docs/hackernews.md) |
-| `job-radar sync remoteok` | Fresh Python vacancies from the Remote OK feed, see [docs/remoteok.md](docs/remoteok.md) |
-| `job-radar sync jobicy` | Fresh Python vacancies from the Jobicy API, see [docs/jobicy.md](docs/jobicy.md) |
-| `job-radar sync remotive` | Remotive, Working Nomads and We Work Remotely in one step (also `workingnomads`, `weworkremotely`), see [docs/boards.md](docs/boards.md) |
-| `job-radar analyze` | Work mode and residence from descriptions with a local model (Ollama), see [docs/ai.md](docs/ai.md) |
-| `job-radar sync <other source>` | Placeholder until the source lands |
-
-## Configuration
-
-Settings come from environment variables with the `JOB_RADAR_` prefix, or from `.env` (see [.env.example](.env.example)).
-
-| Variable | Default | Meaning |
+| | Local model (Ollama, `gemma3:4b`) | Claude (Claude Code in headless mode) |
 |---|---|---|
-| `JOB_RADAR_DATABASE_URL` | `sqlite:///data/job_radar.db` | SQLAlchemy URL of the database |
-| `JOB_RADAR_GMAIL_CLIENT_SECRET` | `secrets/gmail_client_secret.json` | OAuth Desktop client downloaded from Google Cloud |
-| `JOB_RADAR_GMAIL_TOKEN` | `secrets/gmail_token.json` | Where the OAuth token is stored |
-| `JOB_RADAR_TELEGRAM_MCP_COMMAND` | — | How to start the telegram-mcp server; Telegram is off without it ([docs/telegram.md](docs/telegram.md)) |
-| `JOB_RADAR_HIMALAYAS` | `true` | Read Himalayas on every sync ([docs/himalayas.md](docs/himalayas.md)) |
-| `JOB_RADAR_HACKERNEWS` | `true` | Read "Ask HN: Who is hiring?" on every sync ([docs/hackernews.md](docs/hackernews.md)) |
-| `JOB_RADAR_REMOTEOK` | `true` | Read Remote OK on every sync ([docs/remoteok.md](docs/remoteok.md)) |
-| `JOB_RADAR_JOBICY` | `true` | Read Jobicy on every sync ([docs/jobicy.md](docs/jobicy.md)) |
-| `JOB_RADAR_BOARDS` | `true` | Read Remotive, Working Nomads and We Work Remotely on every sync, at most every 6 h ([docs/boards.md](docs/boards.md)) |
-| `JOB_RADAR_AI_ANALYSIS` | `false` | Analyze descriptions with the local model on every sync; off by default, Claude does the filtering ([docs/ai.md](docs/ai.md)) |
-| `JOB_RADAR_PROFILE` | `data/profile.yaml` | Your stack from the CV; vacancies requiring other technologies are marked ([docs/ai.md](docs/ai.md#stack-vs-your-cv), example: `profile.example.yaml`) |
-| `JOB_RADAR_HH_DIGESTS_SINCE` | — | Import hh.ru «Вакансии по подписке» digests received on or after this date ([docs/hh.md](docs/hh.md#digests-вакансии-по-подписке-102)) |
-| `JOB_RADAR_CV_PATH` | — | Your CV (Markdown) for Claude's deep analysis ([docs/claude.md](docs/claude.md)) |
-| `JOB_RADAR_CLAUDE_COMMAND` | `claude` | Claude Code CLI used in print mode, on your subscription ([docs/claude.md](docs/claude.md)) |
-| `JOB_RADAR_LINKEDIN_PUBLIC_SEARCH` | `false` | Opt-in public LinkedIn search, with limits in [docs/linkedin-public-search.md](docs/linkedin-public-search.md) |
+| Job | Extract work mode and residence rules from a description | Deep analysis of a vacancy against the CV and profile; a chat about it |
+| Where it runs | On the machine, nothing leaves it | `claude -p` on a Claude subscription, no API key |
+| Output | Fixed JSON fields, each with an exact quote | JSON validated by a `--json-schema` |
+| Guard | A fact whose quote is not in the text is dropped | Quotes not found in the text are shown as *unverified* |
 
-## Layout
+Design decisions worth a look:
 
+- **The model extracts, code decides** ([docs/ai.md](docs/ai.md)). The LLM never sets a score or a state directly. It returns facts with quotes, code verifies each quote against the source text, and only then turns it into a reason. Small models invent sentences; this catches it.
+- **Prompt injection from vacancy text** ([docs/claude.md](docs/claude.md#how-it-runs)). A description is untrusted input. Analyses run with no tools at all (`--tools ""`, no MCP, no settings), so a planted instruction has nothing to call. The chat may search the web, but LinkedIn and hh.ru are denied by Claude Code's own permission rules, and the switch is in Settings.
+- **No surprise bills.** `ANTHROPIC_API_KEY` is removed from the subprocess environment, so it can never fall back to paid API usage. A daily cap counts running analyses too.
+- **A worker pool with honest failure handling** ([job_radar/claude/analysis.py](job_radar/claude/analysis.py)). 1–8 parallel workers claim vacancies atomically; transient errors are retried with backoff and a fresh session; a usage-limit answer pauses the queue for 15 minutes instead of hammering; a restart puts unfinished work back.
+- **Sessions and memory.** Each analysis is a Claude session that the chat resumes (`--resume`). Facts Claude learns about you are kept in a small memory with a change log you can edit ([docs/claude-memory.md](docs/claude-memory.md)).
+- **Measured, not assumed.** The local model was turned off by default after comparing it with Claude on 64 vacancies: it added cost and filtered nothing Claude missed ([docs/ai.md](docs/ai.md#off-by-default-223)).
+
+The project itself is built with an AI coding agent under explicit rules: every change starts from an issue, goes through a PR with tests first, and must pass CI. The rules the agent follows are in [CLAUDE.md](CLAUDE.md); the non-obvious decisions are in [docs/adr/](docs/adr/).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Sources
+        G[Gmail<br/>LinkedIn alerts, hh.ru, ATS mail]
+        T[Telegram<br/>via telegram-mcp]
+        B[Job boards<br/>public APIs and feeds]
+        U[Browser<br/>bookmarklet, Chrome fill]
+    end
+    G & T & B & U --> P[Sync pipeline<br/>parse, dedup, score]
+    P --> DB[(SQLite<br/>SQLAlchemy + Alembic)]
+    DB --> W[FastAPI + HTMX<br/>review queue]
+    W -- queue --> C[Claude workers<br/>claude -p, JSON schema]
+    C --> DB
+    DB -. optional .-> O[Ollama<br/>local extraction]
+    O -.-> DB
 ```
-job_radar/
-  config.py       settings (pydantic-settings)
-  db.py           engine and session factory
-  models.py       SQLAlchemy models, see docs/data-model.md
-  dedup.py        idempotent upserts: companies, source records, snapshots
-  demo.py         demo data for `job-radar demo`
-  gmail/          read-only Gmail client, OAuth, sync (docs/gmail.md)
-  linkedin/       LinkedIn alert email parser and import (docs/linkedin-alerts.md)
-  scoring.py      rule-based score with reasons
-  web/            FastAPI app, Jinja2 + HTMX templates
-  cli.py          `job-radar` entry point
-  migrations/     Alembic migrations
-tests/            pytest
-```
 
-## Development
+Python 3.12, FastAPI, Jinja2 + HTMX, SQLAlchemy 2, Alembic, SQLite, `uv`, `ruff`, `pytest`. More in [docs/architecture.md](docs/architecture.md).
+
+## Quick start
+
+Requires [uv](https://docs.astral.sh/uv/).
 
 ```sh
-uv run ruff check . && uv run ruff format --check .
-uv run pytest
+git clone https://github.com/dremdem/job-radar && cd job-radar
+uv sync
+uv run job-radar db upgrade   # create the SQLite database in data/
+uv run job-radar demo         # a few demo vacancies to look around
+uv run job-radar serve        # http://127.0.0.1:8000
 ```
 
-The same checks run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) on every PR. `main` is protected: the `checks` job must pass and the branch must be up to date with `main` before merging (`gh pr update-branch` if it is behind); there is no second run after the merge. Tests use fixtures only: no secrets, no Gmail, no real sleeps or network.
+Real sources need their own setup: Gmail OAuth ([docs/gmail.md](docs/gmail.md)), Telegram MCP ([docs/telegram.md](docs/telegram.md)), Claude Code logged in ([docs/claude.md](docs/claude.md)), Ollama ([docs/ai.md](docs/ai.md)). The public job boards work out of the box. All commands, settings and the `./jr` helper: [docs/usage.md](docs/usage.md).
 
-Tests run in parallel (`pytest-xdist`, `-n auto` in `pyproject.toml`); add `-n0` to debug a single test. Keep the CI job under a minute: GitHub bills every job rounded up to a whole minute (#201).
+## Quality
 
-Schema changes: edit `job_radar/models.py`, then `uv run alembic revision --autogenerate -m "..."` and review the generated file.
+- 700+ tests, run in parallel in under 20 s; fixtures only, no network, no real sleeps. Real emails used as fixtures go through [a sanitizer](tests/fixtures/sanitize.py) and tests that fail on personal data.
+- CI on every PR and on `main`: `ruff`, `ruff format`, `pytest`.
+- Security workflow: gitleaks and trufflehog over the full history, `pip-audit` on the locked dependencies, `bandit`; weekly as well. Dependabot keeps dependencies current.
+
+## Documentation
+
+| Topic | |
+|---|---|
+| Using it | [usage](docs/usage.md) · [queue](docs/queue.md) · [settings](docs/settings.md) · [skills gap](docs/skills.md) |
+| AI | [local model](docs/ai.md) · [Claude analysis](docs/claude.md) · [Claude memory](docs/claude-memory.md) |
+| Sources | [Gmail](docs/gmail.md) · [LinkedIn alerts](docs/linkedin-alerts.md) · [hh.ru](docs/hh.md) · [Telegram](docs/telegram.md) · [boards](docs/boards.md) · [Himalayas](docs/himalayas.md) · [Hacker News](docs/hackernews.md) · [Remote OK](docs/remoteok.md) · [Jobicy](docs/jobicy.md) |
+| Internals | [architecture](docs/architecture.md) · [data model](docs/data-model.md) · [applications](docs/applications.md) · [ADRs](docs/adr/) |
+
+## License
+
+[MIT](LICENSE)
