@@ -105,12 +105,12 @@ Each line shows the state:
 - `·` waiting;
 - `…` running;
 - `✓` done, with the summary (e.g. "42 new");
-- `off` disabled in the settings;
+- `off` disabled in the settings, or not set up: Gmail is off until its OAuth client file or token exists ([gmail.md](gmail.md));
 - `✗` failed, with the reason.
 
 The full log is under **details**, and a **reload** link appears at the end. When a Sync, a Descriptions run or a Chrome fill that the open page was watching ends (and, for the last two, saved something), the list, the tab counts and the description switch redraw themselves, like after a search; the open vacancy stays (#263). When the sync is over, the status folds into one line ("Sync done 14:57 · details"); open **details** for the steps and the log. **✕** hides it until the next sync, and the browser remembers that, so it stays hidden after a reload (#147).
 
-**Steps are independent.** When one fails, the others still run. Without Gmail access the mail-based steps work on the mail already stored and do not fetch message bodies. The Gmail line then says what to do: *Gmail access expired or revoked: run `./jr auth`*.
+**Steps are independent.** When one fails, the others still run. Without Gmail access the mail-based steps work on the mail already stored and do not fetch message bodies. A fresh clone has no Gmail set up, so its Gmail line is `off — not set up (docs/gmail.md)` and the job boards still sync (#8). Once the OAuth client file is in place, a missing or expired token is a failure, and the line says what to do: *Gmail access expired or revoked: run `./jr auth`*.
 
 `./jr sync` prints the same lines and exits with code 1 when a step failed.
 
