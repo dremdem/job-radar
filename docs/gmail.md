@@ -23,7 +23,7 @@ Scope: `https://www.googleapis.com/auth/gmail.readonly` only.
 
 In *Testing* mode Google refresh tokens die after 7 days and sync stops with `invalid_grant: Token has been expired or revoked`. A published app keeps its token until you revoke it, change the password, or leave it unused for six months. Publishing a personal app needs no verification; you only see an "unverified app" warning at consent.
 
-Google asks for a homepage and a privacy policy before **Publish app** becomes active. This repository is private, so both live in the public repository [dremdem/job-radar-privacy](https://github.com/dremdem/job-radar-privacy) (GitHub Pages, no code or data):
+Google asks for a homepage and a privacy policy before **Publish app** becomes active. Both live in the public repository [dremdem/job-radar-privacy](https://github.com/dremdem/job-radar-privacy) (GitHub Pages, no code or data):
 
 - homepage: `https://dremdem.github.io/job-radar-privacy/`
 - privacy policy: `https://dremdem.github.io/job-radar-privacy/privacy.html`

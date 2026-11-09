@@ -3,6 +3,7 @@ name = "job-radar"
 version = "0.1.0"
 description = "Local-first assistant for reviewing job opportunities"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0",
