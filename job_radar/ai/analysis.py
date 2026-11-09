@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..description import latest_snapshot
+from ..home import Home, current_home
 from ..models import DescriptionAnalysis, Opportunity, OpportunityState
 from ..scoring import Reason
 from ..stack import Profile, Tech, known_alternative, says_optional, unknown_mentions
@@ -25,9 +26,10 @@ STACK_PENALTIES = {"unknown": -1.0, "learnable": -0.5, "blocker": -3.0}
 STACK_PENALTY_MAX = -3.0  # all non-blockers together; blockers are not capped
 _LEVEL_TEXT = {"unknown": "not in your CV", "learnable": "learnable", "blocker": "blocker"}
 MAX_STACK_QUESTIONS = 8
-# Places the user can work from; anything else in `residence` is a restriction.
+# Places anyone can work from; the user's own home (profile) is open too. Anything else in
+# `residence` is a restriction.
 _OPEN = re.compile(
-    r"worldwide|anywhere|global|any (country|location|city)|thailand|asia|apac|любой|везде",
+    r"worldwide|anywhere|global|any (country|location|city)|любой|везде",
     re.IGNORECASE,
 )
 # The quote lists who is excluded or preferred, not where one must live (measured, #93).
@@ -220,9 +222,10 @@ def risks(
     return out + stack_risks(analysis, profile)
 
 
-def residence_restriction(analysis: DescriptionAnalysis) -> str | None:
+def residence_restriction(analysis: DescriptionAnalysis, home: Home | None = None) -> str | None:
+    home = current_home() if home is None else home
     places = analysis.residence or []
-    if not places or any(_OPEN.search(p) for p in places):
+    if not places or any(_OPEN.search(p) or home.listed_in(p) for p in places):
         return None
     return ", ".join(places)
 

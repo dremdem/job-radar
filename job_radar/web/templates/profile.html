@@ -13,13 +13,17 @@
     "known": "From your CV: no gap",
     "learnable": "Not a blocker: something you tried or can pick up fast",
     "blockers": "A separate field you won't learn in days",
-    "rules": "In your words, e.g. “Only full remote from Thailand, no relocation”",
+    "rules": "In your words, e.g. “No relocation; a description not in English is a blocker”",
+    "home_regions": "Wider areas that include your country and count as open, e.g. Asia, APAC",
   } %}
+  <label class="panel-card mb-3 d-block"><span class="card-label">home</span>
+    <span class="small muted d-block mb-2">The country you live in and work from, as job ads write it (e.g. Thailand). Scoring, the residence check and Claude use it; empty = not stated.</span>
+    <input class="form-control" name="home" value="{{ profile.home }}"></label>
   <div class="profile-grid">
     {% for name in lists %}
     <label class="panel-card profile-{{ name }}"><span class="card-label">{{ name }}</span>
       <span class="small muted d-block mb-2">{{ help[name] }}</span>
-      <textarea class="form-control" name="{{ name }}" rows="{{ 14 if name == "known" else (8 if name == "rules" else 5) }}">{{ profile[name] | join("\n") }}</textarea></label>
+      <textarea class="form-control" name="{{ name }}" rows="{{ 14 if name == "known" else (8 if name == "rules" else (3 if name == "home_regions" else 5)) }}">{{ profile[name] | join("\n") }}</textarea></label>
     {% endfor %}
   </div>
   <p class="mt-3"><button type="submit" class="btn btn-primary">Save</button></p>

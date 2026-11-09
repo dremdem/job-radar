@@ -15,8 +15,9 @@ The local model (docs/ai.md) sorts every vacancy cheaply. For the few vacancies 
 | Part | From |
 |---|---|
 | Your CV | the file in `JOB_RADAR_CV_PATH` (e.g. `~/text/cv/yakovenko_python_en.md`) |
-| Your profile | known / learnable / blockers / rules from [Profile](ai.md#stack-vs-your-cv) |
-| Fixed facts | full remote only, you live in Thailand, no relocation, any timezone is fine, you speak Russian (native) and English |
+| Your profile | known / learnable / blockers / rules from [Profile](ai.md#stack-vs-your-cv); languages and anything else about you go into `rules` |
+| Fixed facts | full remote only, any timezone is fine |
+| Where you live | `home` from the Profile: "I live in <home> and will not relocate"; left out when `home` is empty. The quick prompts (cover letter, questions to ask) say "remote from <home>" too |
 | The vacancy | title, company, location, salary, the latest description |
 
 Nothing from Gmail, company history or other vacancies is sent. The vacancy text and your CV go to Anthropic, as in any Claude conversation.

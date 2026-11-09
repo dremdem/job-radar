@@ -30,7 +30,7 @@ Code then checks every quote against the description (case and spacing ignored).
 | Finding | Reason in the queue | Score |
 |---|---|---|
 | Hybrid / on-site | `AI: hybrid — “<quote>”` | −3 |
-| Residence that is not worldwide / anywhere / Thailand / Asia / APAC | `AI: only for <places> — “<quote>”` | −2.5 |
+| Residence that is not worldwide / anywhere / your `home` / one of your `home_regions` ([Profile](#stack-vs-your-cv)) | `AI: only for <places> — “<quote>”` | −2.5 |
 
 Timezones are not a restriction: the candidate can work in any timezone.
 
@@ -73,14 +73,21 @@ Quality depends on the prompt, so treat the reasons as **marks to check, with th
 
 Vacancies that **require** a technology you have never worked with get marked and lowered, not ignored (issue #95).
 
-1. **Your profile.** It lives in `data/profile.yaml` (git-ignored), and you can edit it on the **Profile** page (`/profile`, linked from the header) or by hand; the page reads and writes the same file (#104). It has four lists:
+1. **Your profile.** It lives in `data/profile.yaml` (git-ignored), and you can edit it on the **Profile** page (`/profile`, linked from the header) or by hand; the page reads and writes the same file (#104). It has your home and four lists:
 
    | List | Meaning | A required one costs |
    |---|---|---|
    | `known` | Technologies from your CV | nothing |
    | `learnable` | Not a blocker, e.g. something you tried or can pick up fast | −0.5 |
    | `blockers` | A separate field you won't learn in days, e.g. professional TensorFlow | −3, shown as a blocker |
-   | `rules` | Free-text rules in your words ("Only full remote from Thailand, no relocation") | passed to Claude (#105); code does not interpret them |
+   | `rules` | Free-text rules in your words ("No relocation.", "I speak Russian (native) and English (B2+)") | passed to Claude (#105); code does not interpret them |
+
+   | Home field | Meaning | Used by |
+   |---|---|---|
+   | `home` | The country you live in and work from, e.g. `Thailand` | the score (`<home> listed` +1, "check if <home> is allowed"), the AI residence check (not a restriction), Claude ("I live in <home> and will not relocate") |
+   | `home_regions` | Regions that include it, e.g. `Asia`, `APAC` | the score and the AI residence check, like `home` |
+
+   Both are optional. Without them nothing is treated as your place: the score says "check if your country is allowed". A new `home` changes the score of vacancies imported after it; the AI reasons follow it at once.
 
    A technology in none of the lists costs −1. Without the file the stack check is skipped. Copy `profile.example.yaml` to start.
 2. **Unknown technologies.** Job Radar has a catalogue of technologies common in backend vacancies: languages, data stores, queues, cloud, infrastructure, observability, data / ML tools, front-end frameworks. Each one has a match pattern; for example, `Go` matches only as a capitalised word or `Golang`. Everything in the catalogue that is not in your profile counts as unknown. Basics such as Git, SQL, REST and Linux are not in the catalogue.

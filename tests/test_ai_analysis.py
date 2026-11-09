@@ -109,7 +109,14 @@ def test_risks():
     [(points, reason)] = risks(uk)
     assert points == -2.5 and reason.text == "AI: only for UK — “based in the UK”"
 
-    for open_place in ("Worldwide", "Thailand", "APAC", "Asia"):
+    assert risks(DescriptionAnalysis(work_mode="remote", residence=["Worldwide"])) == []
+    # Without a home in the profile, a country is a restriction like any other.
+    [(points, _)] = risks(DescriptionAnalysis(residence=["Thailand"], residence_quote="Thailand"))
+    assert points == -2.5
+
+
+def test_home_and_its_regions_are_open(thailand):
+    for open_place in ("Thailand", "APAC", "Southeast Asia"):
         assert risks(DescriptionAnalysis(work_mode="remote", residence=[open_place])) == []
 
 

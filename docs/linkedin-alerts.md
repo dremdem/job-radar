@@ -39,7 +39,7 @@ Links in the email carry personal tokens (`otpToken`, `midToken`, `midSig`, `trk
 Rule-based, from title and location only (`job_radar/scoring.py`). Starts at 5, each rule adds or subtracts, result is clamped to 0–10. Every rule that fired is kept as a reason and shown in the queue:
 
 - **positives**: Senior/Staff/Lead, Python, Backend, FastAPI/Django/Flask, Platform/Data;
-- **risks**: Frontend, Java/.NET/PHP/… without Python, Junior/Intern, Full-stack, on-site/hybrid, remote limited to one country ("remote in Germany" is not "remote from Thailand").
+- **risks**: Frontend, Java/.NET/PHP/… without Python, Junior/Intern, Full-stack, on-site/hybrid, remote limited to one country ("remote in Germany" is not "remote from <your `home`>"); `home` or one of `home_regions` from the [Profile](ai.md#stack-vs-your-cv) in the location is +1.
 
 Only the ~6 jobs in the email are seen; the rest of the search's first page can be read with the opt-in [public search](linkedin-public-search.md).
 

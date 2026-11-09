@@ -17,7 +17,7 @@ No key, no login, no page scraping. Remotive's terms: link back to the job on Re
 - **Noise filter:** the same as Himalayas and Remote OK: the title names a developer-type role (and not analyst / manager / sales / support / scientist / security / …), and Python, Django, FastAPI or Flask appears in the title, the tags or the description. One more check here: a title that names another stack (PHP, .NET, Java, Ruby, Swift, Angular, Vue, React, Node, Go, …) and no Python is skipped, because agencies like Lemon.io list Python in the boilerplate of every post. The rest is counted as `skipped`.
 - **Vacancy fields:**
   - **Title, company:** from the job. We Work Remotely titles look like `Company: Role` and are split there.
-  - **Location:** every job on these boards is remote. `Worldwide (Remote)` for `Worldwide` / `Anywhere in the World`; otherwise `Remote, <place>` (for We Work Remotely the region, not its list of countries) (`Remote, USA Only`, `Remote, CET (+/- 3 hours)`), so the score asks to check whether Thailand fits.
+  - **Location:** every job on these boards is remote. `Worldwide (Remote)` for `Worldwide` / `Anywhere in the World`; otherwise `Remote, <place>` (for We Work Remotely the region, not its list of countries) (`Remote, USA Only`, `Remote, CET (+/- 3 hours)`), so the score asks to check whether your home country fits.
   - **Salary:** Remotive's salary text when it has one.
   - **Description:** the description text, so the Python, language and auto-ignore rules work right away.
 - **Link:** sources `remotive`, `workingnomads` (`external_id` = the board's job id) and `weworkremotely` (`external_id` = the job page URL). A job is never imported twice.

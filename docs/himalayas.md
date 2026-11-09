@@ -22,7 +22,7 @@ Each page has 20 jobs with title, company, publication time, salary, location an
   - **Title, company, salary:** taken from the job. Salary looks like `100,000-175,000 USD / year`.
   - **Location:**
     - `Worldwide (Remote)` when the job does not restrict the countries the candidate may live in;
-    - otherwise `Remote, <countries>`, so the score asks to check whether Thailand fits.
+    - otherwise `Remote, <countries>`, so the score asks to check whether your home country fits.
     - Timezone restrictions are ignored: work hours in any timezone are fine (#91).
   - **Description:** the description text, so the Python check, the language check and the auto-ignore rules work right away.
 - **Link:** the vacancy links to its himalayas.app page (attribution). Source `himalayas`, `external_id` = that page URL (the API's `guid`). A job is never imported twice.

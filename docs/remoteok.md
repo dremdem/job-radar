@@ -19,7 +19,7 @@ The feed holds the latest 100 jobs tagged `python`, with title, company, publica
 - **Vacancy fields:**
   - **Title, company:** taken from the job.
   - **Salary:** `100,000-140,000 USD / year` when Remote OK has it; Remote OK salaries are yearly USD. `0` means "not given".
-  - **Location:** every Remote OK job is remote. `Remote` when the job names no place; otherwise `Remote, <place>`, so the score asks to check whether Thailand fits.
+  - **Location:** every Remote OK job is remote. `Remote` when the job names no place; otherwise `Remote, <place>`, so the score asks to check whether your home country fits.
   - **Description:** the description text, so the Python, language and auto-ignore rules work right away.
   - Remote OK sometimes sends accented letters double-encoded (`EspaÃ±a`); they are repaired (`España`).
 - **Link:** source `remoteok`, `external_id` = the Remote OK job id, URL = its remoteok.com page. A job is never imported twice.

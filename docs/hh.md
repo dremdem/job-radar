@@ -38,7 +38,7 @@ hh.ru mails the new vacancies of your saved search ("автопоиск"). Since
 For each vacancy in a digest:
 - **Read from the mail:** title, salary, employer, city and the vacancy id. The digest body is read from Gmail and not stored, like other hh.ru mail.
 - **Kept only when** the title names a developer-type role. This is the same title filter as for Telegram and Himalayas: engineer / developer / разработчик / architect / backend / …, and not analyst / manager / QA / teacher / author / …. The search already matched "Python" somewhere in the vacancy.
-- **Location:** `Remote (<employer's city>)`. The employer's city is kept, because "remote" on hh.ru often still means "living in Russia": the score asks to check whether Thailand is allowed.
+- **Location:** `Remote (<employer's city>)`. The employer's city is kept, because "remote" on hh.ru often still means "living in Russia": the score asks to check whether your home country is allowed.
 - **Link:** source `hh` with `external_id` = the vacancy id, shared with the notices above, so a vacancy is never duplicated. It links to `https://hh.ru/vacancy/<id>`.
 - **Rules:** the usual scoring and auto-ignore rules apply.
 - **Description:** the digest has none, so the vacancy shows *verify manually*. Open it on hh.ru and click the **→ Job Radar** bookmarklet (below).

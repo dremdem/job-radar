@@ -77,7 +77,7 @@ CATALOGUE: list[Tech] = [
 ]
 
 
-LISTS = ("known", "learnable", "blockers", "rules")
+LISTS = ("known", "learnable", "blockers", "rules", "home_regions")
 _HEADER = "# Your profile: edit here or on /profile. See docs/ai.md#stack-vs-your-cv.\n"
 
 
@@ -87,6 +87,8 @@ class Profile:
     learnable: list[str] = field(default_factory=list)  # a required one costs less
     blockers: list[str] = field(default_factory=list)  # a required one is a blocker
     rules: list[str] = field(default_factory=list)  # free text for Claude (#105)
+    home: str = ""  # the country you live in and work from, see job_radar/home.py
+    home_regions: list[str] = field(default_factory=list)  # areas that include it ("Asia")
 
     @property
     def known_set(self) -> set[str]:
@@ -121,12 +123,14 @@ def load_profile(path: Path) -> Profile | None:
     if not path.exists():
         return None
     data = yaml.safe_load(path.read_text()) or {}
-    return Profile(**{name: _items(data.get(name)) for name in LISTS})
+    home = str(data.get("home") or "").strip()
+    return Profile(**{name: _items(data.get(name)) for name in LISTS}, home=home)
 
 
 def save_profile(path: Path, profile: Profile) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {name: list(getattr(profile, name)) for name in LISTS}
+    data: dict = {"home": profile.home} if profile.home else {}
+    data |= {name: list(getattr(profile, name)) for name in LISTS}
     path.write_text(_HEADER + yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
 

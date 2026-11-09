@@ -24,7 +24,7 @@ The official [Firebase HN API](https://github.com/HackerNews/API) has the same d
   - **Python:** Python, Django, FastAPI or Flask appears anywhere in the post.
   - **Role:** the title passes the role filter (engineer / developer / architect / backend / …, and not analyst / manager / QA / sales / …). Posts whose header names no role pass.
   - **Open:** the header does not say `CLOSED` or `FILLED`. Companies edit old posts this way.
-- **Vacancy fields:** the title, company and location above; the whole post text is the description, so the language, Python and auto-ignore rules work right away. Residence limits such as `REMOTE (US)` are not filtered here: the score asks to check whether Thailand fits, and Claude's analysis reads the full post.
+- **Vacancy fields:** the title, company and location above; the whole post text is the description, so the language, Python and auto-ignore rules work right away. Residence limits such as `REMOTE (US)` are not filtered here: the score asks to check whether your home country fits, and Claude's analysis reads the full post.
 - **Links in the post:** HN shows a long link cut short with `...`; the description keeps the full address (#243). The way to apply (an email or a link) is in the post text itself: HN has no apply button.
 - **Already stored posts:** a post seen again whose text changed (edited on HN, or read by an older version) gets the new text as its description, and the location from its header.
 - **Link:** the vacancy links to the comment on news.ycombinator.com. Source `hackernews`, `external_id` = the comment id. A post is never imported twice.

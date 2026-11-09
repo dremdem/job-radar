@@ -1,5 +1,9 @@
 # Your profile (copy to data/profile.yaml, or edit it on the Profile page /profile).
 # See docs/ai.md#stack-vs-your-cv. One item per line; names as in job_radar/stack.py where possible.
+home: Thailand  # the country you live in and work from, as job ads write it
+home_regions: # wider areas that include it and count as open
+  - Asia
+  - APAC
 known:        # from your CV: no gap
   - Python
   - Django
@@ -10,5 +14,6 @@ known:        # from your CV: no gap
 learnable: [] # not a blocker; a required one costs -0.5
 blockers: []  # a required one costs -3
 rules:        # free text for Claude's deep analysis (#105); code does not interpret it
-  - Only full remote. I live in Thailand and do not relocate; any timezone is fine.
+  - No relocation.
+  - I speak Russian (native) and English (professional, B2+); Russian is not a problem.
   - A description not in English (German, Spanish, Chinese, ...) is a blocker.

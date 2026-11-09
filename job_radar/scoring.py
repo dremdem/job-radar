@@ -6,6 +6,8 @@ Heuristic only: it ranks the queue, it does not decide anything. See docs/linked
 import re
 from dataclasses import dataclass
 
+from .home import Home, current_home
+
 BASE = 5.0
 
 
@@ -57,29 +59,37 @@ def _title_reasons(title: str) -> list[tuple[float, Reason]]:
     return out
 
 
-def _location_reasons(location: str | None, remote_known: bool) -> list[tuple[float, Reason]]:
+def _location_reasons(
+    location: str | None, remote_known: bool, home: Home
+) -> list[tuple[float, Reason]]:
     if not location:
         return []
     if _has(r"worldwide|anywhere|global", location):
         return [(2.0, Reason("+", "Worldwide / anywhere"))]
-    if _has(r"thailand", location):
-        return [(1.0, Reason("+", "Thailand listed"))]
+    if place := home.listed_in(location):
+        return [(1.0, Reason("+", f"{place} listed"))]
     if _has(r"hybrid|on-?site", location):
         return [(-3.0, Reason("-", "Hybrid / on-site"))]
     if _has(r"remote", location):
         place = re.sub(r"\(?remote\)?", "", location, flags=re.IGNORECASE).strip(" ,·-")
         if place:
-            return [(-0.5, Reason("-", f"Remote listed for {place}: check if Thailand is allowed"))]
+            return [
+                (-0.5, Reason("-", f"Remote listed for {place}: check if {home.where} is allowed"))
+            ]
         return []
     if not remote_known:
         # Public search cards never show the work format; absence says nothing.
-        text = f"Work format not shown for {location}: check remote and Thailand"
+        text = f"Work format not shown for {location}: check remote and {home.where}"
         return [(-0.5, Reason("-", text))]
     return [(-2.0, Reason("-", "No remote marker in location"))]
 
 
-def score_job(title: str, location: str | None, *, remote_known: bool = True) -> Score:
-    """``remote_known=False`` when the source never shows the work format (public search)."""
-    fired = _title_reasons(title) + _location_reasons(location, remote_known)
+def score_job(
+    title: str, location: str | None, *, remote_known: bool = True, home: Home | None = None
+) -> Score:
+    """``remote_known=False`` when the source never shows the work format (public search).
+    ``home`` defaults to the one in the profile (job_radar/home.py)."""
+    home = current_home() if home is None else home
+    fired = _title_reasons(title) + _location_reasons(location, remote_known, home)
     value = BASE + sum(points for points, _ in fired)
     return Score(value=round(min(10.0, max(0.0, value)), 1), reasons=[r for _, r in fired])

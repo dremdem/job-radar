@@ -245,7 +245,7 @@ def test_blocked_stops_until_next_day(session):
     assert tomorrow.requests > 0
 
 
-def test_score_without_known_work_format():
+def test_score_without_known_work_format(thailand):
     known = score_job("Python Developer", "Porto, Portugal")
     unknown = score_job("Python Developer", "Porto, Portugal", remote_known=False)
     assert "No remote marker in location" in [r.text for r in known.reasons]

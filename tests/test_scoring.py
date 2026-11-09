@@ -1,6 +1,9 @@
 import pytest
 
+from job_radar.home import Home
 from job_radar.scoring import score_job
+
+THAILAND = Home("Thailand", ("Asia", "APAC"))
 
 
 def signs(result) -> dict[str, str]:
@@ -18,8 +21,23 @@ def test_strong_match_scores_high():
 
 
 def test_country_limited_remote_is_a_risk():
-    result = score_job("Sr Python Developer", "Spain (Remote)")
+    result = score_job("Sr Python Developer", "Spain (Remote)", home=THAILAND)
     assert signs(result)["Remote listed for Spain: check if Thailand is allowed"] == "-"
+    result = score_job("Sr Python Developer", "Spain (Remote)", home=Home())
+    assert signs(result)["Remote listed for Spain: check if your country is allowed"] == "-"
+
+
+def test_home_and_its_regions_in_the_location_are_a_plus():
+    for location, reason in [
+        ("Bangkok, Thailand", "Thailand listed"),
+        ("APAC (Remote)", "APAC listed"),
+    ]:
+        assert signs(score_job("Python Developer", location, home=THAILAND))[reason] == "+"
+    assert "Thailand listed" not in signs(score_job("Python Developer", "Thailand", home=Home()))
+
+
+def test_home_comes_from_the_profile(thailand):
+    assert signs(score_job("Python Developer", "Thailand"))["Thailand listed"] == "+"
 
 
 def test_other_stack_without_python_is_a_risk():

@@ -18,7 +18,7 @@ Each page has up to 50 jobs, newest first, with title, company, publication time
   - **Python:** Python, Django, FastAPI or Flask appears in the title or the description.
 - **Vacancy fields:**
   - **Title, company:** taken from the job.
-  - **Location:** every Jobicy job is remote. `Worldwide (Remote)` when `jobGeo` is `Anywhere`; otherwise `Remote, <regions>` (`Remote, Canada, USA`), so the score asks to check whether Thailand fits. Most Python jobs on Jobicy are for the USA, Canada or Europe.
+  - **Location:** every Jobicy job is remote. `Worldwide (Remote)` when `jobGeo` is `Anywhere`; otherwise `Remote, <regions>` (`Remote, Canada, USA`), so the score asks to check whether your home country fits. Most Python jobs on Jobicy are for the USA, Canada or Europe.
   - **Description:** the description text, so the Python, language and auto-ignore rules work right away.
 - **Link:** source `jobicy`, `external_id` = the Jobicy job id, URL = its jobicy.com page. A job is never imported twice.
 - **Errors:** a failed request stops this step for this sync and keeps the last successful run, so the next sync reads the missed jobs. The rest of the sync goes on.

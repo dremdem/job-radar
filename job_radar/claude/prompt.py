@@ -4,14 +4,25 @@ from typing import Any
 
 from ..stack import Profile
 
-PROMPT_VERSION = "3"  # 2: ignore_reason (#117); 3: memory (#215)
-# Never inferred from the CV: stated by the user (docs/claude.md#what-claude-gets).
+PROMPT_VERSION = "4"  # 2: ignore_reason (#117); 3: memory (#215); 4: home from the profile
+# Never inferred from the CV: Job Radar is for full remote work; where you live comes from
+# the profile (docs/claude.md#what-claude-gets), languages and the rest from your rules.
 FACTS = [
     "I want full remote work only.",
-    "I live in Thailand and will not relocate.",
     "Any timezone is fine for me; working hours are not a problem.",
-    "I speak Russian (native) and English (professional, B2+); Russian is not a problem.",
 ]
+
+
+def facts(profile: Profile) -> list[str]:
+    if not profile.home:
+        return FACTS
+    return [FACTS[0], f"I live in {profile.home} and will not relocate.", *FACTS[1:]]
+
+
+def _from(profile: Profile | None) -> str:
+    """ " from Thailand" or nothing, for sentences about remote work."""
+    return f" from {profile.home}" if profile and profile.home else ""
+
 
 _QUOTED = {
     "type": "object",
@@ -102,52 +113,58 @@ _HONEST = (
     "Base it only on my CV and this vacancy's text; do not invent facts, numbers, projects or "
     "employers. "
 )
-QUICK_PROMPTS: list[tuple[str, str]] = [
-    (
-        "Cover letter (EN)",
-        "Write a cover letter in English for this vacancy at this company, 150-200 words. "
-        + _HONEST
-        + "Start with why this role, then 2-3 concrete matches between my experience and their "
-        "requirements, mention that I work fully remote from Thailand. Plain text, no "
-        "placeholders, ready to paste.",
-    ),
-    (
-        "Сопроводительное (RU)",
-        "Напиши сопроводительное письмо на русском для этой вакансии в этой компании, 150-200 "
-        "слов. Опирайся только на моё CV и текст вакансии, не выдумывай факты, цифры, проекты и "
-        "работодателей. Начни с того, почему эта роль, затем 2-3 конкретных совпадения опыта с "
-        "требованиями, упомяни, что работаю полностью удалённо из Таиланда. Простой текст без "
-        "плейсхолдеров, готовый к вставке.",
-    ),
-    (
-        "Why I fit",
-        "In 3-5 bullets, why I fit this vacancy: tie each point of my CV to a requirement and "
-        "quote the requirement. " + _HONEST + "Add one bullet on the biggest gap, honestly.",
-    ),
-    (
-        "Questions to ask",
-        "Which 5 questions should I ask the recruiter about this job, most important first "
-        "(remote from Thailand and contract type, the gaps you found, the team, the stack)?",
-    ),
-    (
-        "Reply to recruiter (EN)",
-        "Write a short, polite reply in English to the recruiter's message below, showing "
-        "interest and asking the one most important open question. "
-        + _HONEST
-        + "Recruiter's message:\n\n",
-    ),
-    (
-        # #239: some boards hide the apply link behind a paywall.
-        "Find original posting",
-        "Find this vacancy on the employer's own site: their careers page or their ATS "
-        "(Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee, …), not another job "
-        "board or aggregator. Search by the company and the title. Check that the title and the "
-        "company match and that the posting looks open. Give the direct link, where you found "
-        "it, and anything that differs from the vacancy text (location, salary). If you can't "
-        "find it, say not found and give the company's careers page if you found that. Do not "
-        "apply, fill in or submit anything, and never open LinkedIn or hh.ru.",
-    ),
-]
+
+
+def quick_prompts(profile: Profile | None) -> list[tuple[str, str]]:
+    remote_from = _from(profile)
+    home_ru = f" (живу: {profile.home})" if profile and profile.home else ""
+    return [
+        (
+            "Cover letter (EN)",
+            "Write a cover letter in English for this vacancy at this company, 150-200 words. "
+            + _HONEST
+            + "Start with why this role, then 2-3 concrete matches between my experience and their "
+            f"requirements, mention that I work fully remote{remote_from}. Plain text, no "
+            "placeholders, ready to paste.",
+        ),
+        (
+            "Сопроводительное (RU)",
+            "Напиши сопроводительное письмо на русском для этой вакансии в этой компании, "
+            "150-200 слов. Опирайся только на моё CV и текст вакансии, не выдумывай факты, "
+            "цифры, проекты и работодателей. Начни с того, почему эта роль, затем 2-3 конкретных "
+            "совпадения опыта с "
+            f"требованиями, упомяни, что работаю полностью удалённо{home_ru}. Простой текст без "
+            "плейсхолдеров, готовый к вставке.",
+        ),
+        (
+            "Why I fit",
+            "In 3-5 bullets, why I fit this vacancy: tie each point of my CV to a requirement and "
+            "quote the requirement. " + _HONEST + "Add one bullet on the biggest gap, honestly.",
+        ),
+        (
+            "Questions to ask",
+            "Which 5 questions should I ask the recruiter about this job, most important first "
+            f"(remote{remote_from} and contract type, the gaps you found, the team, the stack)?",
+        ),
+        (
+            "Reply to recruiter (EN)",
+            "Write a short, polite reply in English to the recruiter's message below, showing "
+            "interest and asking the one most important open question. "
+            + _HONEST
+            + "Recruiter's message:\n\n",
+        ),
+        (
+            # #239: some boards hide the apply link behind a paywall.
+            "Find original posting",
+            "Find this vacancy on the employer's own site: their careers page or their ATS "
+            "(Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee, …), not another job"
+            " board or aggregator. Search by the company and the title. Check that the title and "
+            "the company match and that the posting looks open. Give the direct link, where you "
+            "found it, and anything that differs from the vacancy text (location, salary). If you"
+            " can't find it, say not found and give the company's careers page if you found that."
+            " Do not apply, fill in or submit anything, and never open LinkedIn or hh.ru.",
+        ),
+    ]
 
 
 def chat_system_prompt(language: str, *, web: bool = False) -> str:
@@ -187,7 +204,7 @@ def analysis_prompt(
     profile = profile or Profile()
     parts = [
         "# About me",
-        _list("Facts", FACTS),
+        _list("Facts", facts(profile)),
         _list("My rules", profile.rules),
         _list("Technologies I know", profile.known),
         _list("Technologies I can pick up quickly (not a blocker)", profile.learnable),
@@ -204,7 +221,7 @@ def analysis_prompt(
         description.strip(),
         "# Task",
         "Decide whether I should apply. verdict: apply / maybe / skip. match: 0-100. "
-        "location: can I do this job fully remote from Thailand? gaps: required skills I lack "
+        f"location: can I do this job fully remote{_from(profile)}? gaps: required skills I lack "
         "or know weakly; requirement must_have or nice_to_have as the text says; blocker when "
         "it breaks one of my rules or is a blocker above. red_flags: anything else against it "
         "(language, contract type, seniority, salary). ignore_reason: when the verdict is "

@@ -33,7 +33,7 @@ from ..claude import analysis as claude
 from ..claude import memory as claude_memory
 from ..claude.analysis import ClaudeSettings
 from ..claude.analysis import Worker as ClaudeWorker
-from ..claude.prompt import QUICK_PROMPTS
+from ..claude.prompt import quick_prompts
 from ..claude.runner import ClaudeCli
 from ..claude.runner import Runner as ClaudeRunner
 from ..config import Settings, get_settings
@@ -766,7 +766,7 @@ def create_app(
         lists = {k: [x for x in getattr(profile, k) if x.lower() != name.strip().lower()]
                  for k in ("known", "learnable", "blockers")}  # fmt: skip
         lists[level].append(name.strip())
-        save_profile(settings.profile, Profile(**lists, rules=profile.rules))
+        save_profile(settings.profile, replace(profile, **lists))
         report = build_report(
             session, load_profile(settings.profile), days=days or None, everything=scope == "all"
         )
@@ -823,11 +823,20 @@ def create_app(
         learnable: Annotated[str, Form()] = "",
         blockers: Annotated[str, Form()] = "",
         rules: Annotated[str, Form()] = "",
+        home: Annotated[str, Form()] = "",
+        home_regions: Annotated[str, Form()] = "",
     ) -> HTMLResponse:
         def lines(text: str) -> list[str]:
             return [line.strip() for line in text.splitlines() if line.strip()]
 
-        profile = Profile(lines(known), lines(learnable), lines(blockers), lines(rules))
+        profile = Profile(
+            lines(known),
+            lines(learnable),
+            lines(blockers),
+            lines(rules),
+            home=home.strip(),
+            home_regions=lines(home_regions),
+        )
         save_profile(settings.profile, profile)
         asked = recheck_stack(session)
         message = "Saved." + (
@@ -1114,7 +1123,7 @@ def _claude_context(session: Session, opportunity_id: int) -> dict:
         "claude": current,
         "messages": claude.messages(session, opportunity_id),
         "chat_ready": claude.latest_done(session, opportunity_id) is not None,
-        "quick_prompts": QUICK_PROMPTS,
+        "quick_prompts": quick_prompts(_profile(session)),
         "polling": chat_pending or (current is not None and current.state in claude.PENDING),
     }
 

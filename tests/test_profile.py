@@ -16,9 +16,12 @@ def test_profile_round_trip(tmp_path):
         known=["Python", "Django"],
         learnable=["RabbitMQ"],
         blockers=["TensorFlow"],
-        rules=["Only full remote from Thailand."],
+        rules=["No relocation."],
+        home="Thailand",
+        home_regions=["Asia", "APAC"],
     )
     save_profile(path, profile)
+    assert "\nhome: Thailand\nknown:" in path.read_text()  # home first, it is short
     assert load_profile(path) == profile
 
 
@@ -71,7 +74,9 @@ def test_profile_page(client, tmp_path, monkeypatch):
             "known": "Python\n Django \n\n",
             "learnable": "RabbitMQ",
             "blockers": "TensorFlow",
-            "rules": "Only full remote from Thailand.",
+            "rules": "No relocation.",
+            "home": " Thailand ",
+            "home_regions": "Asia\nAPAC",
         },
     )
     assert response.status_code == 200 and "Saved" in response.text
@@ -80,9 +85,12 @@ def test_profile_page(client, tmp_path, monkeypatch):
         known=["Python", "Django"],
         learnable=["RabbitMQ"],
         blockers=["TensorFlow"],
-        rules=["Only full remote from Thailand."],
+        rules=["No relocation."],
+        home="Thailand",
+        home_regions=["Asia", "APAC"],
     )
-    assert "TensorFlow" in client.get("/profile").text
+    page = client.get("/profile").text
+    assert "TensorFlow" in page and 'value="Thailand"' in page
 
 
 def test_saving_the_profile_asks_the_stack_again(client, session):
@@ -103,3 +111,11 @@ def test_saving_the_profile_asks_the_stack_again(client, session):
 
 def test_header_links_profile(client):
     assert 'href="/profile"' in client.get("/").text
+
+
+def test_home_from_the_profile_page_reaches_the_score(client):
+    from job_radar.scoring import score_job
+
+    assert "Thailand listed" not in [r.text for r in score_job("Dev", "Thailand").reasons]
+    client.post("/profile", data={"known": "Python", "home": "Thailand"})
+    assert "Thailand listed" in [r.text for r in score_job("Dev", "Thailand").reasons]

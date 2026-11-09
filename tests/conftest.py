@@ -7,12 +7,30 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from job_radar import home as home_module
 from job_radar.config import Settings
 from job_radar.db import make_engine, make_session_factory, upgrade_database
+from job_radar.stack import Profile, save_profile
 from job_radar.web.app import create_app
 
 # Tests must not depend on the developer's local .env (e.g. opt-in flags turned on).
 Settings.model_config["env_file"] = None
+
+
+@pytest.fixture(autouse=True)
+def profile_path(tmp_path, monkeypatch) -> Path:
+    """Where Home is read from in tests (the same file the web client's profile uses), never
+    the developer's data/profile.yaml."""
+    path = tmp_path / "profile.yaml"
+    monkeypatch.setattr(home_module, "_profile_path", lambda: path)
+    return path
+
+
+@pytest.fixture
+def thailand(profile_path: Path) -> Path:
+    """A profile whose home is Thailand, in Asia / APAC."""
+    save_profile(profile_path, Profile(home="Thailand", home_regions=["Asia", "APAC"]))
+    return profile_path
 
 
 @pytest.fixture(scope="session")

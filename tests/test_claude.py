@@ -89,6 +89,21 @@ def test_prompt_has_facts_profile_cv_and_vacancy():
     ]:
         assert part in text
     assert "Location: unknown" in text
+    assert "will not relocate" not in text and "fully remote?" in text  # no home in the profile
+
+
+def test_prompt_and_quick_prompts_take_home_from_the_profile():
+    from job_radar.claude.prompt import quick_prompts
+
+    profile = Profile(home="Thailand")
+    text = analysis_prompt(cv=None, profile=profile, title="Python Dev", company="Acme",
+                           location=None, salary=None, description=DESCRIPTION)  # fmt: skip
+    assert "I live in Thailand and will not relocate." in text
+    assert "fully remote from Thailand?" in text
+    prompts = dict(quick_prompts(profile))
+    assert "fully remote from Thailand" in prompts["Cover letter (EN)"]
+    assert "(живу: Thailand)" in prompts["Сопроводительное (RU)"]
+    assert "Thailand" not in " ".join(dict(quick_prompts(None)).values())
 
 
 def test_enqueue_skips_pending_and_unknown(session):
@@ -479,8 +494,9 @@ def test_worker_can_be_switched_off(engine, database_url, tmp_path):
 
 
 def test_chat_has_quick_prompts(client, session):
-    from job_radar.claude.prompt import QUICK_PROMPTS
+    from job_radar.claude.prompt import quick_prompts
 
+    QUICK_PROMPTS = quick_prompts(None)
     o = vacancy(session)
     claude.enqueue(session, [o.id])
     w = client.app.state.claude_worker
@@ -499,9 +515,9 @@ def test_chat_has_quick_prompts(client, session):
 
 def test_find_original_posting_prompt():
     # #239: boards like We Work Remotely hide the apply link behind a paywall.
-    from job_radar.claude.prompt import QUICK_PROMPTS
+    from job_radar.claude.prompt import quick_prompts
 
-    text = dict(QUICK_PROMPTS)["Find original posting"].lower()
+    text = dict(quick_prompts(None))["Find original posting"].lower()
     for rule in ("careers page", "greenhouse", "lever", "ashby", "not found", "do not apply"):
         assert rule in text, rule
     assert "linkedin" in text and "hh.ru" in text  # never opened
