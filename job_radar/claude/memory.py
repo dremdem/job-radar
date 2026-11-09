@@ -121,9 +121,10 @@ def apply_reply(session: Session, text: str, opportunity_id: int) -> tuple[str, 
                         op.get("body"), by="claude", opportunity_id=opportunity_id)  # fmt: skip
             if name:
                 saved.append(name)
-        elif op.get("op") == "delete":
-            if delete(session, op.get("name"), by="claude", opportunity_id=opportunity_id):
-                deleted.append(_name(op.get("name")))
+        elif op.get("op") == "delete" and delete(
+            session, op.get("name"), by="claude", opportunity_id=opportunity_id
+        ):
+            deleted.append(_name(op.get("name")))
     parts = [f"saved {', '.join(saved)}"] if saved else []
     parts += [f"deleted {', '.join(deleted)}"] if deleted else []
     return clean, "; ".join(parts) or "no change"

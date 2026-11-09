@@ -4,7 +4,7 @@ import enum
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -13,7 +13,11 @@ def utcnow() -> datetime:
 
 
 class Base(DeclarativeBase):
-    type_annotation_map: ClassVar[dict[Any, Any]] = {datetime: DateTime(timezone=True)}
+    # float stays FLOAT as in the migrations: SQLAlchemy 2.1 maps it to Double by default.
+    type_annotation_map: ClassVar[dict[Any, Any]] = {
+        datetime: DateTime(timezone=True),
+        float: Float(),
+    }
 
 
 def _enum(cls: type[enum.Enum]) -> Enum:
