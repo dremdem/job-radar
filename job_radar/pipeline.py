@@ -519,6 +519,10 @@ def run_sync(
     for step in steps:
         if not enabled.get(step.key, True):
             step.state = "off"
+    if not settings.gmail_client_secret.exists() and not settings.gmail_token.exists():
+        # Never set up (a fresh clone): not a failure, the boards still sync (#8).
+        gmail_step = next(s for s in steps if s.key == "gmail")
+        gmail_step.state, gmail_step.summary = "off", "not set up (docs/gmail.md)"
     by_key = {s.key: s for s in steps}
     how = {key: (prefix, pick) for key, _, prefix, pick in STEPS}
 
