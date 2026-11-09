@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/dremdem/job-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/dremdem/job-radar/actions/workflows/ci.yml)
 [![Security](https://github.com/dremdem/job-radar/actions/workflows/security.yml/badge.svg)](https://github.com/dremdem/job-radar/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/dremdem/job-radar/badge)](https://scorecard.dev/viewer/?uri=github.com/dremdem/job-radar)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A local-first assistant for a job search. It collects vacancies from a dozen sources, scores them with an explanation for every point, asks an LLM for a grounded second opinion on the ones worth a look, and keeps the whole history with each company in one place.
@@ -83,7 +84,8 @@ Real sources need their own setup: Gmail OAuth ([docs/gmail.md](docs/gmail.md)),
 
 - 700+ tests, run in parallel in under 20 s; fixtures only, no network, no real sleeps. Real emails used as fixtures go through [a sanitizer](tests/fixtures/sanitize.py) and tests that fail on personal data.
 - CI on every PR and on `main`: `ruff`, `ruff format`, `pytest`.
-- Security workflow: gitleaks and trufflehog over the full history, `pip-audit` on the locked dependencies, `bandit`; weekly as well. Dependabot keeps dependencies current.
+- Security workflow on every PR, on `main` and weekly: gitleaks and trufflehog over the full history, `pip-audit` on the locked dependencies, `bandit`, CodeQL. The workflows themselves are checked by `zizmor` and `actionlint`, and every action is pinned to a commit SHA.
+- [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/dremdem/job-radar) rates the repository's supply-chain practices on every change to `main`. Dependabot keeps dependencies and actions current. How to report a vulnerability: [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
