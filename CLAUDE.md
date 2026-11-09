@@ -1,10 +1,11 @@
 # CLAUDE.md
 
-Job Radar: local-first assistant for reviewing job opportunities. Plan and scope live in [Epic #9](https://github.com/dremdem/job-radar/issues/9).
+Job Radar: local-first assistant for reviewing job opportunities. Plan and scope live in this repository's issues.
 
 ## Workflow (every change)
 
 1. **Issue first.** Every change starts from a GitHub issue. If none exists, create one with goal, scope and "done" criteria.
+   - **This repository is public.** Its issues, PRs and commit messages describe the product only. The owner's job search (companies and vacancies applied to, CV, rejections, interview prep, numbers of applications) goes to the private `dremdem/job-radar-private`, never here. Code changes are made only here; the private repository has no code.
 2. **Branch.** Branch off fresh `main`, named `<type>/<short-slug>` (`feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, `test/`). Never commit directly to `main`.
 3. **PR.** Open a PR that references the issue (`Closes #N`). Merge only when CI is green; squash-merge, delete the branch.
 4. Keep PRs small and focused on one issue. Unrelated findings go into new issues, not into the current PR.
@@ -29,4 +30,4 @@ Job Radar: local-first assistant for reviewing job opportunities. Plan and scope
 - **Gmail is read-only.** Never send, delete or modify mail.
 - **Telegram is read-only.** Read only through the existing telegram-mcp server (no own client or login), only its `read_messages` tool; never send, mark read, join or change anything (#85).
 - **Don't invent facts.** Scores, summaries and company history must be based on stored data; say "unknown" instead of guessing.
-- **Secrets** live only in `.env` or `secrets/` (both git-ignored). Never commit tokens, credentials or personal data (`*.db`, exported mail).
+- **Secrets** live only in `.env` or `secrets/` (both git-ignored). Never commit tokens, credentials or personal data (`*.db`, exported mail), and never put them in issues, PRs or commit messages. Test fixtures from real mail go through `tests/fixtures/sanitize.py`.
