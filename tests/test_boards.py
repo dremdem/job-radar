@@ -7,6 +7,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from sqlalchemy import select
 
 from job_radar.boards import (
@@ -167,3 +168,14 @@ def test_sync_step_reports_each_board_and_can_be_turned_off(session):
     step(session, Settings(boards=True), lines.append, client=FakeClient(fail="remotive"))
     assert lines[0] == "boards: Remotive: could not read the feed: HTTP 503"
     assert lines[-1].startswith("boards: ") and lines[-1].endswith(" new")
+
+
+def test_weworkremotely_feed_with_entities_is_refused():
+    """A feed that defines XML entities (billion laughs) is an error, not parsed."""
+    bomb = (
+        b'<?xml version="1.0"?><!DOCTYPE r [<!ENTITY a "aaaaaaaaaa">'
+        b'<!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]><rss><channel><item>'
+        b"<title>&b;</title></item></channel></rss>"
+    )
+    with pytest.raises(BoardError):
+        parse_weworkremotely(bomb)

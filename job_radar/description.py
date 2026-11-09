@@ -109,4 +109,4 @@ def highlight_python(text: str) -> Markup:
         out += [_mark(escaped[pos : m.start()]), link(url)]
         pos = m.start() + len(url)
     out.append(_mark(escaped[pos:]))
-    return Markup("".join(out))
+    return Markup("".join(out))  # nosec B704: built from escape(text) above

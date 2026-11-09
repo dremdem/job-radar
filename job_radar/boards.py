@@ -14,6 +14,8 @@ from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Protocol
 
+from defusedxml import DefusedXmlException
+from defusedxml import ElementTree as DET
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -131,8 +133,8 @@ def parse_workingnomads(data: bytes) -> list[BoardJob]:
 
 def parse_weworkremotely(data: bytes) -> list[BoardJob]:
     try:
-        root = ET.fromstring(data)
-    except ET.ParseError as e:
+        root = DET.fromstring(data)
+    except (ET.ParseError, DefusedXmlException) as e:
         raise BoardError(f"unexpected We Work Remotely feed: {e}") from e
     out = []
     for item in root.iter("item"):

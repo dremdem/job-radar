@@ -126,7 +126,7 @@ def chat_markup(text: str) -> Markup:
         if line.startswith("&gt; "):
             line = f'<span class="quote">{line[5:]}</span>'
         lines.append(line)
-    return Markup("\n".join(lines))
+    return Markup("\n".join(lines))  # nosec B704: built from escape(text) above
 
 
 templates.env.filters["chat_markup"] = chat_markup

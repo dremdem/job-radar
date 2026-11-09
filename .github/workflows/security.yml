@@ -1,0 +1,58 @@
+name: Security
+
+# Secrets, dependency and code checks. Runs on every PR, on main and weekly,
+# so a new CVE in a pinned dependency shows up without a code change.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # gitleaks-action lists the PR's commits
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # scan the whole history, not only the last commit
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: trufflehog
+        uses: trufflesecurity/trufflehog@v3.90.8
+        with:
+          extra_args: --results=verified,unknown
+
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: pip-audit
+        run: |
+          uv export --locked --no-hashes --no-emit-project --format requirements-txt > requirements.txt
+          uvx pip-audit --strict -r requirements.txt
+
+  bandit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: bandit
+        run: uvx bandit -c pyproject.toml -r job_radar -ll

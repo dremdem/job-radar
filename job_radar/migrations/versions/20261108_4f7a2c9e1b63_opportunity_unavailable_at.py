@@ -23,7 +23,7 @@ def upgrade() -> None:
         "SELECT MIN(e.at) FROM company_events e"
         " WHERE e.kind = 'unavailable' AND e.opportunity_id = opportunities.id"
     )
-    op.execute(f"UPDATE opportunities SET unavailable_at = ({marked})")
+    op.execute(f"UPDATE opportunities SET unavailable_at = ({marked})")  # nosec B608: constant
     # The new auto-ignore rule is on by default, and nobody can have switched it off yet.
     op.execute(
         "UPDATE opportunities SET state = 'auto_ignore',"

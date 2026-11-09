@@ -8,6 +8,7 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0",
     "beautifulsoup4>=4.15.0",
+    "defusedxml>=0.7.1",
     "fastapi>=0.141.1",
     "google-api-python-client>=2.200.0",
     "google-auth>=2.58.0",
@@ -72,3 +73,8 @@ dev = [
 "job_radar/skills.py" = ["RUF001"]
 "job_radar/hh/digests.py" = ["RUF001"]
 "job_radar/claude/prompt.py" = ["RUF001"]
+
+[tool.bandit]
+# B310 (urlopen with a non-literal URL): every fetch goes to a fixed https API of a job
+# board or to the local Ollama URL from the user's own config, never to a URL from input.
+skips = ["B310"]
