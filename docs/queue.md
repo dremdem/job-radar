@@ -96,9 +96,10 @@ The status next to the button lists the steps, one line each, updated while it w
 | Hacker News | Remote Python posts from "Ask HN: Who is hiring?" ([hackernews.md](hackernews.md)) |
 | Remote OK | Fresh Python jobs from a remote-only board ([remoteok.md](remoteok.md)) |
 | Jobicy | Fresh Python jobs from a remote job board ([jobicy.md](jobicy.md)) |
+| FDE Times | Fresh Forward Deployed Engineer roles ([fdetimes.md](fdetimes.md)) |
 | Other boards | Remotive, Working Nomads, We Work Remotely ([boards.md](boards.md)) |
 | Mail analysis | Rejections, applications, contacts from stored mail ([applications.md](applications.md)) |
-| LinkedIn descriptions | Starts the background **Descriptions** job, if enabled ([linkedin-public-search.md](linkedin-public-search.md#the-descriptions-button-205)) |
+| Descriptions | Starts the background **Descriptions** job, if enabled: LinkedIn ([linkedin-public-search.md](linkedin-public-search.md#the-descriptions-button-205)), then FDE Times ([fdetimes.md](fdetimes.md#descriptions)) |
 | AI analysis | Work mode, residence and stack with the local model ([ai.md](ai.md)) |
 
 Each line shows the state:
