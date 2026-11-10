@@ -66,6 +66,7 @@ class ApplicationSource(enum.StrEnum):
     LINKEDIN = "linkedin"
     ATS = "ats"
     HH = "hh"  # inferred from an hh.ru rejection (docs/hh.md)
+    FDETIMES = "fdetimes"  # FDE Times "Application received" mail (docs/fdetimes.md)
     MANUAL = "manual"
 
 
