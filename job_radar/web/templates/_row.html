@@ -12,6 +12,7 @@
       {% if o.source_records | selectattr("source_type.value", "equalto", "hackernews") | list %}<span class="badge">via Hacker News</span>{% endif %}
       {% if o.source_records | selectattr("source_type.value", "equalto", "remoteok") | list %}<span class="badge">via Remote OK</span>{% endif %}
       {% if o.source_records | selectattr("source_type.value", "equalto", "jobicy") | list %}<span class="badge">via Jobicy</span>{% endif %}
+      {% if o.source_records | selectattr("source_type.value", "equalto", "fdetimes") | list %}<span class="badge">via FDE Times</span>{% endif %}
       {% if o.source_records | selectattr("source_type.value", "equalto", "remotive") | list %}<span class="badge">via Remotive</span>{% endif %}
       {% if o.source_records | selectattr("source_type.value", "equalto", "workingnomads") | list %}<span class="badge">via Working Nomads</span>{% endif %}
       {% if o.source_records | selectattr("source_type.value", "equalto", "weworkremotely") | list %}<span class="badge">via We Work Remotely</span>{% endif %}

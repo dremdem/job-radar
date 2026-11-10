@@ -284,3 +284,13 @@ def test_clearing_undoes_only_this_rule(session):
         OpportunityState.NEW,
         None,
     )
+
+
+def test_card_text_cleanup_is_linear_on_long_runs_of_spaces():
+    # CodeQL py/polynomial-redos (#11): these regexes were quadratic on runs of whitespace.
+    job = parse_card_text("1", "Python Developer   (Verified job)  \nAcme\nRemote\n·  Easy Apply ")
+    assert job is not None and job.title == "Python Developer" and job.easy_apply
+    other = parse_card_text("2", "Python Developer\nAcme\nRemote\nnot easy apply")
+    assert other is not None and other.easy_apply is False
+    spaces = " " * 50_000
+    parse_card_text("3", f"Python Developer{spaces}x\nAcme\n{spaces}\n")  # returns promptly

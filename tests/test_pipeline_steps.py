@@ -9,6 +9,7 @@ def settings(tmp_path, database_url, **extra) -> Settings:
         "database_url": database_url,
         "gmail_token": tmp_path / "missing.json",
         "himalayas": False,
+        "fdetimes": False,
         "ai_analysis": False,
     }
     return Settings(**(base | extra))
@@ -19,9 +20,12 @@ def by_key(steps):
 
 
 def test_gmail_failure_does_not_stop_the_other_steps(tmp_path, engine, database_url):
+    # Set up half way: the OAuth client file is there, the token is not.
+    client = tmp_path / "client.json"
+    client.write_text("{}")
     lines, snapshots = [], []
     steps = pipeline.run_sync(
-        settings(tmp_path, database_url),
+        settings(tmp_path, database_url, gmail_client_secret=client),
         lines.append,
         on_steps=lambda s: snapshots.append([(x.key, x.state) for x in s]),
     )
@@ -31,12 +35,25 @@ def test_gmail_failure_does_not_stop_the_other_steps(tmp_path, engine, database_
     for key in ("linkedin", "mail"):
         assert found[key].state == "done", found[key]
     # Disabled sources are listed as off, not run.
-    for key in ("linkedin_search", "telegram", "himalayas", "descriptions", "ai"):
+    for key in ("linkedin_search", "telegram", "himalayas", "fdetimes", "descriptions", "ai"):
         assert found[key].state == "off"
     # Progress is reported while it runs: the first snapshot has everything waiting.
     assert all(state in ("waiting", "off") for _, state in snapshots[0])
     assert ("gmail", "running") in snapshots[1]
     assert any("rejections:" in line for line in lines)
+
+
+def test_gmail_never_set_up_is_off_not_failed(tmp_path, engine, database_url):
+    """A fresh clone has neither the OAuth client file nor the token (#8)."""
+    found = by_key(
+        pipeline.run_sync(
+            settings(tmp_path, database_url, gmail_client_secret=tmp_path / "none.json"), print
+        )
+    )
+    assert found["gmail"].state == "off"
+    assert found["gmail"].summary == "not set up (docs/gmail.md)"
+    assert not [s for s in found.values() if s.state == "failed"]
+    assert found["mail"].state == "done"
 
 
 def test_expired_token_reads_as_a_hint():

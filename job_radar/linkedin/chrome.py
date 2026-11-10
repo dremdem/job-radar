@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -179,11 +180,17 @@ def job_id_of(href: str) -> str | None:
     return None
 
 
+def _is_linkedin(href: str) -> bool:
+    """True for linkedin.com and its subdomains, not for a URL that only mentions it."""
+    host = urlsplit(href or "").hostname or ""
+    return host == "linkedin.com" or host.endswith(".linkedin.com")
+
+
 def page_of(href: str) -> tuple[str, str] | None:
     """("hh", id) for an hh.ru vacancy page, ("linkedin", id) for a LinkedIn one."""
     if m := _HH_PAGE.match(href or ""):
         return ("hh", m.group(1))
-    if "linkedin.com" in (href or "") and (job_id := job_id_of(href)):
+    if _is_linkedin(href) and (job_id := job_id_of(href)):
         return ("linkedin", job_id)
     return None
 

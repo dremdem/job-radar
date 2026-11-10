@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/dremdem/job-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/dremdem/job-radar/actions/workflows/ci.yml)
 [![Security](https://github.com/dremdem/job-radar/actions/workflows/security.yml/badge.svg)](https://github.com/dremdem/job-radar/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/dremdem/job-radar/badge)](https://scorecard.dev/viewer/?uri=github.com/dremdem/job-radar)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A local-first assistant for a job search. It collects vacancies from a dozen sources, scores them with an explanation for every point, asks an LLM for a grounded second opinion on the ones worth a look, and keeps the whole history with each company in one place.
@@ -14,7 +15,7 @@ I built it for my own search for a remote Senior Python Backend role and use it 
 
 ## What it does
 
-- **Collects** vacancies from LinkedIn alert emails and hh.ru notifications (read-only Gmail), Telegram channels (through an MCP server), and public APIs and feeds: Himalayas, Hacker News "Who is hiring?", Remote OK, Jobicy, Remotive, Working Nomads, We Work Remotely.
+- **Collects** vacancies from LinkedIn alert emails and hh.ru notifications (read-only Gmail), Telegram channels (through an MCP server), and public APIs and feeds: Himalayas, Hacker News "Who is hiring?", Remote OK, Jobicy, FDE Times, Remotive, Working Nomads, We Work Remotely.
 - **Stores** each vacancy once per source (re-running an import never duplicates it), with every description snapshot kept; a repost of a vacancy you already applied to is folded into the original.
 - **Scores** each one with rules (title, seniority, location, Python in the description), each rule adding a visible reason.
 - **Analyzes** the promising ones with Claude: verdict, match %, strengths, gaps, red flags, questions for the recruiter, all with quotes that are checked against the vacancy text.
@@ -83,7 +84,8 @@ Real sources need their own setup: Gmail OAuth ([docs/gmail.md](docs/gmail.md)),
 
 - 700+ tests, run in parallel in under 20 s; fixtures only, no network, no real sleeps. Real emails used as fixtures go through [a sanitizer](tests/fixtures/sanitize.py) and tests that fail on personal data.
 - CI on every PR and on `main`: `ruff`, `ruff format`, `pytest`.
-- Security workflow: gitleaks and trufflehog over the full history, `pip-audit` on the locked dependencies, `bandit`; weekly as well. Dependabot keeps dependencies current.
+- Security workflow on every PR, on `main` and weekly: gitleaks and trufflehog over the full history, `pip-audit` on the locked dependencies, `bandit`, CodeQL. The workflows themselves are checked by `zizmor` and `actionlint`, and every action is pinned to a commit SHA.
+- [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/dremdem/job-radar) rates the repository's supply-chain practices on every change to `main`. Dependabot keeps dependencies and actions current. How to report a vulnerability: [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
@@ -91,7 +93,7 @@ Real sources need their own setup: Gmail OAuth ([docs/gmail.md](docs/gmail.md)),
 |---|---|
 | Using it | [usage](docs/usage.md) · [queue](docs/queue.md) · [settings](docs/settings.md) · [skills gap](docs/skills.md) |
 | AI | [local model](docs/ai.md) · [Claude analysis](docs/claude.md) · [Claude memory](docs/claude-memory.md) |
-| Sources | [Gmail](docs/gmail.md) · [LinkedIn alerts](docs/linkedin-alerts.md) · [hh.ru](docs/hh.md) · [Telegram](docs/telegram.md) · [boards](docs/boards.md) · [Himalayas](docs/himalayas.md) · [Hacker News](docs/hackernews.md) · [Remote OK](docs/remoteok.md) · [Jobicy](docs/jobicy.md) |
+| Sources | [Gmail](docs/gmail.md) · [LinkedIn alerts](docs/linkedin-alerts.md) · [hh.ru](docs/hh.md) · [Telegram](docs/telegram.md) · [boards](docs/boards.md) · [Himalayas](docs/himalayas.md) · [Hacker News](docs/hackernews.md) · [Remote OK](docs/remoteok.md) · [Jobicy](docs/jobicy.md) · [FDE Times](docs/fdetimes.md) |
 | Internals | [architecture](docs/architecture.md) · [data model](docs/data-model.md) · [applications](docs/applications.md) · [ADRs](docs/adr/) |
 
 ## License

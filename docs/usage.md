@@ -27,7 +27,7 @@ A small wrapper so you do not have to remember the commands below:
 | `./jr stop` / `./jr restart` | Stop / restart it |
 | `./jr status` | Is it running, on which address |
 | `./jr logs` | Follow the server log |
-| `./jr sync` | Sync every source: Gmail, LinkedIn, Telegram, Himalayas, Hacker News, Remote OK, Jobicy, other boards, AI analysis (same as the **Sync** button) |
+| `./jr sync` | Sync every source: Gmail, LinkedIn, Telegram, Himalayas, Hacker News, Remote OK, Jobicy, FDE Times, other boards, AI analysis (same as the **Sync** button) |
 | `./jr auth` | One-time Gmail consent (read-only) |
 | `./jr update` | `git pull`, install dependencies, restart the server |
 | `./jr check` | `ruff` + `pytest` |
@@ -52,12 +52,13 @@ A second `./jr start` does not start a second server.
 | `job-radar import applications` | Past applications from mail, see [docs/applications.md](applications.md) |
 | `job-radar import contacts` | Link mail to companies and label it, for company history in the queue |
 | `job-radar import linkedin-search` | Opt-in: first 25 jobs of each new alert search from LinkedIn's public guest search, see [docs/linkedin-public-search.md](linkedin-public-search.md) |
-| `job-radar import descriptions` | Opt-in: descriptions for To review from public job pages, see [docs/linkedin-public-search.md](linkedin-public-search.md#descriptions-public-job-page) |
+| `job-radar import descriptions` | Descriptions for To review from public job pages: LinkedIn (opt-in, see [docs/linkedin-public-search.md](linkedin-public-search.md#descriptions-public-job-page)) and FDE Times ([docs/fdetimes.md](fdetimes.md#descriptions)) |
 | `job-radar sync telegram` | Vacancies from allowlisted Telegram channels via telegram-mcp, see [docs/telegram.md](telegram.md) |
 | `job-radar sync himalayas` | Fresh worldwide Python vacancies from the Himalayas public API, see [docs/himalayas.md](himalayas.md) |
 | `job-radar sync hackernews` | Remote Python posts from the monthly "Ask HN: Who is hiring?" thread, see [docs/hackernews.md](hackernews.md) |
 | `job-radar sync remoteok` | Fresh Python vacancies from the Remote OK feed, see [docs/remoteok.md](remoteok.md) |
 | `job-radar sync jobicy` | Fresh Python vacancies from the Jobicy API, see [docs/jobicy.md](jobicy.md) |
+| `job-radar sync fdetimes` | Fresh Forward Deployed Engineer roles from the FDE Times job list, see [docs/fdetimes.md](fdetimes.md) |
 | `job-radar sync remotive` | Remotive, Working Nomads and We Work Remotely in one step (also `workingnomads`, `weworkremotely`), see [docs/boards.md](boards.md) |
 | `job-radar analyze` | Work mode and residence from descriptions with a local model (Ollama), see [docs/ai.md](ai.md) |
 | `job-radar sync <other source>` | Placeholder until the source lands |
@@ -76,6 +77,11 @@ Settings come from environment variables with the `JOB_RADAR_` prefix, or from `
 | `JOB_RADAR_HACKERNEWS` | `true` | Read "Ask HN: Who is hiring?" on every sync ([docs/hackernews.md](hackernews.md)) |
 | `JOB_RADAR_REMOTEOK` | `true` | Read Remote OK on every sync ([docs/remoteok.md](remoteok.md)) |
 | `JOB_RADAR_JOBICY` | `true` | Read Jobicy on every sync ([docs/jobicy.md](jobicy.md)) |
+| `JOB_RADAR_FDETIMES` | `true` | Read the FDE Times job list on every sync and its role pages in the Descriptions job ([docs/fdetimes.md](fdetimes.md)) |
+| `JOB_RADAR_FDETIMES_FIRST_RUN_DAYS` | `7` | How far back the first FDE Times run reads |
+| `JOB_RADAR_FDETIMES_RELATED` | `false` | Also the related AI roles, not only FDE ones |
+| `JOB_RADAR_FDETIMES_REGIONS` | — | Only these regions, e.g. `remote,apac` (`north-america`, `europe`, `apac`, `remote`, `other`); all by default |
+| `JOB_RADAR_FDETIMES_MAX_DESCRIPTIONS` | `50` | FDE Times role pages per Descriptions run |
 | `JOB_RADAR_BOARDS` | `true` | Read Remotive, Working Nomads and We Work Remotely on every sync, at most every 6 h ([docs/boards.md](boards.md)) |
 | `JOB_RADAR_AI_ANALYSIS` | `false` | Analyze descriptions with the local model on every sync; off by default, Claude does the filtering ([docs/ai.md](ai.md)) |
 | `JOB_RADAR_PROFILE` | `data/profile.yaml` | Your stack from the CV; vacancies requiring other technologies are marked ([docs/ai.md](ai.md#stack-vs-your-cv), example: `profile.example.yaml`) |

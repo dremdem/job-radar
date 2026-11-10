@@ -22,13 +22,37 @@ def test_sync_is_not_implemented_yet():
 def test_sync_gmail_without_token_explains_auth(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
     monkeypatch.setenv("JOB_RADAR_GMAIL_TOKEN", str(tmp_path / "missing.json"))
+    client = tmp_path / "client.json"  # set up half way: the client file, no token yet
+    client.write_text("{}")
+    monkeypatch.setenv("JOB_RADAR_GMAIL_CLIENT_SECRET", str(client))
     monkeypatch.setenv("JOB_RADAR_HIMALAYAS", "false")
+    monkeypatch.setenv("JOB_RADAR_FDETIMES", "false")  # no network in tests
     monkeypatch.setenv("JOB_RADAR_AI_ANALYSIS", "false")
     result = runner.invoke(app, ["sync", "gmail"])
     assert result.exit_code == 1
     assert "job-radar gmail auth" in result.output
     # The other steps still ran.
     assert "rejections:" in result.output and "1 step failed: gmail" in result.output
+
+
+def test_sync_on_a_fresh_clone_succeeds_without_gmail(tmp_path, monkeypatch):
+    # Neither the OAuth client file nor the token: Gmail is off, not a failure (#8).
+    monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
+    monkeypatch.setenv("JOB_RADAR_GMAIL_TOKEN", str(tmp_path / "missing.json"))
+    monkeypatch.setenv("JOB_RADAR_GMAIL_CLIENT_SECRET", str(tmp_path / "missing-client.json"))
+    for source in (
+        "HIMALAYAS",
+        "HACKERNEWS",
+        "REMOTEOK",
+        "JOBICY",
+        "FDETIMES",
+        "BOARDS",
+        "AI_ANALYSIS",
+    ):
+        monkeypatch.setenv(f"JOB_RADAR_{source}", "false")  # no network in tests
+    result = runner.invoke(app, ["sync", "gmail"])
+    assert result.exit_code == 0, result.output
+    assert "step failed" not in result.output
 
 
 def test_sync_gmail_rejects_unknown_query(tmp_path, monkeypatch):
@@ -106,11 +130,22 @@ def test_import_linkedin_search_enabled_without_alerts(tmp_path, monkeypatch):
     assert "linkedin-search: 0 searches, 0 requests" in result.output
 
 
-def test_import_descriptions_is_off_by_default(tmp_path, monkeypatch):
+def test_import_descriptions_is_off_without_linkedin_and_fdetimes(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
     monkeypatch.delenv("JOB_RADAR_LINKEDIN_PUBLIC_SEARCH", raising=False)
+    monkeypatch.setenv("JOB_RADAR_FDETIMES", "false")
     result = runner.invoke(app, ["import", "descriptions"])
     assert result.exit_code == 0 and "disabled" in result.output
+
+
+def test_import_descriptions_reads_fdetimes_by_default(tmp_path, monkeypatch):
+    # FDE Times is on by default (docs/fdetimes.md); an empty database asks for nothing.
+    monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
+    monkeypatch.delenv("JOB_RADAR_LINKEDIN_PUBLIC_SEARCH", raising=False)
+    monkeypatch.delenv("JOB_RADAR_FDETIMES", raising=False)
+    result = runner.invoke(app, ["import", "descriptions"])
+    assert result.exit_code == 0, result.output
+    assert "descriptions: 0 requests, 0 saved" in result.output
 
 
 def test_sync_telegram_needs_configuration(tmp_path, monkeypatch):

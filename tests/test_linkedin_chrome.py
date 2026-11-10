@@ -18,6 +18,7 @@ from job_radar.linkedin.chrome import (
     BrowserError,
     block_reason,
     fill_descriptions,
+    page_of,
     parse_result,
 )
 from job_radar.models import (
@@ -886,3 +887,12 @@ def test_status_lists_the_failed_vacancies(engine, database_url, tmp_path):
             assert time.time() < deadline
     assert 'href="/opportunities/77"' in page and "Dev &lt;b&gt;" in page
     assert 'href="https://hh.ru/vacancy/1"' in page and "not available to you" in page
+
+
+def test_page_of_checks_the_host_not_a_substring():
+    # CodeQL py/incomplete-url-substring-sanitization: "linkedin.com" anywhere in the URL
+    # made another site's page look like a LinkedIn vacancy (#11).
+    assert page_of("https://www.linkedin.com/jobs/view/123/") == ("linkedin", "123")
+    assert page_of("https://linkedin.com/jobs/view/123/") == ("linkedin", "123")
+    assert page_of("https://example.com/linkedin.com/jobs/view/123/") is None
+    assert page_of("https://linkedin.com.example.com/jobs/view/123/") is None

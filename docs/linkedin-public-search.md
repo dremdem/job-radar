@@ -50,7 +50,7 @@ Same pause between requests and the same stop: any sign of blocking stops **both
 
 With pauses of 10–40 s, 30 descriptions take 5–20 minutes, so in the web UI they are fetched by a **background job**:
 
-- **Descriptions** in the header starts it; **Sync** starts it too, at its *LinkedIn descriptions* step, and finishes without waiting for it.
+- **Descriptions** in the header starts it; **Sync** starts it too, at its *Descriptions* step, and finishes without waiting for it.
 - The status under the header shows the progress: *Descriptions: 7 of 29 · 6 saved · next in 23 s*, and **Stop**. One job at a time; clicking again shows the running one.
 - When it ends, one line says how: *done*, *stopped by you*, *LinkedIn blocked (HTTP 429), stopped until tomorrow*, or *daily limit reached*, with a link to the log. Reload the queue to see the new descriptions.
 - After the job, the [local AI analysis](ai.md) (if on) runs on the new descriptions.
