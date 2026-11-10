@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     remoteok: bool = True
     # Jobicy public API (docs/jobicy.md): no key; the first run looks back a day.
     jobicy: bool = True
+    # FDE Times public job list (docs/fdetimes.md): plain HTML, one request per sync; the
+    # descriptions come from the role pages in the Descriptions job.
+    fdetimes: bool = True
+    fdetimes_first_run_days: float = 7
+    fdetimes_related: bool = False  # also the related AI roles, not only FDE ones
+    fdetimes_regions: str = ""  # e.g. "remote,apac"; empty: every region
+    fdetimes_max_descriptions: int = 50  # role pages per Descriptions run
     # Remotive, Working Nomads, We Work Remotely public feeds (docs/boards.md).
     boards: bool = True
     # hh.ru digests from the remote saved search, received on or after this date (docs/hh.md).

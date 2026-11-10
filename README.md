@@ -15,7 +15,7 @@ I built it for my own search for a remote Senior Python Backend role and use it 
 
 ## What it does
 
-- **Collects** vacancies from LinkedIn alert emails and hh.ru notifications (read-only Gmail), Telegram channels (through an MCP server), and public APIs and feeds: Himalayas, Hacker News "Who is hiring?", Remote OK, Jobicy, Remotive, Working Nomads, We Work Remotely.
+- **Collects** vacancies from LinkedIn alert emails and hh.ru notifications (read-only Gmail), Telegram channels (through an MCP server), and public APIs and feeds: Himalayas, Hacker News "Who is hiring?", Remote OK, Jobicy, FDE Times, Remotive, Working Nomads, We Work Remotely.
 - **Stores** each vacancy once per source (re-running an import never duplicates it), with every description snapshot kept; a repost of a vacancy you already applied to is folded into the original.
 - **Scores** each one with rules (title, seniority, location, Python in the description), each rule adding a visible reason.
 - **Analyzes** the promising ones with Claude: verdict, match %, strengths, gaps, red flags, questions for the recruiter, all with quotes that are checked against the vacancy text.
@@ -93,7 +93,7 @@ Real sources need their own setup: Gmail OAuth ([docs/gmail.md](docs/gmail.md)),
 |---|---|
 | Using it | [usage](docs/usage.md) · [queue](docs/queue.md) · [settings](docs/settings.md) · [skills gap](docs/skills.md) |
 | AI | [local model](docs/ai.md) · [Claude analysis](docs/claude.md) · [Claude memory](docs/claude-memory.md) |
-| Sources | [Gmail](docs/gmail.md) · [LinkedIn alerts](docs/linkedin-alerts.md) · [hh.ru](docs/hh.md) · [Telegram](docs/telegram.md) · [boards](docs/boards.md) · [Himalayas](docs/himalayas.md) · [Hacker News](docs/hackernews.md) · [Remote OK](docs/remoteok.md) · [Jobicy](docs/jobicy.md) |
+| Sources | [Gmail](docs/gmail.md) · [LinkedIn alerts](docs/linkedin-alerts.md) · [hh.ru](docs/hh.md) · [Telegram](docs/telegram.md) · [boards](docs/boards.md) · [Himalayas](docs/himalayas.md) · [Hacker News](docs/hackernews.md) · [Remote OK](docs/remoteok.md) · [Jobicy](docs/jobicy.md) · [FDE Times](docs/fdetimes.md) |
 | Internals | [architecture](docs/architecture.md) · [data model](docs/data-model.md) · [applications](docs/applications.md) · [ADRs](docs/adr/) |
 
 ## License

@@ -112,6 +112,7 @@ def test_sync_starts_the_background_job_instead_of_fetching(tmp_path, engine, da
         database_url=database_url,
         gmail_token=tmp_path / "missing.json",
         himalayas=False,
+        fdetimes=False,  # no network in tests
         ai_analysis=False,
         linkedin_public_search=True,
     )
@@ -182,8 +183,18 @@ def test_a_failing_job_shows_the_error(engine, database_url, tmp_path):
 
 
 def test_button_says_when_the_feature_is_off(engine, database_url, tmp_path):
-    with web(database_url, tmp_path, lambda job: None, **{"linkedin_public_search": False}) as c:
-        assert "JOB_RADAR_LINKEDIN_PUBLIC_SEARCH" in c.post("/descriptions").text
+    off = {"linkedin_public_search": False, "fdetimes": False}
+    with web(database_url, tmp_path, lambda job: None, **off) as c:
+        text = c.post("/descriptions").text
+        assert "JOB_RADAR_LINKEDIN_PUBLIC_SEARCH" in text and "JOB_RADAR_FDETIMES" in text
+
+
+def test_button_runs_with_fdetimes_alone(engine, database_url, tmp_path):
+    """FDE Times descriptions come through the same job (docs/fdetimes.md)."""
+    ran = threading.Event()
+    with web(database_url, tmp_path, lambda job: ran.set(), linkedin_public_search=False) as c:
+        c.post("/descriptions")
+        assert ran.wait(5)
 
 
 def test_log_page_lists_requests_with_reasons(engine, database_url, tmp_path, session):

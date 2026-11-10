@@ -53,9 +53,14 @@ def import_linkedin_search(session: Session, settings: Settings, echo: Echo) -> 
 
 
 DESCRIPTIONS_OFF = (
-    "descriptions: disabled; set JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true to enable "
-    "(see docs/linkedin-public-search.md)."
+    "descriptions: disabled; set JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true (LinkedIn, see "
+    "docs/linkedin-public-search.md) or JOB_RADAR_FDETIMES=true (docs/fdetimes.md) to enable."
 )
+
+
+def descriptions_on(settings: Settings) -> bool:
+    """The Descriptions job has a source: LinkedIn's guest pages or FDE Times (docs/fdetimes.md)."""
+    return settings.linkedin_public_search or settings.fdetimes
 
 
 def fetch_descriptions(
@@ -65,20 +70,65 @@ def fetch_descriptions(
     stop: threading.Event | None = None,
     on_wait: Callable[[float], None] | None = None,
     on_progress: "Callable[[DescriptionStats], None] | None" = None,
+    echo: Echo | None = None,
+    page_get=None,
 ) -> "DescriptionStats":
-    """Descriptions from LinkedIn's public job pages, with the pause from Settings (#205)."""
-    from .linkedin.public import PublicSearchClient, import_public_descriptions, load_pause
+    """Descriptions from LinkedIn's public job pages, then from FDE Times role pages, each
+    with the guest pause from Settings (#205). The counts are summed; ``blocked`` stays
+    LinkedIn's, FDE Times' own stop goes to ``echo``. ``page_get``: tests pass a fake."""
+    from .fdetimes import PageClient
+    from .fdetimes import import_descriptions as fdetimes_descriptions
+    from .linkedin.public import (
+        DescriptionStats,
+        PublicSearchClient,
+        import_public_descriptions,
+        load_pause,
+    )
 
     pause = load_pause(session)
-    client = PublicSearchClient(
-        pause=(pause.pause_from, pause.pause_to), stop=stop, on_wait=on_wait
-    )
-    return import_public_descriptions(
+    stats = DescriptionStats()
+    if settings.linkedin_public_search:
+        client = PublicSearchClient(
+            pause=(pause.pause_from, pause.pause_to), stop=stop, on_wait=on_wait
+        )
+        stats = import_public_descriptions(
+            session,
+            client,
+            max_per_day=settings.linkedin_public_max_descriptions_per_day,
+            on_progress=on_progress,
+        )
+    if not settings.fdetimes or stats.stopped:
+        return stats
+    before = DescriptionStats(**vars(stats))
+
+    def merged(fde) -> "DescriptionStats":
+        out = DescriptionStats(**vars(before))
+        out.total += fde.total
+        out.requests += fde.requests
+        out.saved += fde.saved
+        out.errors += fde.errors
+        out.stopped = fde.stopped
+        return out
+
+    options = {"http_get": page_get} if page_get else {}
+    fde = fdetimes_descriptions(
         session,
-        client,
-        max_per_day=settings.linkedin_public_max_descriptions_per_day,
-        on_progress=on_progress,
+        PageClient(pause=(pause.pause_from, pause.pause_to), stop=stop, on_wait=on_wait, **options),
+        max_per_run=settings.fdetimes_max_descriptions,
+        on_progress=(lambda s: on_progress(merged(s))) if on_progress else None,
     )
+    say = echo or (lambda line: None)
+    if fde.total:
+        say(
+            f"descriptions: FDE Times: {fde.requests} requests, {fde.saved} saved"
+            + (f", {fde.gone} gone" if fde.gone else "")
+            + (f", {fde.errors} errors" if fde.errors else "")
+        )
+    for problem in fde.problems:
+        say(f"descriptions: FDE Times: {problem}")
+    if fde.blocked:
+        say(f"descriptions: FDE Times answered {fde.reason}; stopped until the next run.")
+    return merged(fde)
 
 
 def chrome_fill_job(settings: Settings, job) -> None:
@@ -125,14 +175,17 @@ def chrome_fill_job(settings: Settings, job) -> None:
 
 def import_descriptions(session: Session, settings: Settings, echo: Echo) -> None:
     """Inline, for `./jr sync` and `job-radar import descriptions`."""
-    if not settings.linkedin_public_search:
+    if not descriptions_on(settings):
         echo(DESCRIPTIONS_OFF)
         return
-    stats = fetch_descriptions(session, settings)
+    later: list[str] = []  # the summary line comes first: the Sync step shows it
+    stats = fetch_descriptions(session, settings, echo=later.append)
     echo(
         f"descriptions: {stats.requests} requests, {stats.saved} saved"
         + (f", {stats.errors} errors" if stats.errors else "")
     )
+    for line in later:
+        echo(line)
     if stats.blocked:
         echo(f"descriptions: LinkedIn is blocking guest requests ({stats.reason}); "
              "stopped until tomorrow.")  # fmt: skip
@@ -152,6 +205,7 @@ def description_job(settings: Settings, job) -> None:
                 on_progress=lambda s: job.progress(
                     total=s.total, requests=s.requests, saved=s.saved, errors=s.errors
                 ),
+                echo=job.echo,
             )
             job.finish(
                 blocked=stats.blocked,
@@ -269,6 +323,30 @@ def import_jobicy(session: Session, settings: Settings, echo: Echo, client=None)
     )
     if stats.error:
         echo(f"jobicy: could not read the API: {stats.error}")
+
+
+def import_fdetimes(session: Session, settings: Settings, echo: Echo, client=None) -> None:
+    """Fresh Forward Deployed Engineer roles from FDE Times (docs/fdetimes.md)."""
+    from .fdetimes import FDETimesClient, parse_regions
+    from .fdetimes import import_fdetimes as run
+
+    if not settings.fdetimes:
+        echo("fdetimes: disabled (JOB_RADAR_FDETIMES=false).")
+        return
+    stats = run(
+        session,
+        client or FDETimesClient(),
+        first_run_days=settings.fdetimes_first_run_days,
+        regions=parse_regions(settings.fdetimes_regions),
+        related=settings.fdetimes_related,
+    )
+    if stats.error:
+        echo(f"fdetimes: could not read the job list: {stats.error}")
+        return
+    echo(
+        f"fdetimes: {stats.fresh} fresh roles, {stats.new} new, {stats.known} already stored, "
+        f"{stats.skipped} skipped (kind, region or role)"
+    )
 
 
 def import_remoteok(session: Session, settings: Settings, echo: Echo, client=None) -> None:
@@ -454,9 +532,10 @@ STEPS: list[tuple[str, str, str, str]] = [
     ("hackernews", "Hacker News", "hackernews", "first"),
     ("remoteok", "Remote OK", "remoteok", "first"),
     ("jobicy", "Jobicy", "jobicy", "first"),
+    ("fdetimes", "FDE Times", "fdetimes", "first"),
     ("boards", "Other boards", "boards", "last"),
     ("mail", "Mail analysis", "", "all"),
-    ("descriptions", "LinkedIn descriptions", "descriptions", "first"),
+    ("descriptions", "Descriptions", "descriptions", "first"),
     ("ai", "AI analysis", "ai", "last"),
 ]
 
@@ -511,8 +590,9 @@ def run_sync(
         "hackernews": settings.hackernews,
         "remoteok": settings.remoteok,
         "jobicy": settings.jobicy,
+        "fdetimes": settings.fdetimes,
         "boards": settings.boards,
-        "descriptions": settings.linkedin_public_search,
+        "descriptions": descriptions_on(settings),
         "ai": settings.ai_analysis,
     }
     steps = [Step(key, label) for key, label, _, _ in STEPS]
@@ -590,6 +670,7 @@ def run_sync(
             run("hackernews", lambda e: import_hackernews(session, settings, e))
             run("remoteok", lambda e: import_remoteok(session, settings, e))
             run("jobicy", lambda e: import_jobicy(session, settings, e))
+            run("fdetimes", lambda e: import_fdetimes(session, settings, e))
             run("boards", lambda e: import_boards(session, settings, e))
             run("mail", mail)
             # Late: the rules for fetched descriptions see applications/rejections above.

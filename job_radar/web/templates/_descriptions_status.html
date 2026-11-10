@@ -1,8 +1,8 @@
-{# Background LinkedIn description job (#205); see docs/linkedin-public-search.md. #}
+{# Background description job: LinkedIn (#205, docs/linkedin-public-search.md), then FDE Times (docs/fdetimes.md). #}
 {% set finished = job.state in ("done", "failed") %}
 <span id="desc-status" class="small"{% if job.state == "running" %} hx-get="/descriptions/status?polled=1" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}{% if finished and job.finished_at and not off %} data-finished="{{ job.finished_at.isoformat() }}"{% endif %}>
   {% if off %}
-    <b>Descriptions:</b> off; set <code>JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true</code> in <code>.env</code> (docs/linkedin-public-search.md).
+    <b>Descriptions:</b> off; set <code>JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true</code> (docs/linkedin-public-search.md) or <code>JOB_RADAR_FDETIMES=true</code> (docs/fdetimes.md) in <code>.env</code>.
   {% elif job.state == "running" %}
     <b>Descriptions:</b> {{ job.requests }} of {{ job.total }} · {{ job.saved }} saved{% if job.errors %} · <span class="neg">{{ job.errors }} error{{ "s" if job.errors > 1 }}</span>{% endif %}{% if job.next_in is not none %} · next in {{ job.next_in }} s{% endif %}
     · <button type="button" class="btn btn-sm btn-outline-secondary py-0" hx-post="/descriptions/stop" hx-target="#desc-status" hx-swap="outerHTML">Stop</button>

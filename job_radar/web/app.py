@@ -873,7 +873,7 @@ def create_app(
 
     @app.post("/descriptions", response_class=HTMLResponse)
     def start_description_job(request: Request) -> HTMLResponse:
-        if not settings.linkedin_public_search:
+        if not pipeline.descriptions_on(settings):
             return descriptions_status(request, off=True)
         start_descriptions()  # a second click just shows the running one
         return descriptions_status(request)

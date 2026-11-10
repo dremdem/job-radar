@@ -9,6 +9,7 @@ def settings(tmp_path, database_url, **extra) -> Settings:
         "database_url": database_url,
         "gmail_token": tmp_path / "missing.json",
         "himalayas": False,
+        "fdetimes": False,
         "ai_analysis": False,
     }
     return Settings(**(base | extra))
@@ -34,7 +35,7 @@ def test_gmail_failure_does_not_stop_the_other_steps(tmp_path, engine, database_
     for key in ("linkedin", "mail"):
         assert found[key].state == "done", found[key]
     # Disabled sources are listed as off, not run.
-    for key in ("linkedin_search", "telegram", "himalayas", "descriptions", "ai"):
+    for key in ("linkedin_search", "telegram", "himalayas", "fdetimes", "descriptions", "ai"):
         assert found[key].state == "off"
     # Progress is reported while it runs: the first snapshot has everything waiting.
     assert all(state in ("waiting", "off") for _, state in snapshots[0])

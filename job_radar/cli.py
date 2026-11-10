@@ -234,6 +234,7 @@ def sync(
         SourceType.HACKERNEWS: pipeline.import_hackernews,
         SourceType.REMOTEOK: pipeline.import_remoteok,
         SourceType.JOBICY: pipeline.import_jobicy,
+        SourceType.FDETIMES: pipeline.import_fdetimes,
         # One step reads all three small boards (docs/boards.md).
         SourceType.REMOTIVE: pipeline.import_boards,
         SourceType.WORKINGNOMADS: pipeline.import_boards,

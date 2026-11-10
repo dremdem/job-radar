@@ -38,6 +38,7 @@ class SourceType(enum.StrEnum):
     WEWORKREMOTELY = "weworkremotely"  # external_id = the job page URL
     JOBICY = "jobicy"  # Jobicy API, external_id = its job id
     REMOTEOK = "remoteok"  # Remote OK feed, external_id = its job id
+    FDETIMES = "fdetimes"  # FDE Times job list, external_id = the role slug
     HACKERNEWS = "hackernews"  # "Ask HN: Who is hiring?" post, external_id = comment id
     TELEGRAM = "telegram"
     MANUAL = "manual"  # added by hand; external_id = the link, or "manual:<n>" (#182)
