@@ -40,8 +40,15 @@ _REJECTION = re.compile(
 REJECTION_EVENT = "rejection"
 UPDATE_EVENT = "application_update"  # checked, not a rejection
 
+GONE_EVENT = "gone"  # the message was deleted from Gmail for good; its body can't be read
+
 # Returns (html, text) of a message; used for emails stored without a body.
+# Raises MessageGone when Gmail no longer has the message (404).
 FetchBody = Callable[[str], tuple[str | None, str | None]]
+
+
+class MessageGone(Exception):
+    """The message is no longer in Gmail (deleted from Trash), so its body can't be fetched."""
 
 
 @dataclass(frozen=True)
@@ -57,6 +64,7 @@ class RejectionStats:
     new: int = 0
     fetched: int = 0  # bodies fetched from Gmail for emails stored without one
     pending: int = 0  # bodyless emails left for a run with Gmail access
+    gone: int = 0  # deleted from Gmail before the body was read
 
 
 def _text(html: str | None, text: str | None) -> str:
@@ -88,7 +96,7 @@ def import_rejections(
     result is kept (``detected_event``), the body is never written. ``recheck`` re-examines
     emails an earlier run marked as not a rejection (after the rules improve). See docs/gmail.md.
     """
-    skip = (REJECTION_EVENT,) if recheck else (REJECTION_EVENT, UPDATE_EVENT)
+    skip = (REJECTION_EVENT, GONE_EVENT) if recheck else (REJECTION_EVENT, UPDATE_EVENT, GONE_EVENT)
     stats = RejectionStats()
     emails = session.scalars(
         select(EmailMessage).where(EmailMessage.from_addr.contains(APPLICATION_SENDER))
@@ -104,7 +112,13 @@ def import_rejections(
             if fetch_body is None:
                 stats.pending += 1
                 continue
-            html, text = fetch_body(email.gmail_message_id)
+            try:
+                html, text = fetch_body(email.gmail_message_id)
+            except MessageGone:
+                email.detected_event = GONE_EVENT
+                stats.gone += 1
+                session.commit()
+                continue
             stats.fetched += 1
         info = detect_rejection(email.subject, _text(html, text))
         if info is None:

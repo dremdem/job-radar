@@ -100,6 +100,12 @@ so it is fetched once; after the rules improve, `job-radar import rejections --r
 re-examines the `application_update` ones. Without a Gmail token this step is skipped and the command
 says how many emails are waiting.
 
+**Emails deleted from Gmail.** A message stored earlier may be gone from Gmail by the time
+its body is needed (deleted, Trash emptied): Gmail answers `404`. The fetch raises
+`MessageGone`, the email gets `detected_event` = `gone` and is not fetched again, and the
+rest of the mail is processed as usual; Sync reports "N gone from Gmail". A LinkedIn
+confirmation that is gone keeps the application found from its headers, with the role unknown.
+
 ## Privacy decisions
 
 - Headers (date, from, to, subject), labels and Gmail's `snippet` are stored for every message.

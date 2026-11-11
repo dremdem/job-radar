@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .dedup import get_or_create_company
-from .linkedin.rejections import FetchBody, detect_rejection
+from .linkedin.rejections import GONE_EVENT, FetchBody, MessageGone, detect_rejection
 from .models import (
     Application,
     ApplicationReview,
@@ -223,6 +223,7 @@ class ImportStats:
     linked: int = 0  # emails attached to an application found in another email
     fetched: int = 0
     pending: int = 0  # LinkedIn confirmations whose role waits for Gmail access
+    gone: int = 0  # deleted from Gmail before the body was read; role stays unknown
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -271,11 +272,19 @@ def import_applications(session: Session, fetch_body: FetchBody | None = None) -
         if found is None:
             continue
         stats.detected += 1
+        gone = False
         if found.needs_body and fetch_body is not None:
-            html, text = fetch_body(email.gmail_message_id)
-            stats.fetched += 1
-            found = detect_application(email.from_addr, email.subject, email.snippet, html, text)
-        waiting = found.needs_body
+            try:
+                html, text = fetch_body(email.gmail_message_id)
+            except MessageGone:
+                gone = True
+                stats.gone += 1
+            else:
+                stats.fetched += 1
+                found = detect_application(
+                    email.from_addr, email.subject, email.snippet, html, text
+                )
+        waiting = found.needs_body and not gone
 
         app = session.scalar(select(Application).where(Application.email_message_id == email.id))
         company = app.company if app else get_or_create_company(session, found.company)
@@ -308,7 +317,7 @@ def import_applications(session: Session, fetch_body: FetchBody | None = None) -
         if waiting:
             stats.pending += 1  # revisited on a run with Gmail access
         else:
-            email.detected_event = CONFIRMATION_EVENT
+            email.detected_event = GONE_EVENT if gone else CONFIRMATION_EVENT
         session.commit()
     return stats
 

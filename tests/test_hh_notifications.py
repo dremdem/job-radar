@@ -230,3 +230,25 @@ def test_merge_hh_duplicates(session):
     assert session.scalars(select(OpportunityNote)).one().opportunity_id == known.id
     assert session.scalars(select(ClaudeMessage)).one().opportunity_id == known.id
     assert merge_hh_duplicates(session, apply=True) == []
+
+
+def test_mail_deleted_from_gmail_is_marked_and_the_rest_goes_on(session):
+    from job_radar.linkedin.rejections import MessageGone
+
+    calls = []
+
+    def fetch_some(gmail_id: str):
+        calls.append(gmail_id)
+        if gmail_id == "g-gone":
+            raise MessageGone(gmail_id)
+        return fetch(gmail_id)
+
+    gone = add_mail(session, "message", "g-gone", datetime(2026, 1, 29, tzinfo=UTC))
+    add_mail(session, "rejection_new", "g-rejection_new", datetime(2026, 10, 2, tzinfo=UTC))
+    stats = import_hh_notifications(session, fetch_some)
+    assert (stats.gone, stats.rejections) == (1, 1)
+    session.refresh(gone)
+    assert gone.detected_event == "gone" and gone.company_id is None
+
+    import_hh_notifications(session, fetch_some)
+    assert calls == ["g-gone", "g-rejection_new"]

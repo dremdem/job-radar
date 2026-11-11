@@ -11,7 +11,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..dedup import get_or_create_company, merge_opportunities
-from ..linkedin.rejections import _REJECTION, FetchBody
+from ..linkedin.rejections import _REJECTION, GONE_EVENT, FetchBody, MessageGone
 from ..models import (
     Application,
     ApplicationReview,
@@ -93,6 +93,7 @@ class HhStats:
     vacancies: int = 0
     fetched: int = 0
     pending: int = 0  # wait for a run with Gmail access
+    gone: int = 0  # deleted from Gmail before the body was read
 
 
 def _vacancy(session: Session, notice: Notice, company_id: int) -> Opportunity | None:
@@ -234,7 +235,13 @@ def import_hh_notifications(session: Session, fetch_body: FetchBody | None) -> H
         if fetch_body is None:
             stats.pending += 1
             continue
-        html, _ = fetch_body(email.gmail_message_id)
+        try:
+            html, _ = fetch_body(email.gmail_message_id)
+        except MessageGone:
+            email.detected_event = GONE_EVENT
+            stats.gone += 1
+            session.commit()
+            continue
         stats.fetched += 1
         notice = parse_notice(email.subject, html)
         if notice is None:

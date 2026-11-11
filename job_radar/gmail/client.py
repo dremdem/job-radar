@@ -101,10 +101,17 @@ class MessageSource(Protocol):
 
 def body_fetcher(client: MessageSource) -> Callable[[str], tuple[str | None, str | None]]:
     """(html, text) of a message by id, for callers that must not persist the body."""
+    from ..linkedin.rejections import MessageGone
     from .parse import parse_message
 
     def fetch(gmail_message_id: str) -> tuple[str | None, str | None]:
-        parsed = parse_message(client.get_message(gmail_message_id))
+        try:
+            message = client.get_message(gmail_message_id)
+        except HttpError as e:
+            if e.resp.status == 404:  # deleted from Gmail for good (e.g. emptied Trash)
+                raise MessageGone(gmail_message_id) from e
+            raise
+        parsed = parse_message(message)
         return parsed.body_html, parsed.body_text
 
     return fetch

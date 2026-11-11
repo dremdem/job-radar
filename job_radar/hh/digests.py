@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..dedup import get_or_create_company
 from ..himalayas import EXCLUDE_TITLE
-from ..linkedin.rejections import FetchBody
+from ..linkedin.rejections import GONE_EVENT, FetchBody, MessageGone
 from ..models import EmailMessage, Opportunity, SourceRecord, SourceType
 from ..scoring import score_job
 from ..telegram.sources import DEFAULT_TITLE
@@ -103,6 +103,7 @@ class DigestStats:
     skipped: int = 0
     fetched: int = 0
     pending: int = 0  # wait for Gmail access
+    gone: int = 0  # deleted from Gmail before the body was read
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -157,7 +158,13 @@ def import_hh_digests(
         if fetch_body is None:
             stats.pending += 1
             continue
-        html, _ = fetch_body(email.gmail_message_id)
+        try:
+            html, _ = fetch_body(email.gmail_message_id)
+        except MessageGone:
+            email.detected_event = GONE_EVENT
+            stats.gone += 1
+            session.commit()
+            continue
         stats.fetched += 1
         for item in parse_digest(html or ""):
             if not wanted(item.title):
