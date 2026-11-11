@@ -267,10 +267,10 @@
   });
 </script>
 <script>
-  // A finished sync or description job can be dismissed until the next one; the browser
-  // remembers which (#147, #205).
+  // A finished sync, description or Chrome fill job can be dismissed until the next one; the
+  // browser remembers which (#147, #205, #19).
   (function () {
-    var KEYS = {"sync-status": "jr-sync-dismissed", "desc-status": "jr-desc-dismissed"};
+    var KEYS = {"sync-status": "jr-sync-dismissed", "desc-status": "jr-desc-dismissed", "chrome-status": "jr-chrome-dismissed"};
     function apply(el) {
       if (!el || !el.dataset.finished) return;
       var dismissed = null;
@@ -280,7 +280,8 @@
     document.addEventListener("click", function (event) {
       var button = event.target.closest(".sync-dismiss, .status-dismiss");
       if (!button) return;
-      var el = button.closest("#sync-status, #desc-status");
+      var el = button.closest("#sync-status, #desc-status, #chrome-status");
+      if (!el) return;
       try { localStorage.setItem(KEYS[el.id], el.dataset.finished); } catch (e) {}
       el.hidden = true;
     });
