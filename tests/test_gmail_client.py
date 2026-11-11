@@ -87,3 +87,26 @@ def test_body_fetcher_returns_html_and_text():
             return message(gmail_message_id, "t", sent_at=datetime(2026, 1, 1, tzinfo=UTC))
 
     assert body_fetcher(Client())("m1") == ("<p>Hello <b>there</b></p>", "Hello there")
+
+
+def test_body_fetcher_turns_404_into_message_gone():
+    from job_radar.gmail.client import body_fetcher
+    from job_radar.linkedin.rejections import MessageGone
+
+    class Client:
+        def get_message(self, gmail_message_id):
+            raise http_error(404, "notFound")
+
+    with pytest.raises(MessageGone):
+        body_fetcher(Client())("m1")
+
+
+def test_body_fetcher_lets_other_errors_through():
+    from job_radar.gmail.client import body_fetcher
+
+    class Client:
+        def get_message(self, gmail_message_id):
+            raise http_error(401, "authError")
+
+    with pytest.raises(HttpError):
+        body_fetcher(Client())("m1")

@@ -117,3 +117,25 @@ def test_noise_titles_are_skipped():
     ]
     for title in noise:
         assert not wanted(title), title
+
+
+def test_digest_deleted_from_gmail_is_marked_and_the_rest_goes_on(session):
+    from job_radar.linkedin.rejections import MessageGone
+
+    calls = []
+
+    def fetch_some(gmail_id):
+        calls.append(gmail_id)
+        if gmail_id == "d-gone":
+            raise MessageGone(gmail_id)
+        return fetch(gmail_id)
+
+    gone = add_digest(session, "d-gone", datetime(2026, 10, 6, tzinfo=UTC))
+    add_digest(session, "d-ok", datetime(2026, 10, 7, tzinfo=UTC))
+    stats = import_hh_digests(session, fetch_some, since=SINCE)
+    assert (stats.gone, stats.digests) == (1, 1)
+    session.refresh(gone)
+    assert gone.detected_event == "gone"
+
+    import_hh_digests(session, fetch_some, since=SINCE)
+    assert calls == ["d-gone", "d-ok"]

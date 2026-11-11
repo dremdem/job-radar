@@ -426,3 +426,24 @@ def test_status_updates_are_not_new_applications(subject):
 )
 def test_ats_name_wrappers_are_removed(from_addr, subject, company):
     assert detect_application(from_addr, subject, "", None, None).company == company
+
+
+def test_linkedin_confirmation_deleted_from_gmail_keeps_company_and_is_not_refetched(session):
+    from job_radar.linkedin.rejections import MessageGone
+
+    email = add_email(session, "gone1", from_addr=LINKEDIN, subject=SENT_SUBJECT)
+    calls = []
+
+    def fetch(gmail_message_id):
+        calls.append(gmail_message_id)
+        raise MessageGone(gmail_message_id)
+
+    stats = import_applications(session, fetch_body=fetch)
+    assert (stats.new, stats.gone, stats.pending) == (1, 1, 0)
+    app = session.scalar(select(Application))
+    assert (app.company.name, app.role) == ("VySystems", None)
+    session.refresh(email)
+    assert email.detected_event == "gone"
+
+    import_applications(session, fetch_body=fetch)
+    assert calls == ["gone1"] and count(session) == 1

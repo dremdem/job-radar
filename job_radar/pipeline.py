@@ -442,6 +442,7 @@ def import_rejections(
     echo(
         f"rejections: {stats.emails} emails, {stats.detected} rejections, {stats.new} new"
         + (f", {stats.fetched} bodies checked in Gmail" if stats.fetched else "")
+        + (f", {stats.gone} gone from Gmail" if stats.gone else "")
     )
     if stats.pending:
         echo(
@@ -463,6 +464,7 @@ def import_applications(
         f"applications: {stats.detected} found, {stats.new} new, "
         f"{stats.linked} linked to an existing one"
         + (f", {stats.fetched} bodies checked in Gmail" if stats.fetched else "")
+        + (f", {stats.gone} gone from Gmail" if stats.gone else "")
     )
     if stats.pending:
         echo(
@@ -487,6 +489,7 @@ def import_hh(
         f"hh: {stats.notices} notices, {stats.rejections} rejections, "
         f"{stats.vacancies} applied vacancies, {stats.messages} employer messages"
         + (f", {stats.pending} wait for Gmail access" if stats.pending else "")
+        + (f", {stats.gone} gone from Gmail" if stats.gone else "")
     )
     if settings.hh_digests_since is None:
         echo("hh digests: off; set JOB_RADAR_HH_DIGESTS_SINCE (see docs/hh.md).")
@@ -496,6 +499,7 @@ def import_hh(
         f"hh digests: {digests.digests} digests, {digests.vacancies} new vacancies, "
         f"{digests.known} already known, {digests.skipped} skipped as noise"
         + (f", {digests.pending} wait for Gmail access" if digests.pending else "")
+        + (f", {digests.gone} gone from Gmail" if digests.gone else "")
     )
 
 

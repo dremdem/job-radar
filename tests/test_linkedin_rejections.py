@@ -222,3 +222,27 @@ def test_recheck_revisits_emails_checked_before(session):
 
     assert import_rejections(session, fetch_body=fetch).fetched == 0
     assert import_rejections(session, fetch_body=fetch, recheck=True).new == 1
+
+
+class GoneFetch(FakeFetch):
+    def __call__(self, gmail_message_id):
+        from job_radar.linkedin.rejections import MessageGone
+
+        if self.bodies[gmail_message_id] is None:
+            self.calls.append(gmail_message_id)
+            raise MessageGone(gmail_message_id)
+        return super().__call__(gmail_message_id)
+
+
+@pytest.mark.parametrize("recheck", [False, True])
+def test_email_deleted_from_gmail_is_marked_and_the_rest_goes_on(session, recheck):
+    gone = add_bodyless(session, "gone1", "Your application to Python Developer at Acme")
+    add_bodyless(session, "old1", QUBIKA)
+    fetch = GoneFetch({"gone1": None, "old1": (fixture("qubika"), fixture("qubika", "txt"))})
+    stats = import_rejections(session, fetch_body=fetch)
+    assert (stats.gone, stats.new) == (1, 1)
+    session.refresh(gone)
+    assert gone.detected_event == "gone"
+
+    import_rejections(session, fetch_body=fetch, recheck=recheck)
+    assert fetch.calls == ["gone1", "old1"]
