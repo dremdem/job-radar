@@ -20,7 +20,7 @@
   </details>
   {% endif %}
 {% endmacro %}
-<span id="chrome-status" class="small"{% if job.state == "running" %} hx-get="/chrome-fill/status?polled=1" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+<span id="chrome-status" class="small"{% if job.state == "running" %} hx-get="/chrome-fill/status?polled=1" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}{% if finished and job.finished_at and not off and not busy %} data-finished="{{ job.finished_at.isoformat() }}"{% endif %}>
   {% if off %}
     <b>Chrome fill:</b> off; set <code>JOB_RADAR_LINKEDIN_CHROME=true</code> in <code>.env</code> (docs/linkedin-chrome-fill.md).
   {% elif busy %}

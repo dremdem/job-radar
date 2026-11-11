@@ -7,6 +7,7 @@ import time
 from dataclasses import asdict
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import func, select
 
 from job_radar.auto_ignore import UNAVAILABLE_REASON, Rules, clear_unavailable, save_rules
@@ -896,3 +897,62 @@ def test_page_of_checks_the_host_not_a_substring():
     assert page_of("https://linkedin.com/jobs/view/123/") == ("linkedin", "123")
     assert page_of("https://example.com/linkedin.com/jobs/view/123/") is None
     assert page_of("https://linkedin.com.example.com/jobs/view/123/") is None
+
+
+def test_finished_status_can_be_dismissed_until_the_next_run(engine, database_url, tmp_path):
+    """The ✕ on a finished Chrome fill hides it until the next run (#19).
+
+    Runs the page's own script in headless Chromium; see tests/test_chat_keys.py for how.
+    """
+    from test_chat_keys import CHROME
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    if not CHROME.exists():
+        pytest.skip(f"no Chromium at {CHROME}")
+
+    def runner(job):
+        job.progress(total=2, requests=2, saved=1, errors=1)
+        job.finish()
+
+    with web(database_url, tmp_path, runner, linkedin_chrome=True) as client:
+        client.post("/chrome-fill")
+        for _ in range(50):
+            status = client.get("/chrome-fill/status").text
+            if "status-dismiss" in status:
+                break
+            time.sleep(0.05)
+        page_html = client.get("/").text
+    assert "data-finished=" in status
+
+    with sync_api.sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=str(CHROME))
+        page = browser.new_page()
+        # Only the app's own page is served; LinkedIn, hh.ru and the CDN are never reached.
+        # A real origin (not about:blank) is needed for localStorage.
+        page.route(
+            "**/*",
+            lambda route, request: (
+                route.fulfill(body=page_html, content_type="text/html")
+                if request.url == "http://job-radar.test/"
+                else route.abort()
+            ),
+        )
+        page.goto("http://job-radar.test/")
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        # htmx is blocked above, so put the finished status in place as htmx would.
+        swap = """html => { document.getElementById('chrome-status').outerHTML = html;
+                   document.body.dispatchEvent(new Event('htmx:afterSettle')); }"""
+        page.evaluate(swap, status)
+        assert page.locator("#chrome-status").is_visible()
+
+        page.click("#chrome-status .status-dismiss")
+        assert errors == []
+        assert not page.locator("#chrome-status").is_visible()
+
+        page.evaluate(swap, status)  # the same run drawn again, e.g. after a reload
+        assert not page.locator("#chrome-status").is_visible()
+
+        page.evaluate(swap, status.replace('data-finished="', 'data-finished="next-'))
+        assert page.locator("#chrome-status").is_visible()  # a new run shows again
+        browser.close()
