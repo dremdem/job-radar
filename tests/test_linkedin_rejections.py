@@ -11,6 +11,7 @@ import sqlalchemy as sa
 
 import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.linkedin.rejections as linkedin_rejections
+import job_radar.mail as mail
 import job_radar.models as models
 import job_radar.rejections as rejections
 
@@ -252,7 +253,7 @@ class GoneFetch(FakeFetch):
 
         if self.bodies[gmail_message_id] is None:
             self.calls.append(gmail_message_id)
-            raise linkedin_rejections.MessageGone(gmail_message_id)
+            raise mail.MessageGone(gmail_message_id)
         return super().__call__(gmail_message_id)
 
 

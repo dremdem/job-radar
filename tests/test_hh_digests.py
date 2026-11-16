@@ -128,14 +128,14 @@ def test_noise_titles_are_skipped():
 
 
 def test_digest_deleted_from_gmail_is_marked_and_the_rest_goes_on(session):
-    import job_radar.linkedin.rejections as linkedin_rejections
+    import job_radar.mail as mail
 
     calls = []
 
     def fetch_some(gmail_id):
         calls.append(gmail_id)
         if gmail_id == "d-gone":
-            raise linkedin_rejections.MessageGone(gmail_id)
+            raise mail.MessageGone(gmail_id)
         return fetch(gmail_id)
 
     gone = add_digest(session, "d-gone", dt.datetime(2026, 10, 6, tzinfo=dt.UTC))

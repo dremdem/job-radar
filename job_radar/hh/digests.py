@@ -20,7 +20,7 @@ import sqlalchemy.orm as sa_orm
 import job_radar.dedup as dedup
 import job_radar.hh.notifications as hh_notifications
 import job_radar.himalayas as himalayas
-import job_radar.linkedin.rejections as linkedin_rejections
+import job_radar.mail as mail
 import job_radar.models as models
 import job_radar.scoring as scoring
 import job_radar.telegram.sources as telegram_sources
@@ -155,7 +155,7 @@ def _add(session: sa_orm.Session, item: DigestItem) -> None:
 
 def import_hh_digests(
     session: sa_orm.Session,
-    fetch_body: linkedin_rejections.FetchBody | None,
+    fetch_body: mail.FetchBody | None,
     *,
     since: dt.date | None,
 ) -> DigestStats:
@@ -181,8 +181,8 @@ def import_hh_digests(
             continue
         try:
             html, _ = fetch_body(email.gmail_message_id)
-        except linkedin_rejections.MessageGone:
-            email.detected_event = linkedin_rejections.GONE_EVENT
+        except mail.MessageGone:
+            email.detected_event = mail.GONE_EVENT
             stats.gone += 1
             session.commit()
             continue

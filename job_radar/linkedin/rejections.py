@@ -11,7 +11,6 @@ Usage:
     import job_radar.linkedin.rejections as linkedin_rejections
 """
 
-import collections.abc as cabc
 import dataclasses
 import re
 
@@ -20,41 +19,16 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
+import job_radar.mail as mail
 import job_radar.models as models
 import job_radar.rejections as rejections
 
 # LinkedIn application-update emails; distinct from the alert digest (jobalerts-...).
 APPLICATION_SENDER = "jobs-noreply@linkedin.com"
 _SUBJECT = re.compile(r"^Your application to (?P<role>.+) at (?P<company>.+)$", re.IGNORECASE)
-# Body wording that marks an actual rejection (not "your application was viewed" etc.).
-# Seen in real mail: "we will not be moving forward with your application",
-# "<company> did not select your application to move forward",
-# "we have not selected your application to move forward"; employers' own texts add
-# "we regret to inform you", "proceed with another candidate", and Russian wording.
-_REJECTION = re.compile(
-    r"(will not|won't|not) be (moving|progressing|proceeding)"
-    r"|not moving forward with your application"
-    r"|decided not to move forward"
-    r"|(did not|have not|has not) select(ed)? your application"
-    r"|regret to inform"
-    r"|(proceed|move forward|moving forward|go) with (an)?other candidates?"
-    r"|решили не рассматривать|не готовы продолжить|к сожалению",
-    re.IGNORECASE,
-)
 REJECTION_EVENT = "rejection"
 # checked, not a rejection
 UPDATE_EVENT = "application_update"
-
-# the message was deleted from Gmail for good; its body can't be read
-GONE_EVENT = "gone"
-
-# Returns (html, text) of a message; used for emails stored without a body.
-# Raises MessageGone when Gmail no longer has the message (404).
-FetchBody = cabc.Callable[[str], tuple[str | None, str | None]]
-
-
-class MessageGone(Exception):
-    """The message is no longer in Gmail (deleted from Trash), so its body can't be fetched."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -95,13 +69,13 @@ def detect_rejection(subject: str, body: str) -> RejectionInfo | None:
     match = _SUBJECT.match(subject.strip())
     if not match:
         return None
-    if not _REJECTION.search(body):
+    if not rejections.WORDING.search(body):
         return None
     return RejectionInfo(role=match["role"].strip(), company=match["company"].strip())
 
 
 def import_rejections(
-    session: sa_orm.Session, fetch_body: FetchBody | None = None, *, recheck: bool = False
+    session: sa_orm.Session, fetch_body: mail.FetchBody | None = None, *, recheck: bool = False
 ) -> RejectionStats:
     """Record a Rejection for every rejection email. Idempotent by email id.
 
@@ -109,7 +83,11 @@ def import_rejections(
     result is kept (``detected_event``), the body is never written. ``recheck`` re-examines
     emails an earlier run marked as not a rejection (after the rules improve). See docs/gmail.md.
     """
-    skip = (REJECTION_EVENT, GONE_EVENT) if recheck else (REJECTION_EVENT, UPDATE_EVENT, GONE_EVENT)
+    skip = (
+        (REJECTION_EVENT, mail.GONE_EVENT)
+        if recheck
+        else (REJECTION_EVENT, UPDATE_EVENT, mail.GONE_EVENT)
+    )
     stats = RejectionStats()
     emails = session.scalars(
         sa.select(models.EmailMessage).where(
@@ -130,8 +108,8 @@ def import_rejections(
                 continue
             try:
                 html, text = fetch_body(email.gmail_message_id)
-            except MessageGone:
-                email.detected_event = GONE_EVENT
+            except mail.MessageGone:
+                email.detected_event = mail.GONE_EVENT
                 stats.gone += 1
                 session.commit()
                 continue

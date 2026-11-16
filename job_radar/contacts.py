@@ -23,7 +23,6 @@ import sqlalchemy.orm as sa_orm
 
 import job_radar.applications as applications
 import job_radar.dedup as dedup
-import job_radar.linkedin.rejections as linkedin_rejections
 import job_radar.models as models
 import job_radar.notes as notes
 import job_radar.rejections as rejections
@@ -49,7 +48,7 @@ _LINKEDIN_VIEWED = re.compile(r"your application was viewed by (?P<company>.+)$"
 
 def classify(subject: str, snippet: str) -> str:
     text = f"{subject}\n{snippet}"
-    if linkedin_rejections._REJECTION.search(text) or _RUSSIAN_REJECTION.search(text):
+    if rejections.WORDING.search(text) or _RUSSIAN_REJECTION.search(text):
         return "rejection"
     if _INTERVIEW.search(text):
         return "interview"
