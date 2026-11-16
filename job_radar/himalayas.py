@@ -18,30 +18,22 @@ import typing as t
 import urllib.error
 import urllib.request
 
-import bs4
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
 import job_radar.models as models
 import job_radar.scoring as scoring
-import job_radar.telegram.sources as telegram_sources
+import job_radar.sources.http as sources_http
+import job_radar.sources.titles as sources_titles
 
 SEARCH_URL = "https://himalayas.app/jobs/api/search?q=python&worldwide=true&sort=recent&page={page}"
-USER_AGENT = "job-radar (personal job search, one run a day)"
 CURSOR = "himalayas"
 MAX_PAGES = 10
 DELAY_SECONDS = 2.0
 # A job can reach the daily cache later than its pubDate: re-read one day before the last run.
 MARGIN = dt.timedelta(days=1)
-# Measured noise of this search (docs/himalayas.md), on top of the Telegram title filter.
-EXCLUDE_TITLE = (
-    telegram_sources.DEFAULT_EXCLUDE_TITLE
-    + r"|secur|appsec|scientist|research|mathematic|physicist|"
-    r"civil|structural|aerodynam|control system"
-)
 _PERIODS = {"annual": "year", "yearly": "year", "monthly": "month", "hourly": "hour"}
-_BLOCKS = ["p", "div", "li", "br", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "tr"]
 
 
 class HimalayasError(Exception):
@@ -67,7 +59,7 @@ class HimalayasClient:
 
     def search(self, page_number: int) -> dict[str, t.Any]:
         request = urllib.request.Request(
-            SEARCH_URL.format(page=page_number), headers={"User-Agent": USER_AGENT}
+            SEARCH_URL.format(page=page_number), headers={"User-Agent": sources_http.USER_AGENT}
         )
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
@@ -94,21 +86,6 @@ class HimalayasJob:
     published_at: dt.datetime
 
 
-def _text(html: str) -> str:
-    soup = bs4.BeautifulSoup(html or "", "html.parser")
-    for a in soup.find_all("a", href=True):
-        # Hacker News shows a long link cut short with "..."; keep the whole address (#243).
-        shown, href = a.get_text(), str(a["href"])
-        if shown.endswith("...") and href.startswith(shown[:-3]):
-            a.string = href
-    for tag in soup.find_all(_BLOCKS):
-        if tag.name == "li":
-            tag.insert_before("• ")
-        tag.insert_after("\n")
-    text = re.sub(r"[ \t]+\n", "\n", soup.get_text())
-    return re.sub(r"\n{3,}", "\n\n", text).strip()
-
-
 def _location(raw: dict[str, t.Any]) -> str:
     # Only where the candidate may live counts; any timezone is fine for the user (#91).
     countries = [str(c) for c in raw.get("locationRestrictions") or []]
@@ -133,7 +110,7 @@ def parse_job(raw: dict[str, t.Any]) -> HimalayasJob:
         company=str(raw.get("companyName") or "").strip(),
         location=_location(raw),
         salary=_salary(raw),
-        description=_text(raw.get("description") or raw.get("excerpt") or ""),
+        description=sources_http.html_text(raw.get("description") or raw.get("excerpt") or ""),
         categories=[str(c) for c in raw.get("categories") or []],
         published_at=dt.datetime.fromtimestamp(int(raw["pubDate"]), dt.UTC),
     )
@@ -141,12 +118,12 @@ def parse_job(raw: dict[str, t.Any]) -> HimalayasJob:
 
 def wants(job: HimalayasJob) -> bool:
     """A developer role (title filter) that mentions Python somewhere."""
-    if not re.search(telegram_sources.DEFAULT_TITLE, job.title, re.IGNORECASE):
+    if not re.search(sources_titles.DEFAULT_TITLE, job.title, re.IGNORECASE):
         return False
-    if re.search(EXCLUDE_TITLE, job.title, re.IGNORECASE):
+    if re.search(sources_titles.BOARD_EXCLUDE_TITLE, job.title, re.IGNORECASE):
         return False
     text = "\n".join([job.title, job.description, " ".join(job.categories)])
-    return bool(re.search(telegram_sources.DEFAULT_KEYWORDS, text, re.IGNORECASE))
+    return bool(re.search(sources_titles.DEFAULT_KEYWORDS, text, re.IGNORECASE))
 
 
 @dataclasses.dataclass

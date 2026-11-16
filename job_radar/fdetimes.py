@@ -27,10 +27,10 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
-import job_radar.himalayas as himalayas
 import job_radar.models as models
 import job_radar.scoring as scoring
-import job_radar.telegram.sources as telegram_sources
+import job_radar.sources.http as sources_http
+import job_radar.sources.titles as sources_titles
 
 BASE_URL = "https://fdetimes.net"
 LIST_URL = f"{BASE_URL}/en/jobs/"
@@ -58,7 +58,7 @@ class FDETimesError(Exception):
 
 def urllib_get(url: str) -> tuple[int, str]:
     # A fresh request every time: no cookies, no session.
-    request = urllib.request.Request(url, headers={"User-Agent": himalayas.USER_AGENT})
+    request = urllib.request.Request(url, headers={"User-Agent": sources_http.USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             return response.status, response.read().decode("utf-8", "replace")
@@ -135,8 +135,8 @@ def parse_jobs(html: str) -> list[FDEJob]:
 
 def wants_title(title: str) -> bool:
     """A developer-type role: the Himalayas title filter."""
-    return bool(re.search(telegram_sources.DEFAULT_TITLE, title, re.IGNORECASE)) and not re.search(
-        himalayas.EXCLUDE_TITLE, title, re.IGNORECASE
+    return bool(re.search(sources_titles.DEFAULT_TITLE, title, re.IGNORECASE)) and not re.search(
+        sources_titles.BOARD_EXCLUDE_TITLE, title, re.IGNORECASE
     )
 
 
@@ -250,14 +250,14 @@ def parse_job_page(html: str) -> str | None:
         for item in data if isinstance(data, list) else [data]:
             if not (isinstance(item, dict) and item.get("@type") == "JobPosting"):
                 continue
-            if text := himalayas._text(str(item.get("description") or "")):
+            if text := sources_http.html_text(str(item.get("description") or "")):
                 return text
     article = soup.select_one("article#job-desc")
     if article is None:
         return None
     for heading in article.select(".job-desc-h"):
         heading.decompose()
-    return himalayas._text(str(article)) or None
+    return sources_http.html_text(str(article)) or None
 
 
 class Stopped(Exception):

@@ -94,7 +94,7 @@ uv run python -c "import sqlite3; sqlite3.connect('data/job_radar.db').backup(sq
 | Entry points | `cli.py` (`job-radar`), `web/app.py`, `./jr` (shell helper) |
 | Storage | `models.py`, `db.py`, `dedup.py`, `migrations/` (Alembic) |
 | Mail port | `mail.py` (`FetchBody`, `MessageGone`: what importers need from Gmail) |
-| Sources | `gmail/`, `linkedin/`, `hh/`, `telegram/`, `himalayas.py`, `hackernews.py`, `remoteok.py`, `jobicy.py`, `fdetimes.py`, `boards.py`, `manual.py` |
+| Sources | `sources/titles.py` and `sources/http.py` (shared title filters, User-Agent, HTML reader), `gmail/`, `linkedin/`, `hh/`, `telegram/`, `himalayas.py`, `hackernews.py`, `remoteok.py`, `jobicy.py`, `fdetimes.py`, `boards.py`, `manual.py` |
 | Scoring and filters | `scoring.py`, `description.py`, `language.py`, `stack.py`, `notes.py`, `suggestions.py`, `auto_ignore.py`, `applied_duplicates.py` |
 | History | `applications.py`, `rejections.py`, `contacts.py` |
 | AI | `ai/` (Ollama), `claude/` (Claude Code), `skills.py` (skills gap report) |

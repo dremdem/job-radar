@@ -27,10 +27,10 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
-import job_radar.himalayas as himalayas
 import job_radar.models as models
 import job_radar.scoring as scoring
-import job_radar.telegram.sources as telegram_sources
+import job_radar.sources.http as sources_http
+import job_radar.sources.titles as sources_titles
 
 MAX_AGE = dt.timedelta(days=30)
 # The feeds change a few times a day; Remotive asks for at most 4 requests a day.
@@ -62,7 +62,7 @@ class HttpClient:
     """The real client: plain HTTPS GET with a timeout."""
 
     def get(self, url: str) -> bytes:
-        request = urllib.request.Request(url, headers={"User-Agent": himalayas.USER_AGENT})
+        request = urllib.request.Request(url, headers={"User-Agent": sources_http.USER_AGENT})
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 return response.read()
@@ -111,7 +111,7 @@ def parse_remotive(data: bytes) -> list[BoardJob]:
             company=" ".join(str(raw.get("company_name") or "").split()),
             location=location(str(raw.get("candidate_required_location") or "")),
             salary=str(raw.get("salary") or "").strip() or None,
-            description=himalayas._text(str(raw.get("description") or "")),
+            description=sources_http.html_text(str(raw.get("description") or "")),
             tags=" ".join(str(tag) for tag in raw.get("tags") or []),
             # Remotive gives UTC without an offset.
             published_at=_utc(dt.datetime.fromisoformat(str(raw["publication_date"]))),
@@ -138,7 +138,7 @@ def parse_workingnomads(data: bytes) -> list[BoardJob]:
                 company=" ".join(str(raw.get("company_name") or "").split()),
                 location=location(str(raw.get("location") or "")),
                 salary=None,
-                description=himalayas._text(str(raw.get("description") or "")),
+                description=sources_http.html_text(str(raw.get("description") or "")),
                 tags=f"{raw.get('tags') or ''} {raw.get('category_name') or ''}",
                 published_at=_utc(dt.datetime.fromisoformat(str(raw["pub_date"]))),
             )
@@ -168,7 +168,7 @@ def parse_weworkremotely(data: bytes) -> list[BoardJob]:
                 company=" ".join(company.split()),
                 location=location(place),
                 salary=None,
-                description=himalayas._text(text.get("description", "")),
+                description=sources_http.html_text(text.get("description", "")),
                 tags=f"{text.get('skills', '')} {text.get('category', '')}",
                 published_at=_utc(email_utils.parsedate_to_datetime(text["pubDate"])),
             )
@@ -217,16 +217,16 @@ BOARDS = (
 
 def wants(job: BoardJob) -> bool:
     """A developer role (title filter) that mentions Python somewhere."""
-    if not re.search(telegram_sources.DEFAULT_TITLE, job.title, re.IGNORECASE):
+    if not re.search(sources_titles.DEFAULT_TITLE, job.title, re.IGNORECASE):
         return False
-    if re.search(himalayas.EXCLUDE_TITLE, job.title, re.IGNORECASE):
+    if re.search(sources_titles.BOARD_EXCLUDE_TITLE, job.title, re.IGNORECASE):
         return False
     if OTHER_STACK_TITLE.search(job.title) and not re.search(
-        telegram_sources.DEFAULT_KEYWORDS, job.title, re.IGNORECASE
+        sources_titles.DEFAULT_KEYWORDS, job.title, re.IGNORECASE
     ):
         return False
     text = "\n".join([job.title, job.tags, job.description])
-    return bool(re.search(telegram_sources.DEFAULT_KEYWORDS, text, re.IGNORECASE))
+    return bool(re.search(sources_titles.DEFAULT_KEYWORDS, text, re.IGNORECASE))
 
 
 @dataclasses.dataclass
