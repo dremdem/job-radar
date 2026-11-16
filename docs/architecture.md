@@ -87,19 +87,38 @@ uv run python -c "import sqlite3; sqlite3.connect('data/job_radar.db').backup(sq
 
 (or `sqlite3 data/job_radar.db ".backup data/job_radar.db.bak"` if the `sqlite3` tool is installed).
 
+## Layers
+
+The packages of `job_radar` are ordered. A module imports only from lines below its own; names on one line do not import each other. Imports inside functions count too.
+
+```
+web  cli
+jobs  demo
+sources
+ai  history
+review
+scoring
+profile
+dedup
+models  db  config  mail
+```
+
+Why the order holds: sources store a vacancy and then call the rules (`review`) and record rejections (`history`); `ai` analyzes and then calls the rules; the rules read stored findings through `scoring/findings.py` and never call a model or a source; `jobs` runs all of them; `web` and `cli` only start things and show them. `tests/test_layers.py` checks it on every run, so a new import that points up fails CI.
+
 ## Modules
 
-| Area | Modules |
-|---|---|
-| Entry points | `cli.py` (`job-radar`), `web/` (`app.py`, `routes/`, `context.py`, `templating.py`, `deps.py`), `./jr` (shell helper) |
-| Storage | `models.py`, `db.py`, `dedup.py`, `migrations/` (Alembic) |
-| Mail port | `mail.py` (`FetchBody`, `MessageGone`: what importers need from Gmail) |
-| Sources | `sources/gmail/`, `sources/linkedin/`, `sources/hh/`, `sources/telegram/`, `sources/boards/` (`himalayas.py`, `hackernews.py`, `remoteok.py`, `jobicy.py`, `fdetimes.py`, `feeds.py`), `sources/manual.py`, shared `sources/titles.py` and `sources/http.py` (title filters, User-Agent, HTML reader), `sources/capture_read.js` |
-| Profile | `profile/home.py`, `profile/stack.py` |
-| Scoring and filters | `scoring/rules.py`, `scoring/description.py`, `scoring/language.py`, `scoring/findings.py`, `review/notes.py`, `review/suggestions.py`, `review/auto_ignore.py`, `review/applied_duplicates.py` |
-| History | `history/applications.py`, `history/rejections.py`, `history/contacts.py` |
-| AI | `ai/local/` (Ollama), `ai/claude/` (Claude Code), `ai/skills.py` (skills gap report) |
-| Background jobs | `jobs/pipeline.py`, `jobs/sync_job.py`, `jobs/description_job.py` |
+| Layer | Module | What it is |
+|---|---|---|
+| web, cli | `cli.py` (`job-radar`), `web/` | Entry points. `web/app.py` builds the app, `routes/` has one router per feature (queue, claude, settings, jobs, capture, applications), `context.py` builds what the templates show, `templating.py` holds the Jinja environment, `deps.py` the dependencies of the routes. `./jr` is a shell helper |
+| jobs, demo | `jobs/` | Background work: `pipeline.py` (every sync step in order), `sync_job.py`, `description_job.py`. `demo.py` fills a demo database |
+| sources | `sources/` | Everything that brings vacancies and mail in: `gmail/`, `linkedin/`, `hh/`, `telegram/`, `boards/` (`himalayas`, `hackernews`, `remoteok`, `jobicy`, `fdetimes`, `feeds`), `manual.py`, the shared `titles.py` and `http.py`, and `capture_read.js` (the page reader of the bookmarklet and the Chrome fill) |
+| ai | `ai/` | `local/` (Ollama), `claude/` (Claude Code), `skills.py` (skills gap report) |
+| history | `history/` | `applications.py`, `rejections.py`, `contacts.py` |
+| review | `review/` | The queue: `auto_ignore.py`, `applied_duplicates.py`, `notes.py`, `suggestions.py` |
+| scoring | `scoring/` | Checks that need no model and no decision: `rules.py`, `description.py`, `language.py`, `findings.py` |
+| profile | `profile/` | Who the user is: `home.py`, `stack.py` |
+| dedup | `dedup.py` | Idempotent upserts |
+| models, db, config, mail | `models.py`, `db.py`, `config.py`, `mail.py`, `migrations/` (Alembic) | Storage, settings and the mail port (`FetchBody`, `MessageGone`: what importers need from Gmail) |
 
 The database schema is described in [data-model.md](data-model.md).
 
