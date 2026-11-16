@@ -205,24 +205,24 @@ def test_settings_offer_the_ai_rule(client, session):
 
 def test_pipeline_skips_without_ollama(session):
     import job_radar.config as config
-    import job_radar.pipeline as pipeline
+    import job_radar.jobs.pipeline as jobs_pipeline
 
     lines: list[str] = []
     # nothing listens there
     settings = config.Settings(ai_analysis=True, ollama_url="http://127.0.0.1:9")
-    pipeline.analyze_descriptions(session, settings, lines.append)
+    jobs_pipeline.analyze_descriptions(session, settings, lines.append)
     assert lines[0].startswith("ai: skipped: Ollama is not reachable")
 
 
 def test_pipeline_reports(session, tmp_path):
     import job_radar.config as config
-    import job_radar.pipeline as pipeline
+    import job_radar.jobs.pipeline as jobs_pipeline
 
     add_vacancy(session)
     lines: list[str] = []
     missing = tmp_path / "missing.yaml"
     settings = config.Settings(ai_analysis=True, profile=missing)
-    pipeline.analyze_descriptions(session, settings, lines.append, FakeModel([UK_ANSWER]))
+    jobs_pipeline.analyze_descriptions(session, settings, lines.append, FakeModel([UK_ANSWER]))
     assert lines == [
         f"ai: no {missing}; the stack check is skipped (see profile.example.yaml).",
         "ai: 1 descriptions analyzed, 1 flagged",

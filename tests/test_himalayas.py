@@ -145,13 +145,13 @@ def test_page_cap(session):
 
 def test_pipeline_step_reports(session, monkeypatch):
     import job_radar.config as config
-    import job_radar.pipeline as pipeline
+    import job_radar.jobs.pipeline as jobs_pipeline
 
     monkeypatch.setattr("job_radar.sources.boards.himalayas.time.sleep", lambda seconds: None)
 
     lines: list[str] = []
     client = FakeClient({1: page(), 2: boards_himalayas.HimalayasRateLimited("429")})
-    pipeline.import_himalayas(
+    jobs_pipeline.import_himalayas(
         session, config.Settings(himalayas_first_run_days=3650), lines.append, client
     )
     assert lines[0].startswith("himalayas: 1 pages, 7 fresh jobs, 4 new")

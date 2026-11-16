@@ -1,11 +1,11 @@
-"""Tests for job_radar.pipeline.run_sync: every step runs on its own, failures are
+"""Tests for job_radar.jobs.pipeline.run_sync: every step runs on its own, failures are
 reported with a hint and do not stop the rest (docs/queue.md#sync).
 """
 
 import google.auth.exceptions as auth_exceptions
 
 import job_radar.config as config
-import job_radar.pipeline as pipeline
+import job_radar.jobs.pipeline as jobs_pipeline
 
 
 def settings(tmp_path, database_url, **extra) -> config.Settings:
@@ -28,7 +28,7 @@ def test_gmail_failure_does_not_stop_the_other_steps(tmp_path, engine, database_
     client = tmp_path / "client.json"
     client.write_text("{}")
     lines, snapshots = [], []
-    steps = pipeline.run_sync(
+    steps = jobs_pipeline.run_sync(
         settings(tmp_path, database_url, gmail_client_secret=client),
         lines.append,
         on_steps=lambda s: snapshots.append([(x.key, x.state) for x in s]),
@@ -50,7 +50,7 @@ def test_gmail_failure_does_not_stop_the_other_steps(tmp_path, engine, database_
 def test_gmail_never_set_up_is_off_not_failed(tmp_path, engine, database_url):
     """A fresh clone has neither the OAuth client file nor the token (#8)."""
     found = by_key(
-        pipeline.run_sync(
+        jobs_pipeline.run_sync(
             settings(tmp_path, database_url, gmail_client_secret=tmp_path / "none.json"), print
         )
     )
@@ -62,7 +62,7 @@ def test_gmail_never_set_up_is_off_not_failed(tmp_path, engine, database_url):
 
 def test_expired_token_reads_as_a_hint():
     error = auth_exceptions.RefreshError("invalid_grant: Token has been expired or revoked.", {})
-    assert pipeline.describe_error(error) == (
+    assert jobs_pipeline.describe_error(error) == (
         "Gmail access expired or revoked: run `./jr auth` (docs/gmail.md)"
     )
 
@@ -73,8 +73,8 @@ def test_a_failing_source_is_reported_and_the_rest_runs(
     def broken(session, settings, echo, client=None):
         raise RuntimeError("Himalayas is down")
 
-    monkeypatch.setattr(pipeline, "import_himalayas", broken)
-    steps = by_key(pipeline.run_sync(settings(tmp_path, database_url, himalayas=True), print))
+    monkeypatch.setattr(jobs_pipeline, "import_himalayas", broken)
+    steps = by_key(jobs_pipeline.run_sync(settings(tmp_path, database_url, himalayas=True), print))
     assert steps["himalayas"].state == "failed"
     assert steps["himalayas"].summary == "Himalayas is down"
     assert steps["mail"].state == "done"
@@ -84,8 +84,8 @@ def test_summary_is_the_step_result_without_prefix(tmp_path, engine, database_ur
     def fake(session, settings, echo, client=None):
         echo("himalayas: 5 pages, 75 fresh jobs, 42 new")
 
-    monkeypatch.setattr(pipeline, "import_himalayas", fake)
-    steps = by_key(pipeline.run_sync(settings(tmp_path, database_url, himalayas=True), print))
+    monkeypatch.setattr(jobs_pipeline, "import_himalayas", fake)
+    steps = by_key(jobs_pipeline.run_sync(settings(tmp_path, database_url, himalayas=True), print))
     assert steps["himalayas"].summary == "5 pages, 75 fresh jobs, 42 new"
 
 

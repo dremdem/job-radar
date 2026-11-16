@@ -178,10 +178,10 @@ def test_an_unreadable_api_is_reported_and_imports_nothing(session):
 
 def test_sync_step_reports_counts_and_can_be_turned_off(session):
     import job_radar.config as config
-    import job_radar.pipeline as pipeline
+    import job_radar.jobs.pipeline as jobs_pipeline
 
     lines: list[str] = []
-    pipeline.import_hackernews(
+    jobs_pipeline.import_hackernews(
         session, config.Settings(hackernews=True), lines.append, client=FakeClient()
     )
     assert lines == [
@@ -189,7 +189,7 @@ def test_sync_step_reports_counts_and_can_be_turned_off(session):
         "0 already stored, 4 skipped (not remote Python)"
     ]
     lines.clear()
-    pipeline.import_hackernews(
+    jobs_pipeline.import_hackernews(
         session, config.Settings(hackernews=False), lines.append, client=FakeClient()
     )
     assert lines == ["hackernews: disabled (JOB_RADAR_HACKERNEWS=false)."]

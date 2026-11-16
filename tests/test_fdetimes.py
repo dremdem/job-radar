@@ -16,8 +16,8 @@ import sqlalchemy as sa
 
 import job_radar.config as config
 import job_radar.dedup as dedup
+import job_radar.jobs.pipeline as jobs_pipeline
 import job_radar.models as models
-import job_radar.pipeline as pipeline
 import job_radar.sources.boards.fdetimes as boards_fdetimes
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "fdetimes"
@@ -312,7 +312,7 @@ def test_descriptions_job_reads_fdetimes_without_linkedin(tmp_path, session, dat
 
     linkedin_public.save_pause(session, linkedin_public.PauseSettings(0, 0))
     lines, progress = [], []
-    stats = pipeline.fetch_descriptions(
+    stats = jobs_pipeline.fetch_descriptions(
         session,
         settings(tmp_path, database_url, fdetimes_max_descriptions=2),
         echo=lines.append,
@@ -325,8 +325,8 @@ def test_descriptions_job_reads_fdetimes_without_linkedin(tmp_path, session, dat
 
 
 def test_descriptions_are_off_only_without_both_sources(tmp_path, database_url):
-    assert pipeline.descriptions_on(settings(tmp_path, database_url))
-    assert not pipeline.descriptions_on(settings(tmp_path, database_url, fdetimes=False))
+    assert jobs_pipeline.descriptions_on(settings(tmp_path, database_url))
+    assert not jobs_pipeline.descriptions_on(settings(tmp_path, database_url, fdetimes=False))
 
 
 def test_sync_step(tmp_path, session, database_url):
@@ -334,12 +334,14 @@ def test_sync_step(tmp_path, session, database_url):
     session.add(models.SyncCursor(name="fdetimes", last_run_at=NOW))
     session.flush()
     lines = []
-    pipeline.import_fdetimes(session, settings(tmp_path, database_url), lines.append, FakeList())
+    jobs_pipeline.import_fdetimes(
+        session, settings(tmp_path, database_url), lines.append, FakeList()
+    )
     assert lines == [
         "fdetimes: 21 fresh roles, 10 new, 0 already stored, 11 skipped (kind, region or role)"
     ]
     lines.clear()
-    pipeline.import_fdetimes(
+    jobs_pipeline.import_fdetimes(
         session,
         settings(tmp_path, database_url),
         lines.append,
@@ -348,5 +350,5 @@ def test_sync_step(tmp_path, session, database_url):
     assert lines == ["fdetimes: could not read the job list: x"]
     lines.clear()
     off = settings(tmp_path, database_url, fdetimes=False)
-    pipeline.import_fdetimes(session, off, lines.append, FakeList())
+    jobs_pipeline.import_fdetimes(session, off, lines.append, FakeList())
     assert lines == ["fdetimes: disabled (JOB_RADAR_FDETIMES=false)."]

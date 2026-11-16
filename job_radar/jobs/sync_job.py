@@ -4,7 +4,7 @@
 for the status poll, and refuses a second run while one is going. See docs/queue.md#sync.
 
 Usage:
-    import job_radar.web.sync_job as web_sync_job
+    import job_radar.jobs.sync_job as jobs_sync_job
 """
 
 import collections.abc as cabc

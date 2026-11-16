@@ -40,8 +40,10 @@ import job_radar.db as db
 import job_radar.history.applications as history_applications
 import job_radar.history.contacts as history_contacts
 import job_radar.history.rejections as history_rejections
+import job_radar.jobs.description_job as jobs_description_job
+import job_radar.jobs.pipeline as jobs_pipeline
+import job_radar.jobs.sync_job as jobs_sync_job
 import job_radar.models as models
-import job_radar.pipeline as pipeline
 import job_radar.profile.stack as profile_stack
 import job_radar.review.auto_ignore as review_auto_ignore
 import job_radar.review.notes as review_notes
@@ -54,8 +56,6 @@ import job_radar.sources.linkedin.capture as linkedin_capture
 import job_radar.sources.linkedin.chrome as linkedin_chrome
 import job_radar.sources.linkedin.public as linkedin_public
 import job_radar.sources.manual as sources_manual
-import job_radar.web.description_job as web_description_job
-import job_radar.web.sync_job as web_sync_job
 
 HISTORY_SHOWN = 8
 # What the bookmarklet reads, shared with the Chrome fill (#247): one reader for both.
@@ -247,17 +247,19 @@ def _redraw_when_over(
 
 def create_app(
     settings: config.Settings | None = None,
-    sync_runner: web_sync_job.Runner | None = None,
+    sync_runner: jobs_sync_job.Runner | None = None,
     claude_runner: jr_claude_runner.Runner | None = None,
     start_worker: bool = True,
-    description_runner: cabc.Callable[[web_description_job.DescriptionJob], None] | None = None,
-    chrome_runner: cabc.Callable[[web_description_job.DescriptionJob], None] | None = None,
+    description_runner: cabc.Callable[[jobs_description_job.DescriptionJob], None] | None = None,
+    chrome_runner: cabc.Callable[[jobs_description_job.DescriptionJob], None] | None = None,
 ) -> fastapi.FastAPI:
     """``start_worker=False``: tests drive the Claude worker with ``run_once``."""
     settings = settings or config.get_settings()
-    sync_job = web_sync_job.SyncJob()
-    description_job = web_description_job.DescriptionJob()
-    description_runner = description_runner or (lambda job: pipeline.description_job(settings, job))
+    sync_job = jobs_sync_job.SyncJob()
+    description_job = jobs_description_job.DescriptionJob()
+    description_runner = description_runner or (
+        lambda job: jobs_pipeline.description_job(settings, job)
+    )
 
     def start_descriptions() -> bool:
         # one LinkedIn description run at a time
@@ -266,13 +268,13 @@ def create_app(
         return description_job.start(description_runner)
 
     # The Chrome fill (#247): descriptions read in your own Chrome; tests pass a fake.
-    chrome_job = web_description_job.DescriptionJob(blocked_note="stopped: {reason}")
-    chrome_runner = chrome_runner or (lambda job: pipeline.chrome_fill_job(settings, job))
+    chrome_job = jobs_description_job.DescriptionJob(blocked_note="stopped: {reason}")
+    chrome_runner = chrome_runner or (lambda job: jobs_pipeline.chrome_fill_job(settings, job))
 
     # The Sync button runs the same pipeline as `./jr sync`, but leaves the slow LinkedIn
     # descriptions to the background job (#205); tests pass a fake.
     sync_runner = sync_runner or (
-        lambda echo, on_steps: pipeline.run_sync(
+        lambda echo, on_steps: jobs_pipeline.run_sync(
             settings, echo, on_steps=on_steps, start_descriptions=start_descriptions
         )
     )
@@ -912,7 +914,7 @@ def create_app(
 
     @app.post("/descriptions", response_class=fastapi_responses.HTMLResponse)
     def start_description_job(request: fastapi.Request) -> fastapi_responses.HTMLResponse:
-        if not pipeline.descriptions_on(settings):
+        if not jobs_pipeline.descriptions_on(settings):
             return descriptions_status(request, off=True)
         # a second click just shows the running one
         start_descriptions()

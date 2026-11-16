@@ -5,7 +5,7 @@ Times) in a thread, keeps its progress for the status poll and stops it on reque
 docs/linkedin-public-search.md#the-descriptions-button-205.
 
 Usage:
-    import job_radar.web.description_job as web_description_job
+    import job_radar.jobs.description_job as jobs_description_job
 """
 
 import collections.abc as cabc

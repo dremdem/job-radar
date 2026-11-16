@@ -95,14 +95,14 @@ def test_without_a_date_or_gmail_nothing_is_imported(session):
 
 def test_pipeline_reports_digests(session, tmp_path):
     import job_radar.config as config
-    import job_radar.pipeline as pipeline
+    import job_radar.jobs.pipeline as jobs_pipeline
 
     lines: list[str] = []
-    pipeline.import_hh(session, config.Settings(), lines.append, use_gmail=False)
+    jobs_pipeline.import_hh(session, config.Settings(), lines.append, use_gmail=False)
     assert lines[-1].startswith("hh digests: off")
     lines.clear()
     settings = config.Settings(hh_digests_since=SINCE)
-    pipeline.import_hh(session, settings, lines.append, use_gmail=False)
+    jobs_pipeline.import_hh(session, settings, lines.append, use_gmail=False)
     assert lines[-1] == (
         "hh digests: 0 digests, 0 new vacancies, 0 already known, 0 skipped as noise"
     )

@@ -8,7 +8,7 @@ stop the rest. Every step reports through ``echo`` (one line per call), so the s
 reaches the terminal or the web status. See docs/queue.md#sync-mail.
 
 Usage:
-    import job_radar.pipeline as pipeline
+    import job_radar.jobs.pipeline as jobs_pipeline
 """
 
 import collections.abc as cabc
