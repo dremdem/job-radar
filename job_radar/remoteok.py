@@ -20,10 +20,10 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
-import job_radar.himalayas as himalayas
 import job_radar.models as models
 import job_radar.scoring as scoring
-import job_radar.telegram.sources as telegram_sources
+import job_radar.sources.http as sources_http
+import job_radar.sources.titles as sources_titles
 
 FEED_URL = "https://remoteok.com/api?tag=python"
 MAX_AGE = dt.timedelta(days=30)
@@ -45,7 +45,7 @@ class RemoteOKClient:
     """The real client over the public Remote OK JSON feed."""
 
     def feed(self) -> list[dict[str, t.Any]]:
-        request = urllib.request.Request(FEED_URL, headers={"User-Agent": himalayas.USER_AGENT})
+        request = urllib.request.Request(FEED_URL, headers={"User-Agent": sources_http.USER_AGENT})
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 data = json.loads(response.read())
@@ -98,7 +98,7 @@ def parse_job(raw: dict[str, t.Any]) -> RemoteOKJob:
         company=" ".join(_fix(str(raw.get("company") or "")).split()),
         location=f"Remote, {place}" if place else "Remote",
         salary=_salary(raw),
-        description=himalayas._text(_fix(str(raw.get("description") or ""))),
+        description=sources_http.html_text(_fix(str(raw.get("description") or ""))),
         tags=[str(tag) for tag in raw.get("tags") or []],
         published_at=dt.datetime.fromtimestamp(int(raw["epoch"]), dt.UTC),
     )
@@ -106,12 +106,12 @@ def parse_job(raw: dict[str, t.Any]) -> RemoteOKJob:
 
 def wants(job: RemoteOKJob) -> bool:
     """A developer role (title filter) that mentions Python somewhere."""
-    if not re.search(telegram_sources.DEFAULT_TITLE, job.title, re.IGNORECASE):
+    if not re.search(sources_titles.DEFAULT_TITLE, job.title, re.IGNORECASE):
         return False
-    if re.search(himalayas.EXCLUDE_TITLE, job.title, re.IGNORECASE):
+    if re.search(sources_titles.BOARD_EXCLUDE_TITLE, job.title, re.IGNORECASE):
         return False
     text = "\n".join([job.title, " ".join(job.tags), job.description])
-    return bool(re.search(telegram_sources.DEFAULT_KEYWORDS, text, re.IGNORECASE))
+    return bool(re.search(sources_titles.DEFAULT_KEYWORDS, text, re.IGNORECASE))
 
 
 @dataclasses.dataclass

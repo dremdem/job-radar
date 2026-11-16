@@ -19,11 +19,10 @@ import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
 import job_radar.hh.notifications as hh_notifications
-import job_radar.himalayas as himalayas
 import job_radar.mail as mail
 import job_radar.models as models
 import job_radar.scoring as scoring
-import job_radar.telegram.sources as telegram_sources
+import job_radar.sources.titles as sources_titles
 
 DONE_EVENT = "hh_digest_done"
 _VACANCY = re.compile(r"hh\.ru/vacancy/(\d+)")
@@ -31,7 +30,7 @@ _OPEN = re.compile(r"посмотреть вакансию|перейти к в�
 _SALARY = re.compile(r"₽|\$|€|за (месяц|час|смену|день)|^от$|^до$|^\d[\d\s]*$", re.IGNORECASE)
 # On top of the usual title filter: what this search brings besides developers.
 # The Himalayas noise filter (security, research, maths, ...) and what hh.ru adds to it.
-_EXCLUDE = himalayas.EXCLUDE_TITLE + (
+_EXCLUDE = sources_titles.BOARD_EXCLUDE_TITLE + (
     r"|преподават|наставник|репетитор|учител|автор|ментор|teacher|tutor|математик"
     r"|юрист|бухгалт|безопасност|офис"
 )
@@ -101,7 +100,7 @@ def parse_digest(html: str) -> list[DigestItem]:
 
 
 def wanted(title: str) -> bool:
-    return bool(re.search(telegram_sources.DEFAULT_TITLE, title, re.IGNORECASE)) and not re.search(
+    return bool(re.search(sources_titles.DEFAULT_TITLE, title, re.IGNORECASE)) and not re.search(
         _EXCLUDE, title, re.IGNORECASE
     )
 

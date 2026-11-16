@@ -23,10 +23,10 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
-import job_radar.himalayas as himalayas
 import job_radar.models as models
 import job_radar.scoring as scoring
-import job_radar.telegram.sources as telegram_sources
+import job_radar.sources.http as sources_http
+import job_radar.sources.titles as sources_titles
 
 API_URL = "https://jobicy.com/api/v2/remote-jobs?count=50&tag=python"
 CURSOR = "jobicy"
@@ -53,7 +53,7 @@ class JobicyClient:
 
     def page(self, cursor: str | None) -> dict[str, t.Any]:
         url = API_URL + (f"&cursor={urllib.parse.quote(cursor)}" if cursor else "")
-        request = urllib.request.Request(url, headers={"User-Agent": himalayas.USER_AGENT})
+        request = urllib.request.Request(url, headers={"User-Agent": sources_http.USER_AGENT})
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 return json.loads(response.read())
@@ -90,21 +90,21 @@ def parse_job(raw: dict[str, t.Any]) -> JobicyJob:
         title=" ".join(html.unescape(str(raw.get("jobTitle") or "")).split()),
         company=" ".join(html.unescape(str(raw.get("companyName") or "")).split()),
         location=_location(html.unescape(str(raw.get("jobGeo") or ""))),
-        description=himalayas._text(str(raw.get("jobDescription") or raw.get("jobExcerpt") or "")),
+        description=sources_http.html_text(
+            str(raw.get("jobDescription") or raw.get("jobExcerpt") or "")
+        ),
         published_at=dt.datetime.fromisoformat(str(raw["pubDate"])).astimezone(dt.UTC),
     )
 
 
 def wants(job: JobicyJob) -> bool:
     """A developer role (title filter) that mentions Python somewhere."""
-    if not re.search(telegram_sources.DEFAULT_TITLE, job.title, re.IGNORECASE):
+    if not re.search(sources_titles.DEFAULT_TITLE, job.title, re.IGNORECASE):
         return False
-    if re.search(himalayas.EXCLUDE_TITLE, job.title, re.IGNORECASE):
+    if re.search(sources_titles.BOARD_EXCLUDE_TITLE, job.title, re.IGNORECASE):
         return False
     return bool(
-        re.search(
-            telegram_sources.DEFAULT_KEYWORDS, f"{job.title}\n{job.description}", re.IGNORECASE
-        )
+        re.search(sources_titles.DEFAULT_KEYWORDS, f"{job.title}\n{job.description}", re.IGNORECASE)
     )
 
 

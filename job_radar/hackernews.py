@@ -22,10 +22,10 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
-import job_radar.himalayas as himalayas
 import job_radar.models as models
 import job_radar.scoring as scoring
-import job_radar.telegram.sources as telegram_sources
+import job_radar.sources.http as sources_http
+import job_radar.sources.titles as sources_titles
 
 THREADS_URL = "https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring"
 ITEM_URL = "https://hn.algolia.com/api/v1/items/{id}"
@@ -61,7 +61,7 @@ class HackerNewsClient:
     """The real client over the public Hacker News API."""
 
     def _get(self, url: str) -> dict[str, t.Any]:
-        request = urllib.request.Request(url, headers={"User-Agent": himalayas.USER_AGENT})
+        request = urllib.request.Request(url, headers={"User-Agent": sources_http.USER_AGENT})
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 return json.loads(response.read())
@@ -140,7 +140,7 @@ def parse_post(raw: dict[str, t.Any]) -> HackerNewsPost:
         (
             p
             for p in parts[1:]
-            if re.search(telegram_sources.DEFAULT_TITLE, p, re.IGNORECASE)
+            if re.search(sources_titles.DEFAULT_TITLE, p, re.IGNORECASE)
             and not _WORK_FORMAT.search(p)
         ),
         None,
@@ -154,7 +154,7 @@ def parse_post(raw: dict[str, t.Any]) -> HackerNewsPost:
         company=company,
         location=_location(parts),
         # HN separates paragraphs with a bare <p>: keep the header on its own line.
-        description=himalayas._text((raw.get("text") or "").replace("<p>", "\n<p>")),
+        description=sources_http.html_text((raw.get("text") or "").replace("<p>", "\n<p>")),
         has_role=role is not None,
         published_at=dt.datetime.fromtimestamp(int(raw["created_at_i"]), dt.UTC),
     )
@@ -169,12 +169,12 @@ def wants(post: HackerNewsPost) -> bool:
             return False
     elif not _REMOTE.search(post.description):
         return False
-    if not re.search(telegram_sources.DEFAULT_KEYWORDS, post.description, re.IGNORECASE):
+    if not re.search(sources_titles.DEFAULT_KEYWORDS, post.description, re.IGNORECASE):
         return False
     if post.has_role:
-        if not re.search(telegram_sources.DEFAULT_TITLE, post.title, re.IGNORECASE):
+        if not re.search(sources_titles.DEFAULT_TITLE, post.title, re.IGNORECASE):
             return False
-        if re.search(telegram_sources.DEFAULT_EXCLUDE_TITLE, post.title, re.IGNORECASE):
+        if re.search(sources_titles.DEFAULT_EXCLUDE_TITLE, post.title, re.IGNORECASE):
             return False
     return True
 
