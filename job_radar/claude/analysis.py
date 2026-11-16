@@ -1,33 +1,35 @@
-"""The queue of deep analyses and the workers that run them. See docs/claude.md."""
+"""The queue of deep analyses by Claude and the workers that run them.
 
+``enqueue`` and ``enqueue_new_descriptions`` add vacancies with a description to the
+queue as ``ClaudeAnalysis`` rows; the ``Worker`` runs them in a pool of background
+threads within the daily cap from ``ClaudeSettings``, and answers chat questions
+(``ask``) by continuing the analysis session. ``status`` and ``latest_matches`` feed the
+queue page. See docs/claude.md.
+
+Usage:
+    import job_radar.claude.analysis as claude_analysis
+"""
+
+import dataclasses
+import datetime as dt
+import pathlib
 import re
 import threading
 import time
+import typing as t
 import uuid
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from typing import Any
 
-from sqlalchemy import exists, func, select, update
-from sqlalchemy.orm import Session, sessionmaker
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..ai.analysis import quote_in_text
-from ..auto_ignore import apply_claude_rule
-from ..description import latest_description
-from ..models import (
-    AppSetting,
-    ClaudeAnalysis,
-    ClaudeMessage,
-    JobSnapshot,
-    Opportunity,
-    OpportunityState,
-    SourceRecord,
-)
-from ..stack import current_profile
-from . import memory
-from .prompt import PROMPT_VERSION, SCHEMA, analysis_prompt, chat_system_prompt, system_prompt
-from .runner import ClaudeError, Runner
+import job_radar.ai.analysis as ai_analysis
+import job_radar.auto_ignore as auto_ignore
+import job_radar.claude.memory as claude_memory
+import job_radar.claude.prompt as claude_prompt
+import job_radar.claude.runner as claude_runner
+import job_radar.description as jr_description
+import job_radar.models as models
+import job_radar.stack as stack
 
 SETTINGS_KEY = "claude"
 MODELS = ("sonnet", "opus", "haiku")
@@ -36,60 +38,67 @@ PENDING = ("queued", "running")
 
 
 MAX_PARALLEL = 8
-USAGE_PAUSE = timedelta(minutes=15)
+USAGE_PAUSE = dt.timedelta(minutes=15)
 # The subscription's limit: waiting a few seconds will not help (#197).
 _USAGE_LIMIT = re.compile(r"usage limit|rate.?limit|\b429\b|too many requests", re.IGNORECASE)
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class ClaudeSettings:
+    """Claude options from the Settings page: model, daily cap, language and more."""
+
     model: str = "sonnet"
     daily_cap: int = 30
     language: str = "Russian"
-    parallel: int = 4  # analyses at once, 1..MAX_PARALLEL (#197)
-    chat_web: bool = True  # the chat may search the web, never the analysis (#213)
-    auto_analyze: bool = True  # queue new descriptions without the Analyze button (#264)
+    # analyses at once, 1..MAX_PARALLEL (#197)
+    parallel: int = 4
+    # the chat may search the web, never the analysis (#213)
+    chat_web: bool = True
+    # queue new descriptions without the Analyze button (#264)
+    auto_analyze: bool = True
 
 
-def load_claude_settings(session: Session) -> ClaudeSettings:
-    row = session.get(AppSetting, SETTINGS_KEY)
+def load_claude_settings(session: sa_orm.Session) -> ClaudeSettings:
+    row = session.get(models.AppSetting, SETTINGS_KEY)
     if row is None or not isinstance(row.value, dict):
         return ClaudeSettings()
     known = {k: v for k, v in row.value.items() if k in ClaudeSettings.__dataclass_fields__}
     return ClaudeSettings(**known)
 
 
-def save_claude_settings(session: Session, value: ClaudeSettings) -> None:
-    row = session.get(AppSetting, SETTINGS_KEY) or AppSetting(key=SETTINGS_KEY)
-    row.value = asdict(value)
+def save_claude_settings(session: sa_orm.Session, value: ClaudeSettings) -> None:
+    row = session.get(models.AppSetting, SETTINGS_KEY) or models.AppSetting(key=SETTINGS_KEY)
+    row.value = dataclasses.asdict(value)
     session.add(row)
     session.commit()
 
 
-def latest(session: Session, opportunity_id: int) -> ClaudeAnalysis | None:
+def latest(session: sa_orm.Session, opportunity_id: int) -> models.ClaudeAnalysis | None:
     return session.scalar(
-        select(ClaudeAnalysis)
-        .where(ClaudeAnalysis.opportunity_id == opportunity_id)
-        .order_by(ClaudeAnalysis.id.desc())
+        sa.select(models.ClaudeAnalysis)
+        .where(models.ClaudeAnalysis.opportunity_id == opportunity_id)
+        .order_by(models.ClaudeAnalysis.id.desc())
         .limit(1)
     )
 
 
-def enqueue(session: Session, opportunity_ids: list[int]) -> int:
+def enqueue(session: sa_orm.Session, opportunity_ids: list[int]) -> int:
     """Queue the vacancies that are not queued or running already and have a description
     (there is nothing to analyze without one, #146). Returns how many were queued."""
     model = load_claude_settings(session).model
     added = 0
     for opportunity_id in dict.fromkeys(opportunity_ids):
-        opportunity = session.get(Opportunity, opportunity_id)
-        if opportunity is None or not latest_description(opportunity):
+        opportunity = session.get(models.Opportunity, opportunity_id)
+        if opportunity is None or not jr_description.latest_description(opportunity):
             continue
         current = latest(session, opportunity_id)
         if current is not None and current.state in PENDING:
             continue
         session.add(
-            ClaudeAnalysis(
-                opportunity_id=opportunity_id, model=model, prompt_version=PROMPT_VERSION
+            models.ClaudeAnalysis(
+                opportunity_id=opportunity_id,
+                model=model,
+                prompt_version=claude_prompt.PROMPT_VERSION,
             )
         )
         added += 1
@@ -97,47 +106,47 @@ def enqueue(session: Session, opportunity_ids: list[int]) -> int:
     return added
 
 
-def enqueue_new_descriptions(session: Session) -> int:
+def enqueue_new_descriptions(session: sa_orm.Session) -> int:
     """Queue every To review vacancy that has a description and was never analyzed (#264),
     whatever brought the description: Descriptions, Chrome fill, bookmarklet, Sync."""
     ids = session.scalars(
-        select(Opportunity.id).where(
-            Opportunity.state == OpportunityState.NEW,
-            exists().where(
-                SourceRecord.opportunity_id == Opportunity.id,
-                JobSnapshot.source_record_id == SourceRecord.id,
+        sa.select(models.Opportunity.id).where(
+            models.Opportunity.state == models.OpportunityState.NEW,
+            sa.exists().where(
+                models.SourceRecord.opportunity_id == models.Opportunity.id,
+                models.JobSnapshot.source_record_id == models.SourceRecord.id,
             ),
-            ~exists().where(ClaudeAnalysis.opportunity_id == Opportunity.id),
+            ~sa.exists().where(models.ClaudeAnalysis.opportunity_id == models.Opportunity.id),
         )
     ).all()
     return enqueue(session, list(ids)) if ids else 0
 
 
-def without_description(session: Session, opportunity_ids: list[int]) -> int:
+def without_description(session: sa_orm.Session, opportunity_ids: list[int]) -> int:
     """How many of these vacancies have no description (and so are not queued)."""
-    found = (session.get(Opportunity, i) for i in dict.fromkeys(opportunity_ids))
-    return sum(1 for o in found if o is not None and not latest_description(o))
+    found = (session.get(models.Opportunity, i) for i in dict.fromkeys(opportunity_ids))
+    return sum(1 for o in found if o is not None and not jr_description.latest_description(o))
 
 
-def latest_done(session: Session, opportunity_id: int) -> ClaudeAnalysis | None:
+def latest_done(session: sa_orm.Session, opportunity_id: int) -> models.ClaudeAnalysis | None:
     return session.scalar(
-        select(ClaudeAnalysis)
+        sa.select(models.ClaudeAnalysis)
         .where(
-            ClaudeAnalysis.opportunity_id == opportunity_id,
-            ClaudeAnalysis.state == "done",
-            ClaudeAnalysis.session_id.is_not(None),
+            models.ClaudeAnalysis.opportunity_id == opportunity_id,
+            models.ClaudeAnalysis.state == "done",
+            models.ClaudeAnalysis.session_id.is_not(None),
         )
-        .order_by(ClaudeAnalysis.id.desc())
+        .order_by(models.ClaudeAnalysis.id.desc())
         .limit(1)
     )
 
 
-def latest_matches(session: Session) -> dict[int, int]:
+def latest_matches(session: sa_orm.Session) -> dict[int, int]:
     """Claude's match % per vacancy, from its latest finished analysis (#207)."""
     rows = session.execute(
-        select(ClaudeAnalysis.opportunity_id, ClaudeAnalysis.result)
-        .where(ClaudeAnalysis.state == "done", ClaudeAnalysis.result.is_not(None))
-        .order_by(ClaudeAnalysis.id)
+        sa.select(models.ClaudeAnalysis.opportunity_id, models.ClaudeAnalysis.result)
+        .where(models.ClaudeAnalysis.state == "done", models.ClaudeAnalysis.result.is_not(None))
+        .order_by(models.ClaudeAnalysis.id)
     )
     matches: dict[int, int] = {}
     for opportunity_id, result in rows:
@@ -147,22 +156,22 @@ def latest_matches(session: Session) -> dict[int, int]:
     return matches
 
 
-def messages(session: Session, opportunity_id: int) -> list[ClaudeMessage]:
+def messages(session: sa_orm.Session, opportunity_id: int) -> list[models.ClaudeMessage]:
     return list(
         session.scalars(
-            select(ClaudeMessage)
-            .where(ClaudeMessage.opportunity_id == opportunity_id)
-            .order_by(ClaudeMessage.id)
+            sa.select(models.ClaudeMessage)
+            .where(models.ClaudeMessage.opportunity_id == opportunity_id)
+            .order_by(models.ClaudeMessage.id)
         )
     )
 
 
-def ask(session: Session, opportunity_id: int, text: str) -> ClaudeMessage | None:
+def ask(session: sa_orm.Session, opportunity_id: int, text: str) -> models.ClaudeMessage | None:
     """Queue a chat question; None when there is no finished analysis to continue."""
     analysis = latest_done(session, opportunity_id)
     if analysis is None or not text.strip():
         return None
-    message = ClaudeMessage(
+    message = models.ClaudeMessage(
         opportunity_id=opportunity_id,
         analysis_id=analysis.id,
         role="user",
@@ -174,24 +183,27 @@ def ask(session: Session, opportunity_id: int, text: str) -> ClaudeMessage | Non
     return message
 
 
-def chat_pending(session: Session, opportunity_id: int) -> bool:
+def chat_pending(session: sa_orm.Session, opportunity_id: int) -> bool:
     return bool(
         session.scalar(
-            select(ClaudeMessage.id).where(
-                ClaudeMessage.opportunity_id == opportunity_id,
-                ClaudeMessage.state.in_(PENDING),
+            sa.select(models.ClaudeMessage.id).where(
+                models.ClaudeMessage.opportunity_id == opportunity_id,
+                models.ClaudeMessage.state.in_(PENDING),
             )
         )
     )
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class QueueStatus:
+    """What the queue page shows about analyses: queued, running, done today."""
+
     queued: int
     running: int
     done_today: int
     daily_cap: int
-    recent: list[int]  # vacancies finished in the last minutes, for live row updates
+    # vacancies finished in the last minutes, for live row updates
+    recent: list[int]
 
     @property
     def pending(self) -> int:
@@ -202,32 +214,32 @@ class QueueStatus:
         return self.queued > 0 and self.done_today >= self.daily_cap
 
 
-def _today(now: datetime) -> datetime:
+def _today(now: dt.datetime) -> dt.datetime:
     return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def _done_today(session: Session, now: datetime) -> int:
+def _done_today(session: sa_orm.Session, now: dt.datetime) -> int:
     return session.scalar(
-        select(func.count(ClaudeAnalysis.id)).where(
-            ClaudeAnalysis.state.in_(("done", "failed")),
-            ClaudeAnalysis.started_at >= _today(now),
+        sa.select(sa.func.count(models.ClaudeAnalysis.id)).where(
+            models.ClaudeAnalysis.state.in_(("done", "failed")),
+            models.ClaudeAnalysis.started_at >= _today(now),
         )
     )
 
 
-def status(session: Session, now: datetime | None = None) -> QueueStatus:
-    now = now or datetime.now(UTC)
+def status(session: sa_orm.Session, now: dt.datetime | None = None) -> QueueStatus:
+    now = now or dt.datetime.now(dt.UTC)
     counts = dict(
         session.execute(
-            select(ClaudeAnalysis.state, func.count(ClaudeAnalysis.id))
-            .where(ClaudeAnalysis.state.in_(PENDING))
-            .group_by(ClaudeAnalysis.state)
+            sa.select(models.ClaudeAnalysis.state, sa.func.count(models.ClaudeAnalysis.id))
+            .where(models.ClaudeAnalysis.state.in_(PENDING))
+            .group_by(models.ClaudeAnalysis.state)
         ).all()
     )
     recent = session.scalars(
-        select(ClaudeAnalysis.opportunity_id).where(
-            ClaudeAnalysis.state.in_(("done", "failed")),
-            ClaudeAnalysis.finished_at >= now - timedelta(minutes=10),
+        sa.select(models.ClaudeAnalysis.opportunity_id).where(
+            models.ClaudeAnalysis.state.in_(("done", "failed")),
+            models.ClaudeAnalysis.finished_at >= now - dt.timedelta(minutes=10),
         )
     ).all()
     return QueueStatus(
@@ -239,12 +251,12 @@ def status(session: Session, now: datetime | None = None) -> QueueStatus:
     )
 
 
-def _check_quotes(result: dict[str, Any], text: str) -> dict[str, Any]:
+def _check_quotes(result: dict[str, t.Any], text: str) -> dict[str, t.Any]:
     """Mark every quote as found in the description or not (`quote_ok`)."""
 
-    def mark(item: dict[str, Any]) -> None:
+    def mark(item: dict[str, t.Any]) -> None:
         quote = str(item.get("quote") or "")
-        item["quote_ok"] = bool(quote) and quote_in_text(quote, text)
+        item["quote_ok"] = bool(quote) and ai_analysis.quote_in_text(quote, text)
 
     if isinstance(result.get("location"), dict):
         mark(result["location"])
@@ -261,11 +273,11 @@ class Worker:
 
     def __init__(
         self,
-        session_factory: sessionmaker,
-        runner: Runner,
+        session_factory: sa_orm.sessionmaker,
+        runner: claude_runner.Runner,
         *,
-        profile_path: Path,
-        cv_path: Path | None,
+        profile_path: pathlib.Path,
+        cv_path: pathlib.Path | None,
         idle_wait: float = 5.0,
     ):
         self.session_factory = session_factory
@@ -273,23 +285,26 @@ class Worker:
         self.profile_path = profile_path
         self.cv_path = cv_path
         self.idle_wait = idle_wait
-        self.retry_waits: tuple[float, ...] = (10.0, 30.0)  # pauses before attempts 2 and 3
+        # pauses before attempts 2 and 3
+        self.retry_waits: tuple[float, ...] = (10.0, 30.0)
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
-        self._claim = threading.Lock()  # one thread at a time picks the next vacancy
-        self.paused_until: datetime | None = None  # after the subscription's usage limit
+        # one thread at a time picks the next vacancy
+        self._claim = threading.Lock()
+        # after the subscription's usage limit
+        self.paused_until: dt.datetime | None = None
 
     def start(self) -> None:
         with self.session_factory() as session:
             # A restart interrupted these: run them again.
             for row in session.scalars(
-                select(ClaudeAnalysis).where(ClaudeAnalysis.state == "running")
+                sa.select(models.ClaudeAnalysis).where(models.ClaudeAnalysis.state == "running")
             ):
                 # A new session id: claude refuses one it has already seen.
                 row.state, row.started_at, row.session_id = "queued", None, None
             for message in session.scalars(
-                select(ClaudeMessage).where(ClaudeMessage.state == "running")
+                sa.select(models.ClaudeMessage).where(models.ClaudeMessage.state == "running")
             ):
                 message.state = "queued"
             session.commit()
@@ -318,7 +333,8 @@ class Worker:
         while not self._stop.is_set():
             try:
                 worked = self._answer_once()
-            except Exception:  # never kill the thread; the row says what failed
+            except Exception:
+                # never kill the thread; the row says what failed
                 worked = False
             if not worked:
                 self._idle()
@@ -330,7 +346,8 @@ class Worker:
                     parallel = load_claude_settings(session).parallel
                 active = slot < max(1, min(MAX_PARALLEL, parallel))
                 worked = active and self._analyze_once()
-            except Exception:  # never kill the thread; the row says what failed
+            except Exception:
+                # never kill the thread; the row says what failed
                 worked = False
             if not worked:
                 self._idle()
@@ -340,13 +357,15 @@ class Worker:
             return self.cv_path.expanduser().read_text()
         return None
 
-    def run_once(self, now: datetime | None = None) -> bool:
+    def run_once(self, now: dt.datetime | None = None) -> bool:
         """Answer the oldest chat question, else run the oldest queued analysis.
 
         Returns False when there was nothing to run. Tests drive the worker with it."""
         return self._answer_once() or self._analyze_once(now)
 
-    def _claim_next(self, session: Session, now: datetime) -> ClaudeAnalysis | None:
+    def _claim_next(
+        self, session: sa_orm.Session, now: dt.datetime
+    ) -> models.ClaudeAnalysis | None:
         """Mark the oldest queued vacancy as running, unless capped or paused."""
         with self._claim:
             if self.paused_until is not None and now < self.paused_until:
@@ -355,81 +374,87 @@ class Worker:
             if settings.auto_analyze:
                 enqueue_new_descriptions(session)
             running = session.scalar(
-                select(func.count(ClaudeAnalysis.id)).where(ClaudeAnalysis.state == "running")
+                sa.select(sa.func.count(models.ClaudeAnalysis.id)).where(
+                    models.ClaudeAnalysis.state == "running"
+                )
             )
             if _done_today(session, now) + running >= settings.daily_cap:
                 return None
             job_id = session.scalar(
-                select(ClaudeAnalysis.id)
-                .where(ClaudeAnalysis.state == "queued")
-                .order_by(ClaudeAnalysis.id)
+                sa.select(models.ClaudeAnalysis.id)
+                .where(models.ClaudeAnalysis.state == "queued")
+                .order_by(models.ClaudeAnalysis.id)
                 .limit(1)
             )
             if job_id is None:
                 return None
             taken = session.execute(
-                update(ClaudeAnalysis)
-                .where(ClaudeAnalysis.id == job_id, ClaudeAnalysis.state == "queued")
+                sa.update(models.ClaudeAnalysis)
+                .where(models.ClaudeAnalysis.id == job_id, models.ClaudeAnalysis.state == "queued")
                 .values(state="running", started_at=now)
             )
             session.commit()
             if taken.rowcount != 1:
                 return None
-            job = session.get(ClaudeAnalysis, job_id)
+            job = session.get(models.ClaudeAnalysis, job_id)
             session.refresh(job)
             job.session_id = job.session_id or str(uuid.uuid4())
             session.commit()
             return job
 
-    def _analyze_once(self, now: datetime | None = None) -> bool:
+    def _analyze_once(self, now: dt.datetime | None = None) -> bool:
         with self.session_factory() as session:
-            now = now or datetime.now(UTC)
+            now = now or dt.datetime.now(dt.UTC)
             job = self._claim_next(session, now)
             if job is None:
                 return False
             settings = load_claude_settings(session)
 
             o = job.opportunity
-            description = latest_description(o)
+            description = jr_description.latest_description(o)
             if not description:
                 job.state, job.error = "failed", "no description saved for this vacancy"
-                job.finished_at = datetime.now(UTC)
+                job.finished_at = dt.datetime.now(dt.UTC)
                 session.commit()
                 return True
-            prompt = analysis_prompt(
+            prompt = claude_prompt.analysis_prompt(
                 cv=self._cv(),
-                profile=current_profile(self.profile_path),
+                profile=stack.current_profile(self.profile_path),
                 title=o.title,
                 company=o.company.name,
                 location=o.location,
                 salary=o.salary,
                 description=description,
-                memory=memory.prompt_section(session),
+                memory=claude_memory.prompt_section(session),
             )
             reply, error = None, None
             for attempt in range(1 + len(self.retry_waits)):
                 if attempt:
                     time.sleep(self.retry_waits[attempt - 1])
-                    job.session_id = str(uuid.uuid4())  # claude refuses a reused session id
+                    # claude refuses a reused session id
+                    job.session_id = str(uuid.uuid4())
                 job.attempts = attempt + 1
                 session.commit()
                 try:
                     reply = self.runner.run(
                         prompt,
-                        system=system_prompt(settings.language),
+                        system=claude_prompt.system_prompt(settings.language),
                         model=job.model,
-                        schema=SCHEMA,
+                        schema=claude_prompt.SCHEMA,
                         session_id=job.session_id,
                     )
                     if not isinstance(reply.structured, dict):
-                        raise ClaudeError("the answer has no structured result", transient=True)
+                        raise claude_runner.ClaudeError(
+                            "the answer has no structured result", transient=True
+                        )
                     error = None
                     break
-                except Exception as e:  # transient ones are retried; the rest shown on the row
+                except Exception as e:
+                    # transient ones are retried; the rest shown on the row
                     error = e
                     if _USAGE_LIMIT.search(str(e)):
                         # The subscription's limit: back to the queue, pause new ones (#197).
-                        self.paused_until = datetime.now(UTC) + USAGE_PAUSE
+                        self.paused_until = dt.datetime.now(dt.UTC) + USAGE_PAUSE
                         until = self.paused_until.astimezone().strftime("%H:%M")
                         job.state, job.started_at, job.session_id = "queued", None, None
                         job.error = f"{e} · paused until {until}, then retried"
@@ -444,9 +469,10 @@ class Worker:
                 job.result = _check_quotes(dict(reply.structured), description)
                 job.session_id = reply.session_id or job.session_id
                 job.cost_usd = reply.cost_usd
-            job.finished_at = datetime.now(UTC)
+            job.finished_at = dt.datetime.now(dt.UTC)
             session.commit()
-            if error is None and apply_claude_rule(session, o):  # #245
+            # #245
+            if error is None and auto_ignore.apply_claude_rule(session, o):
                 session.commit()
             return True
 
@@ -454,9 +480,9 @@ class Worker:
         """Chat questions go first: someone is waiting on the page. Not capped."""
         with self.session_factory() as session:
             question = session.scalar(
-                select(ClaudeMessage)
-                .where(ClaudeMessage.state == "queued", ClaudeMessage.role == "user")
-                .order_by(ClaudeMessage.id)
+                sa.select(models.ClaudeMessage)
+                .where(models.ClaudeMessage.state == "queued", models.ClaudeMessage.role == "user")
+                .order_by(models.ClaudeMessage.id)
                 .limit(1)
             )
             if question is None:
@@ -470,22 +496,25 @@ class Worker:
                     question.text,
                     system="\n\n".join(
                         (
-                            chat_system_prompt(settings.language, web=settings.chat_web),
-                            memory.prompt_section(session),
-                            memory.WRITE_RULES,
+                            claude_prompt.chat_system_prompt(
+                                settings.language, web=settings.chat_web
+                            ),
+                            claude_memory.prompt_section(session),
+                            claude_memory.WRITE_RULES,
                         )
                     ),
                     model=analysis.model,
                     resume=analysis.session_id,
                     web=settings.chat_web,
                 )
-            except Exception as e:  # shown under the question; ask again to retry
+            except Exception as e:
+                # shown under the question; ask again to retry
                 question.state, question.error = "failed", str(e) or e.__class__.__name__
             else:
                 question.state, question.error = "done", None
-                text, note = memory.apply_reply(session, reply.text, question.opportunity_id)
+                text, note = claude_memory.apply_reply(session, reply.text, question.opportunity_id)
                 session.add(
-                    ClaudeMessage(
+                    models.ClaudeMessage(
                         opportunity_id=question.opportunity_id,
                         analysis_id=analysis.id,
                         role="assistant",

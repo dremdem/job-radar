@@ -1,13 +1,21 @@
-"""Run `claude -p` on the user's subscription: no tools (web search in the chat), no API key,
-JSON out."""
+"""Run ``claude -p`` on the user's subscription: no API key, JSON out.
 
+``ClaudeCli`` starts Claude Code in print mode without tools (web search only in the
+chat), passes the prompt and returns a ``Reply`` with the text, the structured answer and
+the session id to continue. ``Runner`` is the interface the workers use, so tests pass a
+fake. ``is_transient`` tells errors worth a retry. See docs/claude.md.
+
+Usage:
+    import job_radar.claude.runner as claude_runner
+"""
+
+import dataclasses
 import json
 import os
+import pathlib
 import re
 import subprocess
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Protocol
+import typing as t
 
 # Never let Claude Code fall back to paid API billing (docs/claude.md#how-it-runs).
 _PAID_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
@@ -33,27 +41,33 @@ def is_transient(message: str) -> bool:
 
 
 class ClaudeError(Exception):
+    """Claude Code failed or returned no usable answer."""
+
     def __init__(self, message: str, *, transient: bool = False):
         super().__init__(message)
         self.transient = transient
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Reply:
+    """One answer of ``claude -p``: text, structured part, session id and cost."""
+
     text: str
-    structured: dict[str, Any] | None
+    structured: dict[str, t.Any] | None
     session_id: str | None
     cost_usd: float | None
 
 
-class Runner(Protocol):
+class Runner(t.Protocol):
+    """What the workers need from Claude: one prompt in, one ``Reply`` out."""
+
     def run(
         self,
         prompt: str,
         *,
         system: str,
         model: str,
-        schema: dict[str, Any] | None = None,
+        schema: dict[str, t.Any] | None = None,
         session_id: str | None = None,
         resume: str | None = None,
         web: bool = False,
@@ -61,7 +75,9 @@ class Runner(Protocol):
 
 
 class ClaudeCli:
-    def __init__(self, command: str, workdir: Path, timeout: float = 600):
+    """Runs the ``claude`` command line in print mode as a subprocess."""
+
+    def __init__(self, command: str, workdir: pathlib.Path, timeout: float = 600):
         self.command = command.split()
         self.workdir = workdir
         self.timeout = timeout
@@ -72,7 +88,7 @@ class ClaudeCli:
         *,
         system: str,
         model: str,
-        schema: dict[str, Any] | None = None,
+        schema: dict[str, t.Any] | None = None,
         session_id: str | None = None,
         resume: str | None = None,
         web: bool = False,

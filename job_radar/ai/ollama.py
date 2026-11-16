@@ -1,22 +1,33 @@
-"""A minimal Ollama client: one prompt in, one JSON object out."""
+"""A minimal Ollama client: one prompt in, one JSON object out.
+
+``OllamaClient`` posts to the local Ollama HTTP API with JSON output and returns the
+parsed object; ``OllamaError`` covers connection and format problems. See docs/ai.md.
+
+Usage:
+    import job_radar.ai.ollama as ai_ollama
+"""
 
 import json
+import typing as t
 import urllib.error
 import urllib.request
-from typing import Any
 
 
 class OllamaError(Exception):
+    """Ollama could not be reached or did not return JSON."""
+
     pass
 
 
 class OllamaClient:
+    """Client of the local Ollama HTTP API for one model."""
+
     def __init__(self, url: str, model: str, timeout: float = 120):
         self.url = url.rstrip("/")
         self.model = model
         self.timeout = timeout
 
-    def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    def _post(self, path: str, body: dict[str, t.Any]) -> dict[str, t.Any]:
         request = urllib.request.Request(
             f"{self.url}{path}", json.dumps(body).encode(), {"Content-Type": "application/json"}
         )
@@ -38,7 +49,7 @@ class OllamaClient:
         if self.model not in models and f"{self.model}:latest" not in models:
             raise OllamaError(f"model {self.model} is not installed; run: ollama pull {self.model}")
 
-    def generate_json(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+    def generate_json(self, prompt: str, schema: dict[str, t.Any]) -> dict[str, t.Any]:
         body = {
             "model": self.model,
             "prompt": prompt,
@@ -55,5 +66,6 @@ class OllamaClient:
             except ValueError as e:
                 if attempt:
                     raise OllamaError(f"the model did not return valid JSON: {e}") from e
-                body["options"] |= {"temperature": 0.3}  # at 0 it would repeat the same answer
+                # at 0 it would repeat the same answer
+                body["options"] |= {"temperature": 0.3}
         raise AssertionError("unreachable")
