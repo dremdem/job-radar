@@ -11,7 +11,7 @@ Main entry points: ``fold_into_applied`` for a newly imported vacancy, and
 merge-applied-duplicates``). See docs/queue.md.
 
 Usage:
-    import job_radar.applied_duplicates as applied_duplicates
+    import job_radar.review.applied_duplicates as review_applied_duplicates
 """
 
 import collections

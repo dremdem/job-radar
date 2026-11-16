@@ -482,12 +482,12 @@ def import_applications(
     *,
     use_gmail: bool = True,
 ) -> None:
-    import job_radar.applications as applications
     import job_radar.gmail.client as gmail_client
+    import job_radar.history.applications as history_applications
 
     if use_gmail:
         client = client or gmail_client_or_none(settings)
-    stats = applications.import_applications(
+    stats = history_applications.import_applications(
         session, fetch_body=gmail_client.body_fetcher(client) if client else None
     )
     echo(
@@ -539,9 +539,9 @@ def import_hh(
 
 
 def import_contacts(session: sa_orm.Session, echo: Echo) -> None:
-    import job_radar.contacts as contacts
+    import job_radar.history.contacts as history_contacts
 
-    stats = contacts.link_and_label(session)
+    stats = history_contacts.link_and_label(session)
     linked = stats.by_thread + stats.by_domain
     echo(
         f"contacts: {linked} linked ({stats.by_thread} by thread, {stats.by_domain} by domain), "

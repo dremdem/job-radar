@@ -197,7 +197,7 @@ def latest_thread(data: dict[str, t.Any]) -> dict[str, t.Any] | None:
 
 
 def _add(session: sa_orm.Session, post: HackerNewsPost) -> None:
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
     score = scoring_rules.score_job(post.title, post.location)
     opportunity = models.Opportunity(
@@ -218,7 +218,7 @@ def _add(session: sa_orm.Session, post: HackerNewsPost) -> None:
     if post.description:
         dedup.add_snapshot(session, record, post.description)
     session.refresh(opportunity)
-    auto_ignore.apply_rules(session, opportunity)
+    review_auto_ignore.apply_rules(session, opportunity)
 
 
 def import_hackernews(session: sa_orm.Session, client: Client) -> HackerNewsStats:

@@ -4,10 +4,10 @@ bookmarklet (docs/linkedin-capture.md).
 
 import sqlalchemy as sa
 
-import job_radar.auto_ignore as auto_ignore
 import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.linkedin.capture as linkedin_capture
 import job_radar.models as models
+import job_radar.review.auto_ignore as review_auto_ignore
 
 # Card texts as LinkedIn's logged-in search page shows them (innerText), from the user's screen.
 PFIZER = """Staff Software Engineer (AI Backend Services)
@@ -279,12 +279,12 @@ def test_not_accepting_page_keeps_the_description_and_is_auto_ignored(session):
     assert o.not_accepting_at is not None
     assert (o.state, o.auto_ignore_reason) == (
         models.OpportunityState.AUTO_IGNORE,
-        auto_ignore.NOT_ACCEPTING_REASON,
+        review_auto_ignore.NOT_ACCEPTING_REASON,
     )
 
 
 def test_not_accepting_stays_in_review_when_the_rule_is_off(session):
-    auto_ignore.save_rules(session, auto_ignore.Rules(unavailable=False))
+    review_auto_ignore.save_rules(session, review_auto_ignore.Rules(unavailable=False))
     linkedin_capture.import_capture(session, not_accepting_payload(True))
     o = captured(session)
     assert o.not_accepting_at is not None
@@ -300,7 +300,7 @@ def test_a_page_without_the_line_is_not_marked(session):
 def test_clearing_undoes_only_this_rule(session):
     linkedin_capture.import_capture(session, not_accepting_payload(True))
     o = captured(session)
-    auto_ignore.clear_unavailable(o)
+    review_auto_ignore.clear_unavailable(o)
     assert (o.not_accepting_at, o.state, o.auto_ignore_reason) == (
         None,
         models.OpportunityState.NEW,

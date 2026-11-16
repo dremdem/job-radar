@@ -10,10 +10,10 @@ import time
 import pytest
 import sqlalchemy as sa
 
-import job_radar.auto_ignore as auto_ignore
 import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.linkedin.chrome as linkedin_chrome
 import job_radar.models as models
+import job_radar.review.auto_ignore as review_auto_ignore
 
 VISIBLE = "We build payments.\nRequirements:\n- Python, FastAPI"
 FOLDED = "\n- PostgreSQL\nFully remote, worldwide."
@@ -677,12 +677,12 @@ def test_unavailable_hh_vacancy_is_marked_and_the_run_goes_on(session):
     assert opportunity_of(session, "4235") not in events(session)
     assert (opportunity.state, opportunity.auto_ignore_reason) == (
         models.OpportunityState.AUTO_IGNORE,
-        auto_ignore.UNAVAILABLE_REASON,
+        review_auto_ignore.UNAVAILABLE_REASON,
     )
 
 
 def test_unavailable_vacancy_stays_in_review_when_the_rule_is_off(session):
-    auto_ignore.save_rules(session, auto_ignore.Rules(unavailable=False))
+    review_auto_ignore.save_rules(session, review_auto_ignore.Rules(unavailable=False))
     hh_vacancy(session, "4235")
     run(session, FakeBrowser({"4235": unavailable_page("4235")}))
     opportunity = session.get(models.Opportunity, opportunity_of(session, "4235"))
@@ -694,13 +694,15 @@ def test_unavailable_vacancy_stays_in_review_when_the_rule_is_off(session):
 
 
 def test_unavailable_vacancy_is_not_opened_again_until_cleared(session):
-    auto_ignore.save_rules(session, auto_ignore.Rules(unavailable=False))
+    review_auto_ignore.save_rules(session, review_auto_ignore.Rules(unavailable=False))
     hh_vacancy(session, "4235")
     run(session, FakeBrowser({"4235": unavailable_page("4235")}))
     again = FakeBrowser()
     assert run(session, again).total == 0
     assert not [c for c in again.calls if c[0] in ("open_tab", "navigate")]
-    auto_ignore.clear_unavailable(session.get(models.Opportunity, opportunity_of(session, "4235")))
+    review_auto_ignore.clear_unavailable(
+        session.get(models.Opportunity, opportunity_of(session, "4235"))
+    )
     session.commit()
     assert run(session, FakeBrowser()).saved == 1
 
@@ -709,7 +711,7 @@ def test_clearing_brings_back_a_vacancy_only_this_rule_moved(session):
     hh_vacancy(session, "4235")
     run(session, FakeBrowser({"4235": unavailable_page("4235")}))
     opportunity = session.get(models.Opportunity, opportunity_of(session, "4235"))
-    auto_ignore.clear_unavailable(opportunity)
+    review_auto_ignore.clear_unavailable(opportunity)
     assert opportunity.unavailable_at is None
     assert (opportunity.state, opportunity.auto_ignore_reason) == (
         models.OpportunityState.NEW,
@@ -719,7 +721,7 @@ def test_clearing_brings_back_a_vacancy_only_this_rule_moved(session):
         dt.datetime.now(dt.UTC),
         models.OpportunityState.IGNORE,
     )
-    auto_ignore.clear_unavailable(opportunity)
+    review_auto_ignore.clear_unavailable(opportunity)
     # your own state is yours
     assert opportunity.state is models.OpportunityState.IGNORE
 
@@ -870,7 +872,7 @@ def test_status_shows_a_bar_and_counts_per_source(engine, database_url, tmp_path
 
 
 def test_fill_marks_are_not_contacts_or_your_actions(engine, session):
-    import job_radar.contacts as contacts
+    import job_radar.history.contacts as history_contacts
     import job_radar.web.app as web_app
 
     hh_vacancy(session, "4235")
@@ -880,7 +882,7 @@ def test_fill_marks_are_not_contacts_or_your_actions(engine, session):
     run(session, FakeBrowser({"4235": broken}))
     oid = opportunity_of(session, "4235")
     company_id = session.get(models.Opportunity, oid).company_id
-    history = contacts.company_history(session, company_id)
+    history = history_contacts.company_history(session, company_id)
     # shown with the vacancy
     assert [e.kind for e in history] == [models.FILL_PROBLEM]
     assert "HeadHunter" not in history[0].text and "net::ERR" in history[0].text
@@ -893,13 +895,13 @@ def test_fill_marks_are_not_contacts_or_your_actions(engine, session):
 
 
 def test_not_accepting_vacancy_is_not_opened_again_until_cleared(session):
-    auto_ignore.save_rules(session, auto_ignore.Rules(unavailable=False))
+    review_auto_ignore.save_rules(session, review_auto_ignore.Rules(unavailable=False))
     hh_vacancy(session, "4235")
     opportunity = session.get(models.Opportunity, opportunity_of(session, "4235"))
     opportunity.not_accepting_at = dt.datetime.now(dt.UTC)
     session.commit()
     assert run(session, FakeBrowser()).total == 0
-    auto_ignore.clear_unavailable(opportunity)
+    review_auto_ignore.clear_unavailable(opportunity)
     session.commit()
     assert run(session, FakeBrowser()).total == 1
 

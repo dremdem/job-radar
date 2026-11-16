@@ -10,7 +10,7 @@ Main entry points: ``link_and_label`` (idempotent), ``company_history``,
 docs/applications.md#company-history.
 
 Usage:
-    import job_radar.contacts as contacts
+    import job_radar.history.contacts as history_contacts
 """
 
 import collections
@@ -21,11 +21,11 @@ import re
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
-import job_radar.applications as applications
 import job_radar.dedup as dedup
+import job_radar.history.applications as history_applications
+import job_radar.history.rejections as history_rejections
 import job_radar.models as models
-import job_radar.notes as notes
-import job_radar.rejections as rejections
+import job_radar.review.notes as review_notes
 
 EXACT, PROBABLE = "exact", "probable"
 FREE_MAIL = {
@@ -48,7 +48,7 @@ _LINKEDIN_VIEWED = re.compile(r"your application was viewed by (?P<company>.+)$"
 
 def classify(subject: str, snippet: str) -> str:
     text = f"{subject}\n{snippet}"
-    if rejections.WORDING.search(text) or _RUSSIAN_REJECTION.search(text):
+    if history_rejections.WORDING.search(text) or _RUSSIAN_REJECTION.search(text):
         return "rejection"
     if _INTERVIEW.search(text):
         return "interview"
@@ -61,11 +61,11 @@ def _as_utc(value: dt.datetime) -> dt.datetime:
 
 
 def _domain(from_addr: str) -> str:
-    return applications._split_sender(from_addr)[1].rpartition("@")[2]
+    return history_applications._split_sender(from_addr)[1].rpartition("@")[2]
 
 
 def _is_ats(domain: str) -> bool:
-    return any(domain == d or domain.endswith("." + d) for d in applications.ATS_DOMAINS)
+    return any(domain == d or domain.endswith("." + d) for d in history_applications.ATS_DOMAINS)
 
 
 def _is_company_domain(domain: str) -> bool:
@@ -106,7 +106,7 @@ def _undo_ats_domains(session: sa_orm.Session, emails: list[models.EmailMessage]
     for e in emails:
         if e.company_id not in learned or _domain(e.from_addr) not in learned[e.company_id]:
             continue
-        name = applications.ats_subject_company(e.subject)
+        name = history_applications.ats_subject_company(e.subject)
         current = session.get(models.Company, e.company_id)
         if name and dedup.normalize_company_name(name) != current.normalized_name:
             _link(e, dedup.get_or_create_company(session, name).id, EXACT)
@@ -221,14 +221,18 @@ def link_and_label(session: sa_orm.Session) -> ContactStats:
             continue
         if classify(e.subject, e.snippet) != "rejection":
             continue
-        display, address = applications._split_sender(e.from_addr)
+        display, address = history_applications._split_sender(e.from_addr)
         domain = address.rpartition("@")[2]
-        name = applications._ats_company(display, domain, e.subject) if _is_ats(domain) else None
+        name = (
+            history_applications._ats_company(display, domain, e.subject)
+            if _is_ats(domain)
+            else None
+        )
         if e.company_id is None and name:
             _link(e, dedup.get_or_create_company(session, name).id, EXACT)
         e.detected_event = "rejection"
         if e.company_id is not None:
-            rejections.mark_rejected(
+            history_rejections.mark_rejected(
                 session,
                 company_id=e.company_id,
                 source=models.RejectionSource.GMAIL,
@@ -258,7 +262,7 @@ def link_and_label(session: sa_orm.Session) -> ContactStats:
         ):
             label = "recruiter_outreach"
         if label == "rejection" and e.hidden_at is None:
-            rejections.mark_rejected(
+            history_rejections.mark_rejected(
                 session,
                 company_id=e.company_id,
                 source=models.RejectionSource.GMAIL,
@@ -395,10 +399,10 @@ def company_history(session: sa_orm.Session, company_id: int) -> list[HistoryEve
             HistoryEvent(
                 _as_utc(note.created_at),
                 kind,
-                notes.describe(note),
+                review_notes.describe(note),
                 None,
                 note_id=note.id,
-                icon=notes.reason_icon(note.kind),
+                icon=review_notes.reason_icon(note.kind),
             )
         )
     for ev in session.scalars(

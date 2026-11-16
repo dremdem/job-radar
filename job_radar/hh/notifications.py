@@ -18,9 +18,9 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
+import job_radar.history.rejections as history_rejections
 import job_radar.mail as mail
 import job_radar.models as models
-import job_radar.rejections as rejections
 
 SENDER = "noreply@hh.ru"
 VACANCY_URL = "https://hh.ru/vacancy/{id}"
@@ -262,7 +262,7 @@ def import_hh_notifications(session: sa_orm.Session, fetch_body: mail.FetchBody 
         session.flush()
         email.company_id, email.company_match = company.id, "exact"
         rejected = notice.kind in ("rejection", "closed") or bool(
-            rejections.WORDING.search(notice.text)
+            history_rejections.WORDING.search(notice.text)
         )
         if not rejected:
             email.detected_event = OUTREACH_EVENT
@@ -281,7 +281,7 @@ def import_hh_notifications(session: sa_orm.Session, fetch_body: mail.FetchBody 
         if not session.scalar(
             sa.select(models.Rejection.id).where(models.Rejection.email_message_id == email.id)
         ):
-            rejections.mark_rejected(
+            history_rejections.mark_rejected(
                 session,
                 company_id=company.id,
                 opportunity_id=o.id if o else None,

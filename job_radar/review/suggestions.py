@@ -6,7 +6,7 @@ certain first; each is one tap in the queue that calls "ignore with reason" with
 kind, detail and comment. See docs/applications.md#reasons-and-notes.
 
 Usage:
-    import job_radar.suggestions as suggestions
+    import job_radar.review.suggestions as review_suggestions
 """
 
 import dataclasses

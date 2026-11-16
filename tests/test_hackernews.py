@@ -153,9 +153,9 @@ def test_sync_imports_kept_posts_once(session):
 
 
 def test_auto_ignore_rules_run_on_new_posts(session):
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
-    auto_ignore.save_rules(session, auto_ignore.Rules(countries=("Global",)))
+    review_auto_ignore.save_rules(session, review_auto_ignore.Rules(countries=("Global",)))
     hackernews.import_hackernews(session, FakeClient())
     o = session.scalar(
         sa.select(models.Opportunity)

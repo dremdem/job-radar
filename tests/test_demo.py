@@ -83,11 +83,11 @@ def test_demo_local_ai_finding_shows_in_the_queue(client, session):
 
 def test_remove_demo_takes_what_was_attached(session):
     import job_radar.manual as manual
-    import job_radar.notes as notes
+    import job_radar.review.notes as review_notes
 
     jr_demo.seed_demo(session)
     demo = session.scalars(sa.select(models.Opportunity)).first()
-    notes.add_note(session, demo, models.NoteKind.NOTE, comment="hi")
+    review_notes.add_note(session, demo, models.NoteKind.NOTE, comment="hi")
     manual.add_event(session, demo, "applied", dt.datetime.now(dt.UTC))
     session.commit()
     assert jr_demo.remove_demo(session) == len(jr_demo.DEMO_OPPORTUNITIES)

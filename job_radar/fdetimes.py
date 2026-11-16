@@ -165,7 +165,7 @@ class FDETimesStats:
 
 
 def _add(session: sa_orm.Session, job: FDEJob) -> None:
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
     score = scoring_rules.score_job(job.title, job.location or None)
     opportunity = models.Opportunity(
@@ -187,7 +187,7 @@ def _add(session: sa_orm.Session, job: FDEJob) -> None:
     )
     session.flush()
     session.refresh(opportunity)
-    auto_ignore.apply_rules(session, opportunity)
+    review_auto_ignore.apply_rules(session, opportunity)
 
 
 def import_fdetimes(
@@ -352,7 +352,7 @@ def import_descriptions(
     on_progress: cabc.Callable[[FDEDescriptionStats], None] | None = None,
 ) -> FDEDescriptionStats:
     """Description from the role page for To review vacancies without one (docs/fdetimes.md)."""
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
     def progress() -> None:
         if on_progress:
@@ -375,9 +375,9 @@ def import_descriptions(
             dedup.add_snapshot(session, record, description)
             stats.saved += 1
             session.refresh(opportunity)
-            auto_ignore.apply_rules(session, opportunity)
+            review_auto_ignore.apply_rules(session, opportunity)
         elif status in GONE:
-            auto_ignore.mark_unavailable(session, opportunity)
+            review_auto_ignore.mark_unavailable(session, opportunity)
             stats.gone += 1
         elif status in BLOCKED:
             stats.blocked, stats.reason = True, f"HTTP {status}"

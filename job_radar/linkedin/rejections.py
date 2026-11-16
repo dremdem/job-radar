@@ -19,9 +19,9 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
+import job_radar.history.rejections as history_rejections
 import job_radar.mail as mail
 import job_radar.models as models
-import job_radar.rejections as rejections
 
 # LinkedIn application-update emails; distinct from the alert digest (jobalerts-...).
 APPLICATION_SENDER = "jobs-noreply@linkedin.com"
@@ -69,7 +69,7 @@ def detect_rejection(subject: str, body: str) -> RejectionInfo | None:
     match = _SUBJECT.match(subject.strip())
     if not match:
         return None
-    if not rejections.WORDING.search(body):
+    if not history_rejections.WORDING.search(body):
         return None
     return RejectionInfo(role=match["role"].strip(), company=match["company"].strip())
 
@@ -127,7 +127,7 @@ def import_rejections(
         email.detected_event = REJECTION_EVENT
         email.company_id = company.id
         email.company_match = "exact"
-        rejections.mark_rejected(
+        history_rejections.mark_rejected(
             session,
             company_id=company.id,
             source=models.RejectionSource.GMAIL,

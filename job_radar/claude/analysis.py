@@ -23,12 +23,12 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.ai.analysis as ai_analysis
-import job_radar.auto_ignore as auto_ignore
 import job_radar.claude.memory as claude_memory
 import job_radar.claude.prompt as claude_prompt
 import job_radar.claude.runner as claude_runner
 import job_radar.models as models
 import job_radar.profile.stack as profile_stack
+import job_radar.review.auto_ignore as review_auto_ignore
 import job_radar.scoring.description as scoring_description
 
 SETTINGS_KEY = "claude"
@@ -472,7 +472,7 @@ class Worker:
             job.finished_at = dt.datetime.now(dt.UTC)
             session.commit()
             # #245
-            if error is None and auto_ignore.apply_claude_rule(session, o):
+            if error is None and review_auto_ignore.apply_claude_rule(session, o):
                 session.commit()
             return True
 

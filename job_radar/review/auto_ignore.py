@@ -13,7 +13,7 @@ Main entry points: ``load_rules`` / ``save_rules``, ``apply_rules`` for one vaca
 docs/settings.md.
 
 Usage:
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 """
 
 import dataclasses
@@ -331,9 +331,9 @@ def apply_rules(
 
     First, a copy of a vacancy you applied to joins that one and leaves the queue (#269);
     True then too, and the caller's record now belongs to the applied vacancy."""
-    import job_radar.applied_duplicates as applied_duplicates
+    import job_radar.review.applied_duplicates as review_applied_duplicates
 
-    if applied_duplicates.fold_into_applied(session, opportunity) is not None:
+    if review_applied_duplicates.fold_into_applied(session, opportunity) is not None:
         return True
     rules = rules or load_rules(session)
     if not rules.any or opportunity.state is not models.OpportunityState.NEW:

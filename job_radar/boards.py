@@ -245,7 +245,7 @@ class BoardStats:
 
 
 def _add(session: sa_orm.Session, board: Board, job: BoardJob) -> None:
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
     score = scoring_rules.score_job(job.title, job.location)
     opportunity = models.Opportunity(
@@ -266,7 +266,7 @@ def _add(session: sa_orm.Session, board: Board, job: BoardJob) -> None:
     if job.description:
         dedup.add_snapshot(session, record, job.description)
     session.refresh(opportunity)
-    auto_ignore.apply_rules(session, opportunity)
+    review_auto_ignore.apply_rules(session, opportunity)
 
 
 def import_board(

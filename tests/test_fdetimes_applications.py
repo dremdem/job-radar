@@ -8,9 +8,9 @@ import datetime as dt
 
 import sqlalchemy as sa
 
-import job_radar.applications as applications
-import job_radar.contacts as contacts
 import job_radar.dedup as dedup
+import job_radar.history.applications as history_applications
+import job_radar.history.contacts as history_contacts
 import job_radar.models as models
 
 SENDER = "FDE Times <account@fdetimes.net>"
@@ -49,23 +49,26 @@ def vacancy(
 
 
 def test_detects_the_confirmation():
-    found = applications.detect_application(SENDER, SUBJECT, SNIPPET, None, None)
+    found = history_applications.detect_application(SENDER, SUBJECT, SNIPPET, None, None)
     assert (found.source, found.company, found.role) == (
         models.ApplicationSource.FDETIMES,
         "Northwind",
         ROLE,
     )
     # The last " at " splits: a role may contain "at" itself.
-    found = applications.detect_application(
+    found = history_applications.detect_application(
         SENDER, "Application received: Lead at Scale at Acme AI", "", None, None
     )
     assert (found.company, found.role) == ("Acme AI", "Lead at Scale")
     assert (
-        applications.detect_application(SENDER, "Confirm your email for FDE Times", "", None, None)
+        history_applications.detect_application(
+            SENDER, "Confirm your email for FDE Times", "", None, None
+        )
         is None
     )
     assert (
-        applications.detect_application("x <account@example.com>", SUBJECT, "", None, None) is None
+        history_applications.detect_application("x <account@example.com>", SUBJECT, "", None, None)
+        is None
     )
 
 
@@ -73,7 +76,7 @@ def test_links_the_fdetimes_vacancy_and_marks_it_applied(session):
     o = vacancy(session)
     other = vacancy(session, source=models.SourceType.HIMALAYAS, ext="https://himalayas.app/x")
     email = add_mail(session)
-    stats = applications.import_applications(session)
+    stats = history_applications.import_applications(session)
     assert (stats.detected, stats.new) == (1, 1)
     app = session.scalar(sa.select(models.Application))
     assert (app.source, app.review, app.role, app.opportunity_id) == (
@@ -96,7 +99,7 @@ def test_links_the_fdetimes_vacancy_and_marks_it_applied(session):
 def test_another_source_when_fdetimes_has_none(session):
     o = vacancy(session, title=ROLE.upper(), source=models.SourceType.HIMALAYAS, ext="h1")
     add_mail(session)
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     assert session.scalar(sa.select(models.Application)).opportunity_id == o.id
     assert o.state is models.OpportunityState.APPLIED
 
@@ -104,7 +107,7 @@ def test_another_source_when_fdetimes_has_none(session):
 def test_creates_the_vacancy_when_missing(session):
     vacancy(session, title="Another role", ext="nw-2")
     add_mail(session)
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     app = session.scalar(sa.select(models.Application))
     o = session.get(models.Opportunity, app.opportunity_id)
     assert (o.title, o.company.name, o.state) == (
@@ -119,16 +122,16 @@ def test_mail_already_labelled_by_contacts_is_taken_again(session):
     email = add_mail(session)
     email.detected_event = "interview"
     session.commit()
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     assert email.detected_event == "application_confirmation"
     assert session.scalar(sa.select(models.Application)).source is models.ApplicationSource.FDETIMES
 
 
 def test_contacts_leave_the_confirmation_alone_and_it_is_imported_once(session):
     add_mail(session)
-    applications.import_applications(session)
-    contacts.link_and_label(session)
-    again = applications.import_applications(session)
+    history_applications.import_applications(session)
+    history_contacts.link_and_label(session)
+    again = history_applications.import_applications(session)
     assert again.detected == 0
     assert len(session.scalars(sa.select(models.Application)).all()) == 1
     assert (

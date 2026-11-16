@@ -1,4 +1,4 @@
-"""Tests for job_radar.auto_ignore: every rule, the settings round trip, and that only
+"""Tests for job_radar.review.auto_ignore: every rule, the settings round trip, and that only
 ``new`` vacancies are moved (docs/settings.md).
 """
 
@@ -6,14 +6,14 @@ import datetime as dt
 
 import sqlalchemy as sa
 
-import job_radar.auto_ignore as auto_ignore
 import job_radar.dedup as dedup
+import job_radar.history.rejections as history_rejections
 import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.models as models
-import job_radar.rejections as rejections
+import job_radar.review.auto_ignore as review_auto_ignore
 
 NOW = dt.datetime(2026, 9, 27, 12, 0, tzinfo=dt.UTC)
-ALL_ON = auto_ignore.Rules(hybrid=True, applied=True, ignored=True, rejected=True, days=90)
+ALL_ON = review_auto_ignore.Rules(hybrid=True, applied=True, ignored=True, rejected=True, days=90)
 
 
 def opp(
@@ -47,33 +47,37 @@ def applied(session, company, at):
 
 
 def test_rules_are_off_by_default(session):
-    rules = auto_ignore.load_rules(session)
+    rules = review_auto_ignore.load_rules(session)
     assert not (rules.hybrid or rules.applied or rules.ignored or rules.rejected)
     assert rules.days == 90
     assert (
-        auto_ignore.reason_for(session, opp(session, location="Madrid (Hybrid)"), rules, NOW)
+        review_auto_ignore.reason_for(session, opp(session, location="Madrid (Hybrid)"), rules, NOW)
         is None
     )
 
 
 def test_settings_round_trip(session):
-    auto_ignore.save_rules(session, ALL_ON)
-    assert auto_ignore.load_rules(session) == ALL_ON
+    review_auto_ignore.save_rules(session, ALL_ON)
+    assert review_auto_ignore.load_rules(session) == ALL_ON
 
 
 def test_hybrid_rule(session):
     assert (
-        auto_ignore.reason_for(session, opp(session, location="Berlin (Hybrid)"), ALL_ON, NOW)
+        review_auto_ignore.reason_for(
+            session, opp(session, location="Berlin (Hybrid)"), ALL_ON, NOW
+        )
         == "hybrid / on-site"
     )
     assert (
-        auto_ignore.reason_for(
+        review_auto_ignore.reason_for(
             session, opp(session, title="Backend Engineer (On-site)", location=None), ALL_ON, NOW
         )
         == "hybrid / on-site"
     )
     assert (
-        auto_ignore.reason_for(session, opp(session, location="Germany (Remote)"), ALL_ON, NOW)
+        review_auto_ignore.reason_for(
+            session, opp(session, location="Germany (Remote)"), ALL_ON, NOW
+        )
         is None
     )
 
@@ -81,11 +85,13 @@ def test_hybrid_rule(session):
 def test_applied_rule_respects_the_window(session):
     applied(session, "Capitole", NOW - dt.timedelta(days=10))
     assert (
-        auto_ignore.reason_for(session, opp(session), ALL_ON, NOW)
+        review_auto_ignore.reason_for(session, opp(session), ALL_ON, NOW)
         == "applied to Capitole on 2026-09-17"
     )
     applied(session, "Old Co", NOW - dt.timedelta(days=200))
-    assert auto_ignore.reason_for(session, opp(session, company="Old Co"), ALL_ON, NOW) is None
+    assert (
+        review_auto_ignore.reason_for(session, opp(session, company="Old Co"), ALL_ON, NOW) is None
+    )
 
 
 def test_applied_rule_counts_vacancies_you_marked_applied(session):
@@ -95,16 +101,16 @@ def test_applied_rule_counts_vacancies_you_marked_applied(session):
     session.commit()
     warsaw = opp(session, company="Sii Poland", location="Warsaw (Remote)")
     assert (
-        auto_ignore.reason_for(session, warsaw, ALL_ON, NOW)
+        review_auto_ignore.reason_for(session, warsaw, ALL_ON, NOW)
         == "applied to Sii Poland on 2026-09-24"
     )
     katowice.state_changed_at = NOW - dt.timedelta(days=200)
     session.commit()
-    assert auto_ignore.reason_for(session, warsaw, ALL_ON, NOW) is None
+    assert review_auto_ignore.reason_for(session, warsaw, ALL_ON, NOW) is None
     # The newer of the two counts: a confirmed application in the mail still wins.
     applied(session, "Sii Poland", NOW - dt.timedelta(days=1))
     assert (
-        auto_ignore.reason_for(session, warsaw, ALL_ON, NOW)
+        review_auto_ignore.reason_for(session, warsaw, ALL_ON, NOW)
         == "applied to Sii Poland on 2026-09-26"
     )
 
@@ -114,33 +120,39 @@ def test_ignored_rule_counts_only_your_own_ignore(session):
     first.updated_at = NOW - dt.timedelta(days=2)
     session.commit()
     assert (
-        auto_ignore.reason_for(session, opp(session), ALL_ON, NOW)
+        review_auto_ignore.reason_for(session, opp(session), ALL_ON, NOW)
         == "ignored another Capitole vacancy on 2026-09-25"
     )
     auto = opp(session, company="Auto Co", state=models.OpportunityState.AUTO_IGNORE)
-    assert auto_ignore.reason_for(session, opp(session, company="Auto Co"), ALL_ON, NOW) is None
+    assert (
+        review_auto_ignore.reason_for(session, opp(session, company="Auto Co"), ALL_ON, NOW) is None
+    )
     assert auto.id
 
 
 def test_rejected_rule_comes_first(session):
     company = dedup.get_or_create_company(session, "Capitole")
-    rejections.mark_rejected(session, company_id=company.id, rejected_at=NOW - dt.timedelta(days=5))
+    history_rejections.mark_rejected(
+        session, company_id=company.id, rejected_at=NOW - dt.timedelta(days=5)
+    )
     applied(session, "Capitole", NOW - dt.timedelta(days=8))
     session.commit()
     assert (
-        auto_ignore.reason_for(session, opp(session), ALL_ON, NOW)
+        review_auto_ignore.reason_for(session, opp(session), ALL_ON, NOW)
         == "Capitole rejected you on 2026-09-22"
     )
 
 
 def test_each_rule_can_be_switched_off(session):
     applied(session, "Capitole", NOW - dt.timedelta(days=10))
-    rules = auto_ignore.Rules(hybrid=True, applied=False, ignored=True, rejected=True, days=90)
-    assert auto_ignore.reason_for(session, opp(session), rules, NOW) is None
+    rules = review_auto_ignore.Rules(
+        hybrid=True, applied=False, ignored=True, rejected=True, days=90
+    )
+    assert review_auto_ignore.reason_for(session, opp(session), rules, NOW) is None
 
 
 def test_new_vacancies_are_auto_ignored_on_import(session):
-    auto_ignore.save_rules(session, ALL_ON)
+    review_auto_ignore.save_rules(session, ALL_ON)
     linkedin_alerts.add_linkedin_job(
         session,
         linkedin_alerts.AlertJob("1", "Python Developer", "Acme", "Berlin (Hybrid)", None, False),
@@ -165,8 +177,8 @@ def test_apply_to_review_touches_only_new(session):
     hybrid_liked = opp(
         session, location="Munich (Hybrid)", state=models.OpportunityState.INTERESTED
     )
-    auto_ignore.save_rules(session, ALL_ON)
-    assert auto_ignore.apply_to_review(session, now=NOW) == 1
+    review_auto_ignore.save_rules(session, ALL_ON)
+    assert review_auto_ignore.apply_to_review(session, now=NOW) == 1
     for o in (hybrid_new, hybrid_liked):
         session.refresh(o)
     assert hybrid_new.state is models.OpportunityState.AUTO_IGNORE
@@ -189,26 +201,26 @@ def with_description(session, text, title="Backend Engineer"):
 
 
 def test_no_python_rule(session):
-    rules = auto_ignore.Rules(no_python=True)
-    assert auto_ignore.reason_for(
+    rules = review_auto_ignore.Rules(no_python=True)
+    assert review_auto_ignore.reason_for(
         session, with_description(session, "Go and Rust only."), rules, NOW
     ) == ("no Python in the description")
     assert (
-        auto_ignore.reason_for(
+        review_auto_ignore.reason_for(
             session, with_description(session, "Python and FastAPI."), rules, NOW
         )
         is None
     )
     # no description yet
-    assert auto_ignore.reason_for(session, opp(session), rules, NOW) is None
+    assert review_auto_ignore.reason_for(session, opp(session), rules, NOW) is None
     python_title = with_description(session, "Go only.", title="Python Developer")
-    assert auto_ignore.reason_for(session, python_title, rules, NOW) is None
+    assert review_auto_ignore.reason_for(session, python_title, rules, NOW) is None
 
 
 def test_description_from_the_bookmarklet_triggers_the_rule(session):
     import job_radar.linkedin.capture as linkedin_capture
 
-    auto_ignore.save_rules(session, auto_ignore.Rules(no_python=True))
+    review_auto_ignore.save_rules(session, review_auto_ignore.Rules(no_python=True))
     card = {"job_id": "501", "text": "Backend Engineer\nAcme\nGermany (Remote)"}
     linkedin_capture.import_capture(session, {"cards": [card]})
     o = session.scalar(sa.select(models.Opportunity))
@@ -246,14 +258,15 @@ def test_language_rule_reads_the_description(session):
     )
     session.commit()
     session.refresh(o)
-    assert auto_ignore.reason_for(session, o, auto_ignore.Rules()) is None
+    assert review_auto_ignore.reason_for(session, o, review_auto_ignore.Rules()) is None
     assert (
-        auto_ignore.reason_for(session, o, auto_ignore.Rules(language=True)) == "language: German"
+        review_auto_ignore.reason_for(session, o, review_auto_ignore.Rules(language=True))
+        == "language: German"
     )
 
 
 def test_country_rule_is_on_with_india_and_pakistan_by_default(session):
-    rules = auto_ignore.load_rules(session)
+    rules = review_auto_ignore.load_rules(session)
     assert rules.countries == ("India", "Pakistan") and rules.any
     for location in (
         "India (Remote)",
@@ -266,35 +279,39 @@ def test_country_rule_is_on_with_india_and_pakistan_by_default(session):
         "Lahore (Remote)",
         "Karnataka, India (Remote)",
     ):
-        reason = auto_ignore.reason_for(session, opp(session, location=location), rules, NOW)
+        reason = review_auto_ignore.reason_for(session, opp(session, location=location), rules, NOW)
         assert reason is not None and reason.startswith("country: "), location
-    assert auto_ignore.reason_for(
+    assert review_auto_ignore.reason_for(
         session, opp(session, location="Lahore (Remote)"), rules, NOW
     ) == ("country: Pakistan (Lahore (Remote))")
     for location in ("Indiana, United States (Remote)", "Spain (Remote)", None, ""):
         assert (
-            auto_ignore.reason_for(session, opp(session, location=location), rules, NOW) is None
+            review_auto_ignore.reason_for(session, opp(session, location=location), rules, NOW)
+            is None
         ), location
 
 
 def test_country_list_is_yours_and_empty_turns_it_off(session):
-    vietnam = auto_ignore.Rules(countries=("Vietnam",))
-    assert auto_ignore.reason_for(
+    vietnam = review_auto_ignore.Rules(countries=("Vietnam",))
+    assert review_auto_ignore.reason_for(
         session, opp(session, location="Hanoi, Vietnam"), vietnam, NOW
     ) == ("country: Vietnam (Hanoi, Vietnam)")
     assert (
-        auto_ignore.reason_for(session, opp(session, location="India (Remote)"), vietnam, NOW)
+        review_auto_ignore.reason_for(
+            session, opp(session, location="India (Remote)"), vietnam, NOW
+        )
         is None
     )
     # the other rule that is on by default (#276)
-    off = auto_ignore.Rules(countries=(), unavailable=False)
+    off = review_auto_ignore.Rules(countries=(), unavailable=False)
     assert not off.any
     assert (
-        auto_ignore.reason_for(session, opp(session, location="India (Remote)"), off, NOW) is None
+        review_auto_ignore.reason_for(session, opp(session, location="India (Remote)"), off, NOW)
+        is None
     )
-    auto_ignore.save_rules(session, vietnam)
+    review_auto_ignore.save_rules(session, vietnam)
     # a tuple again after the JSON round trip
-    assert auto_ignore.load_rules(session) == vietnam
+    assert review_auto_ignore.load_rules(session) == vietnam
 
 
 def test_new_india_vacancy_goes_to_auto_ignored_on_import(session):
@@ -325,59 +342,62 @@ def claude_says(session, o, verdict="skip", kind="location", detail="EU only"):
 
 
 def test_claude_skip_rule_only_for_the_chosen_reasons(session):
-    rules = auto_ignore.Rules(countries=(), claude_kinds=("location", "work_format"))
+    rules = review_auto_ignore.Rules(countries=(), claude_kinds=("location", "work_format"))
     eu, hybrid, stack = opp(session), opp(session, company="B"), opp(session, company="C")
     claude_says(session, eu, kind="location", detail="EU only")
     claude_says(session, hybrid, kind="work_format", detail="hybrid London")
     claude_says(session, stack, kind="stack", detail="C# .NET")
-    assert auto_ignore.reason_for(session, eu, rules, NOW) == "Claude: location: EU only"
+    assert review_auto_ignore.reason_for(session, eu, rules, NOW) == "Claude: location: EU only"
     assert (
-        auto_ignore.reason_for(session, hybrid, rules, NOW)
+        review_auto_ignore.reason_for(session, hybrid, rules, NOW)
         == "Claude: hybrid / on-site: hybrid London"
     )
     # stack: you look yourself
-    assert auto_ignore.reason_for(session, stack, rules, NOW) is None
+    assert review_auto_ignore.reason_for(session, stack, rules, NOW) is None
     # off by default
-    assert auto_ignore.reason_for(session, eu, auto_ignore.Rules(countries=()), NOW) is None
+    assert (
+        review_auto_ignore.reason_for(session, eu, review_auto_ignore.Rules(countries=()), NOW)
+        is None
+    )
 
 
 def test_claude_skip_rule_any_reason(session):
-    rules = auto_ignore.Rules(countries=(), claude_any=True)
+    rules = review_auto_ignore.Rules(countries=(), claude_any=True)
     stack, old = opp(session), opp(session, company="Old")
     claude_says(session, stack, kind="stack", detail="")
     # an analysis from before ignore_reason
     claude_says(session, old, kind=None)
-    assert auto_ignore.reason_for(session, stack, rules, NOW) == "Claude: stack"
-    assert auto_ignore.reason_for(session, old, rules, NOW) == "Claude: skip"
+    assert review_auto_ignore.reason_for(session, stack, rules, NOW) == "Claude: stack"
+    assert review_auto_ignore.reason_for(session, old, rules, NOW) == "Claude: skip"
     # Picked reasons alone never match an analysis without one.
     assert (
-        auto_ignore.reason_for(
-            session, old, auto_ignore.Rules(countries=(), claude_kinds=("other",)), NOW
+        review_auto_ignore.reason_for(
+            session, old, review_auto_ignore.Rules(countries=(), claude_kinds=("other",)), NOW
         )
         is None
     )
 
 
 def test_claude_skip_rule_ignores_apply_and_maybe_and_uses_the_latest(session):
-    rules = auto_ignore.Rules(countries=(), claude_any=True)
+    rules = review_auto_ignore.Rules(countries=(), claude_any=True)
     o = opp(session)
     claude_says(session, o, verdict="maybe", kind="none", detail="")
-    assert auto_ignore.reason_for(session, o, rules, NOW) is None
+    assert review_auto_ignore.reason_for(session, o, rules, NOW) is None
     # skip
     claude_says(session, o)
     # analysed again
     claude_says(session, o, verdict="apply", kind="none", detail="")
-    assert auto_ignore.reason_for(session, o, rules, NOW) is None
+    assert review_auto_ignore.reason_for(session, o, rules, NOW) is None
 
 
 def test_claude_skip_rule_round_trip_and_apply_to_review(session):
-    rules = auto_ignore.Rules(countries=(), claude_kinds=("location",))
-    auto_ignore.save_rules(session, rules)
-    assert auto_ignore.load_rules(session) == rules
+    rules = review_auto_ignore.Rules(countries=(), claude_kinds=("location",))
+    review_auto_ignore.save_rules(session, rules)
+    assert review_auto_ignore.load_rules(session) == rules
     new, mine = opp(session), opp(session, company="B", state=models.OpportunityState.INTERESTED)
     claude_says(session, new)
     claude_says(session, mine)
-    assert auto_ignore.apply_to_review(session, NOW) == 1
+    assert review_auto_ignore.apply_to_review(session, NOW) == 1
     assert (new.state, new.auto_ignore_reason) == (
         models.OpportunityState.AUTO_IGNORE,
         "Claude: location: EU only",

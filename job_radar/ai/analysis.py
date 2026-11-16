@@ -219,7 +219,7 @@ def analyze_pending(
     profile: profile_stack.Profile | None = None,
 ) -> AnalysisStats:
     """Work mode and residence for new descriptions; the stack check when `known` is given."""
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
     if profile is not None:
         known = profile.known_set
@@ -261,7 +261,7 @@ def analyze_pending(
         session.flush()
         stats.analyzed += 1
         stats.flagged += bool(scoring_findings.risks(analysis, profile))
-        auto_ignore.apply_rules(session, opportunity)
+        review_auto_ignore.apply_rules(session, opportunity)
         session.commit()
     return stats
 
