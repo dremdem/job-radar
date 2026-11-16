@@ -23,20 +23,20 @@ import job_radar.config as config
 import job_radar.db as db
 
 if t.TYPE_CHECKING:
-    import job_radar.linkedin.public as linkedin_public
+    import job_radar.sources.linkedin.public as linkedin_public
 
 Echo = cabc.Callable[[str], None]
 
 
 def import_linkedin(session: sa_orm.Session, echo: Echo) -> None:
-    import job_radar.linkedin.alerts as linkedin_alerts
+    import job_radar.sources.linkedin.alerts as linkedin_alerts
 
     stats = linkedin_alerts.import_alerts(session)
     echo(f"linkedin: {stats.emails} alert emails, {stats.jobs} jobs, {stats.new} new")
 
 
 def import_linkedin_search(session: sa_orm.Session, settings: config.Settings, echo: Echo) -> None:
-    import job_radar.linkedin.public as linkedin_public
+    import job_radar.sources.linkedin.public as linkedin_public
 
     if not settings.linkedin_public_search:
         echo(
@@ -83,8 +83,8 @@ def fetch_descriptions(
     """Descriptions from LinkedIn's public job pages, then from FDE Times role pages, each
     with the guest pause from Settings (#205). The counts are summed; ``blocked`` stays
     LinkedIn's, FDE Times' own stop goes to ``echo``. ``page_get``: tests pass a fake."""
-    import job_radar.fdetimes as fdetimes
-    import job_radar.linkedin.public as linkedin_public
+    import job_radar.sources.boards.fdetimes as boards_fdetimes
+    import job_radar.sources.linkedin.public as linkedin_public
 
     pause = linkedin_public.load_pause(session)
     stats = linkedin_public.DescriptionStats()
@@ -112,9 +112,9 @@ def fetch_descriptions(
         return out
 
     options = {"http_get": page_get} if page_get else {}
-    fde = fdetimes.import_descriptions(
+    fde = boards_fdetimes.import_descriptions(
         session,
-        fdetimes.PageClient(
+        boards_fdetimes.PageClient(
             pause=(pause.pause_from, pause.pause_to), stop=stop, on_wait=on_wait, **options
         ),
         max_per_run=settings.fdetimes_max_descriptions,
@@ -140,7 +140,7 @@ def chrome_fill_job(settings: config.Settings, job) -> None:
     import dataclasses
     import os
 
-    import job_radar.linkedin.chrome as linkedin_chrome
+    import job_radar.sources.linkedin.chrome as linkedin_chrome
 
     env = dict(os.environ)
     if settings.playwright_mcp_extension_token:
@@ -229,10 +229,10 @@ def import_telegram(session: sa_orm.Session, settings: config.Settings, echo: Ec
     import asyncio
     import datetime as dt
 
-    import job_radar.telegram.digest as telegram_digest
-    import job_radar.telegram.mcp_reader as telegram_mcp_reader
-    import job_radar.telegram.sources as telegram_sources
-    import job_radar.telegram.sync as telegram_sync
+    import job_radar.sources.telegram.digest as telegram_digest
+    import job_radar.sources.telegram.mcp_reader as telegram_mcp_reader
+    import job_radar.sources.telegram.sources as telegram_sources
+    import job_radar.sources.telegram.sync as telegram_sync
 
     if not settings.telegram_mcp_command:
         echo("telegram: not configured; set JOB_RADAR_TELEGRAM_MCP_COMMAND (see docs/telegram.md).")
@@ -277,14 +277,14 @@ def import_himalayas(
     session: sa_orm.Session, settings: config.Settings, echo: Echo, client=None
 ) -> None:
     """Fresh worldwide Python jobs from the Himalayas public API (docs/himalayas.md)."""
-    import job_radar.himalayas as himalayas
+    import job_radar.sources.boards.himalayas as boards_himalayas
 
     if not settings.himalayas:
         echo("himalayas: disabled (JOB_RADAR_HIMALAYAS=false).")
         return
-    stats = himalayas.import_himalayas(
+    stats = boards_himalayas.import_himalayas(
         session,
-        client or himalayas.HimalayasClient(),
+        client or boards_himalayas.HimalayasClient(),
         first_run_days=settings.himalayas_first_run_days,
     )
     echo(
@@ -301,12 +301,12 @@ def import_boards(
     session: sa_orm.Session, settings: config.Settings, echo: Echo, client=None
 ) -> None:
     """Remotive, Working Nomads, We Work Remotely (docs/boards.md)."""
-    import job_radar.boards as boards
+    import job_radar.sources.boards.feeds as boards_feeds
 
     if not settings.boards:
         echo("boards: disabled (JOB_RADAR_BOARDS=false).")
         return
-    results = boards.import_boards(session, client or boards.HttpClient())
+    results = boards_feeds.import_boards(session, client or boards_feeds.HttpClient())
     for s in results:
         if s.waited:
             echo(f"boards: {s.label}: read less than 6 h ago, skipped")
@@ -324,12 +324,12 @@ def import_jobicy(
     session: sa_orm.Session, settings: config.Settings, echo: Echo, client=None
 ) -> None:
     """Fresh Python jobs from the Jobicy API (docs/jobicy.md)."""
-    import job_radar.jobicy as jobicy
+    import job_radar.sources.boards.jobicy as boards_jobicy
 
     if not settings.jobicy:
         echo("jobicy: disabled (JOB_RADAR_JOBICY=false).")
         return
-    stats = jobicy.import_jobicy(session, client or jobicy.JobicyClient())
+    stats = boards_jobicy.import_jobicy(session, client or boards_jobicy.JobicyClient())
     echo(
         f"jobicy: {stats.pages} pages, {stats.jobs} fresh jobs, {stats.new} new, "
         f"{stats.known} already stored, {stats.skipped} skipped as noise"
@@ -342,16 +342,16 @@ def import_fdetimes(
     session: sa_orm.Session, settings: config.Settings, echo: Echo, client=None
 ) -> None:
     """Fresh Forward Deployed Engineer roles from FDE Times (docs/fdetimes.md)."""
-    import job_radar.fdetimes as fdetimes
+    import job_radar.sources.boards.fdetimes as boards_fdetimes
 
     if not settings.fdetimes:
         echo("fdetimes: disabled (JOB_RADAR_FDETIMES=false).")
         return
-    stats = fdetimes.import_fdetimes(
+    stats = boards_fdetimes.import_fdetimes(
         session,
-        client or fdetimes.FDETimesClient(),
+        client or boards_fdetimes.FDETimesClient(),
         first_run_days=settings.fdetimes_first_run_days,
-        regions=fdetimes.parse_regions(settings.fdetimes_regions),
+        regions=boards_fdetimes.parse_regions(settings.fdetimes_regions),
         related=settings.fdetimes_related,
     )
     if stats.error:
@@ -367,12 +367,12 @@ def import_remoteok(
     session: sa_orm.Session, settings: config.Settings, echo: Echo, client=None
 ) -> None:
     """Fresh Python jobs from the Remote OK feed (docs/remoteok.md)."""
-    import job_radar.remoteok as remoteok
+    import job_radar.sources.boards.remoteok as boards_remoteok
 
     if not settings.remoteok:
         echo("remoteok: disabled (JOB_RADAR_REMOTEOK=false).")
         return
-    stats = remoteok.import_remoteok(session, client or remoteok.RemoteOKClient())
+    stats = boards_remoteok.import_remoteok(session, client or boards_remoteok.RemoteOKClient())
     if stats.error:
         echo(f"remoteok: could not read the feed: {stats.error}")
         return
@@ -386,12 +386,14 @@ def import_hackernews(
     session: sa_orm.Session, settings: config.Settings, echo: Echo, client=None
 ) -> None:
     """Remote Python posts from "Ask HN: Who is hiring?" (docs/hackernews.md)."""
-    import job_radar.hackernews as hackernews
+    import job_radar.sources.boards.hackernews as boards_hackernews
 
     if not settings.hackernews:
         echo("hackernews: disabled (JOB_RADAR_HACKERNEWS=false).")
         return
-    stats = hackernews.import_hackernews(session, client or hackernews.HackerNewsClient())
+    stats = boards_hackernews.import_hackernews(
+        session, client or boards_hackernews.HackerNewsClient()
+    )
     if stats.error:
         echo(f"hackernews: could not read the thread: {stats.error}")
         return
@@ -435,8 +437,8 @@ def analyze_descriptions(
 def gmail_client_or_none(settings: config.Settings):
     import google.auth.exceptions as auth_exceptions
 
-    import job_radar.gmail.auth as gmail_auth
-    import job_radar.gmail.client as gmail_client
+    import job_radar.sources.gmail.auth as gmail_auth
+    import job_radar.sources.gmail.client as gmail_client
 
     try:
         return gmail_client.ApiGmailClient(gmail_auth.load_credentials(settings.gmail_token))
@@ -454,8 +456,8 @@ def import_rejections(
     recheck: bool = False,
     use_gmail: bool = True,
 ) -> None:
-    import job_radar.gmail.client as gmail_client
-    import job_radar.linkedin.rejections as linkedin_rejections
+    import job_radar.sources.gmail.client as gmail_client
+    import job_radar.sources.linkedin.rejections as linkedin_rejections
 
     if use_gmail:
         client = client or gmail_client_or_none(settings)
@@ -482,8 +484,8 @@ def import_applications(
     *,
     use_gmail: bool = True,
 ) -> None:
-    import job_radar.gmail.client as gmail_client
     import job_radar.history.applications as history_applications
+    import job_radar.sources.gmail.client as gmail_client
 
     if use_gmail:
         client = client or gmail_client_or_none(settings)
@@ -512,9 +514,9 @@ def import_hh(
     use_gmail: bool = True,
 ) -> None:
     """Rejections, applications and employer messages from hh.ru mail (docs/hh.md)."""
-    import job_radar.gmail.client as gmail_client
-    import job_radar.hh.digests as hh_digests
-    import job_radar.hh.notifications as hh_notifications
+    import job_radar.sources.gmail.client as gmail_client
+    import job_radar.sources.hh.digests as hh_digests
+    import job_radar.sources.hh.notifications as hh_notifications
 
     if use_gmail:
         client = client or gmail_client_or_none(settings)
@@ -584,7 +586,7 @@ def describe_error(error: Exception) -> str:
     """A failed step's reason, with what to do for the usual ones."""
     import google.auth.exceptions as auth_exceptions
 
-    import job_radar.gmail.auth as gmail_auth
+    import job_radar.sources.gmail.auth as gmail_auth
 
     if isinstance(error, auth_exceptions.RefreshError):
         return "Gmail access expired or revoked: run `./jr auth` (docs/gmail.md)"
@@ -618,9 +620,9 @@ def run_sync(
 ) -> list[Step]:
     """Every source and analysis, each on its own: a failed step does not stop the rest.
     ``start_descriptions``: the web UI fetches descriptions in a background job (#205)."""
-    import job_radar.gmail.auth as gmail_auth
-    import job_radar.gmail.client as gmail_client
-    import job_radar.gmail.sync as gmail_sync
+    import job_radar.sources.gmail.auth as gmail_auth
+    import job_radar.sources.gmail.client as gmail_client
+    import job_radar.sources.gmail.sync as gmail_sync
 
     progress_echo = progress_echo or echo
     enabled = {

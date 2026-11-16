@@ -1,4 +1,4 @@
-"""Tests for job_radar.hh.notifications: rejections, applications and employer
+"""Tests for job_radar.sources.hh.notifications: rejections, applications and employer
 messages from hh.ru mail, and merging duplicates (docs/hh.md).
 """
 
@@ -8,8 +8,8 @@ import pathlib
 import pytest
 import sqlalchemy as sa
 
-import job_radar.hh.notifications as hh_notifications
 import job_radar.models as models
+import job_radar.sources.hh.notifications as hh_notifications
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "hh"
 

@@ -9,9 +9,9 @@ import sqlalchemy as sa
 import test_public_descriptions
 
 import job_radar.config as config
-import job_radar.linkedin.public as linkedin_public
 import job_radar.models as models
 import job_radar.pipeline as pipeline
+import job_radar.sources.linkedin.public as linkedin_public
 import job_radar.web.app as web_app
 
 NOW = dt.datetime(2026, 10, 17, 3, 0, tzinfo=dt.UTC)

@@ -25,7 +25,7 @@ A new tab opens on `/capture` and shows what was received: jobs on the page, new
 
 On a LinkedIn vacancy that says it is not accepting applications, the vacancy also gets a red **not accepting** badge and goes to Auto-ignored ([details](linkedin-chrome-fill.md#problems-with-one-vacancy)). A bookmarklet you added before this change does not know the line: drag it from the Capture page again.
 
-The reading itself lives in `job_radar/web/capture_read.js`; the bookmarklet wraps it, and the [Chrome fill](linkedin-chrome-fill.md) runs the very same function on the vacancy pages it opens, so the two never drift apart.
+The reading itself lives in `job_radar/sources/capture_read.js`; the bookmarklet wraps it, and the [Chrome fill](linkedin-chrome-fill.md) runs the very same function on the vacancy pages it opens, so the two never drift apart.
 
 LinkedIn changes its page layout from time to time. If cards come back empty or wrong, the capture page says so; send a screenshot and the parser gets a new rule and test.
 

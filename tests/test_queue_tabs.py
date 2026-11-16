@@ -348,7 +348,7 @@ def test_search_redraws_the_description_switch(client, session):
 def test_sort_by_last_action(client, session):
     import datetime as dt
 
-    import job_radar.manual as manual
+    import job_radar.sources.manual as sources_manual
 
     old = add(session, "Old role")
     old.score = 9.0
@@ -358,7 +358,7 @@ def test_sort_by_last_action(client, session):
     # Score order by default; Last action puts the one you touched first.
     text = client.get("/?tab=all").text
     assert text.index("Old role") < text.index("Fresh role two")
-    manual.add_event(
+    sources_manual.add_event(
         session, fresh, "call", dt.datetime.now(dt.UTC) - dt.timedelta(minutes=1), "recruiter"
     )
     text = client.get("/?tab=all&sort=recent").text

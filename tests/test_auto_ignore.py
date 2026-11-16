@@ -8,9 +8,9 @@ import sqlalchemy as sa
 
 import job_radar.dedup as dedup
 import job_radar.history.rejections as history_rejections
-import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.models as models
 import job_radar.review.auto_ignore as review_auto_ignore
+import job_radar.sources.linkedin.alerts as linkedin_alerts
 
 NOW = dt.datetime(2026, 9, 27, 12, 0, tzinfo=dt.UTC)
 ALL_ON = review_auto_ignore.Rules(hybrid=True, applied=True, ignored=True, rejected=True, days=90)
@@ -218,7 +218,7 @@ def test_no_python_rule(session):
 
 
 def test_description_from_the_bookmarklet_triggers_the_rule(session):
-    import job_radar.linkedin.capture as linkedin_capture
+    import job_radar.sources.linkedin.capture as linkedin_capture
 
     review_auto_ignore.save_rules(session, review_auto_ignore.Rules(no_python=True))
     card = {"job_id": "501", "text": "Backend Engineer\nAcme\nGermany (Remote)"}

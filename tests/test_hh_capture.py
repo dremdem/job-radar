@@ -1,11 +1,11 @@
-"""Tests for job_radar.hh.capture: an hh.ru vacancy page from the bookmarklet becomes
+"""Tests for job_radar.sources.hh.capture: an hh.ru vacancy page from the bookmarklet becomes
 a vacancy or fills in its description and work format (docs/hh.md).
 """
 
 import sqlalchemy as sa
 
-import job_radar.linkedin.capture as linkedin_capture
 import job_radar.models as models
+import job_radar.sources.linkedin.capture as linkedin_capture
 
 DESCRIPTION = "Мы ищем ML Engineer.\nТребования: Python, PyTorch, опыт от 3 лет."
 
@@ -70,7 +70,7 @@ def test_existing_hh_vacancy_gets_the_description_and_format(session):
 
 
 def test_on_site_and_unknown_format():
-    import job_radar.hh.capture as hh_capture
+    import job_radar.sources.hh.capture as hh_capture
 
     assert (
         hh_capture.location_for("Формат работы: на месте работодателя", "Москва")
@@ -98,7 +98,7 @@ def test_bookmarklet_knows_hh():
 
 
 def test_city_is_the_first_part_of_the_address():
-    import job_radar.hh.capture as hh_capture
+    import job_radar.sources.hh.capture as hh_capture
 
     assert hh_capture._city(" Москва , Тверская улица, 1 ") == "Москва"
     assert hh_capture._city("") == "" and hh_capture._city("   ") == ""

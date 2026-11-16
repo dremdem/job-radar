@@ -46,7 +46,7 @@ uv run job-radar sync gmail --query job_proposal
 uv run job-radar sync gmail --since 2026-01-01
 ```
 
-Queries (`job_radar/gmail/queries.py`):
+Queries (`job_radar/sources/gmail/queries.py`):
 
 | Name | Gmail query | Stores body | First run looks back |
 |---|---|---|---|
@@ -68,7 +68,7 @@ LinkedIn sends an "application update" email from `jobs-noreply@linkedin.com` wi
 a subject like `Your application to <role> at <company>` and a body that says the
 application will not move forward.
 
-`import_rejections` (`job_radar/linkedin/rejections.py`, run after `sync gmail` and
+`import_rejections` (`job_radar/sources/linkedin/rejections.py`, run after `sync gmail` and
 available as `job-radar import rejections`) treats an email as a rejection only when
 the subject matches **and** the body contains a rejection phrase. Company and role come
 from the subject, the date from the email; a `Rejection` is recorded (`source=gmail`,

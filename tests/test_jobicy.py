@@ -12,8 +12,8 @@ import pathlib
 
 import sqlalchemy as sa
 
-import job_radar.jobicy as jobicy
 import job_radar.models as models
+import job_radar.sources.boards.jobicy as boards_jobicy
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "jobicy"
 NOW = dt.datetime(2026, 10, 28, 4, 0, tzinfo=dt.UTC)
@@ -25,7 +25,7 @@ def page(n: int) -> dict:
 
 def job(title_start: str):
     raw = next(j for n in (1, 2) for j in page(n)["jobs"] if j["jobTitle"].startswith(title_start))
-    return jobicy.parse_job(raw)
+    return boards_jobicy.parse_job(raw)
 
 
 class FakeClient:
@@ -60,24 +60,24 @@ def test_fields_from_the_api():
 
 
 def test_anywhere_is_worldwide():
-    assert jobicy._location("Anywhere") == "Worldwide (Remote)"
-    assert jobicy._location("") == "Worldwide (Remote)"
-    assert jobicy._location("Canada,  USA") == "Remote, Canada, USA"
+    assert boards_jobicy._location("Anywhere") == "Worldwide (Remote)"
+    assert boards_jobicy._location("") == "Worldwide (Remote)"
+    assert boards_jobicy._location("Canada,  USA") == "Remote, Canada, USA"
 
 
 def test_title_filter():
-    assert jobicy.wants(job("Staff Backend Engineer"))
+    assert boards_jobicy.wants(job("Staff Backend Engineer"))
     # scientist
-    assert not jobicy.wants(job("Applied Data Scientist"))
-    assert not jobicy.wants(job("Lead Growth Analyst"))
-    assert not jobicy.wants(job("Infrastructure Security Engineer"))
-    assert not jobicy.wants(job("Technical Support Engineer"))
-    assert not jobicy.wants(job("Partner Sales Engineer"))
+    assert not boards_jobicy.wants(job("Applied Data Scientist"))
+    assert not boards_jobicy.wants(job("Lead Growth Analyst"))
+    assert not boards_jobicy.wants(job("Infrastructure Security Engineer"))
+    assert not boards_jobicy.wants(job("Technical Support Engineer"))
+    assert not boards_jobicy.wants(job("Partner Sales Engineer"))
 
 
 def test_first_run_reads_one_day_back(session):
     client = FakeClient()
-    stats = jobicy.import_jobicy(
+    stats = boards_jobicy.import_jobicy(
         session, client, now=dt.datetime(2026, 10, 27, 12, 0, tzinfo=dt.UTC), delay=0
     )
     # Since 2026-10-26 12:00: Staff Backend Engineer (new), the data scientist and the
@@ -91,7 +91,7 @@ def test_later_runs_page_back_to_the_last_run_and_import_once(session):
     # read since 2026-10-25
     last_run(session, dt.datetime(2026, 10, 26, tzinfo=dt.UTC))
     client = FakeClient()
-    stats = jobicy.import_jobicy(session, client, now=NOW, delay=0)
+    stats = boards_jobicy.import_jobicy(session, client, now=NOW, delay=0)
     assert client.cursors == [None, page(1)["nextCursor"]]
     # Page 1: 7 fresh, 5 new. Page 2: 3 fresh and skipped, 2 older and ignored; then stop.
     assert (stats.pages, stats.jobs, stats.new, stats.skipped) == (2, 10, 5, 5)
@@ -107,15 +107,15 @@ def test_later_runs_page_back_to_the_last_run_and_import_once(session):
     # Same window again: everything is already stored.
     session.get(models.SyncCursor, "jobicy").last_run_at = dt.datetime(2026, 10, 26, tzinfo=dt.UTC)
     session.commit()
-    again = jobicy.import_jobicy(session, FakeClient(), now=NOW, delay=0)
+    again = boards_jobicy.import_jobicy(session, FakeClient(), now=NOW, delay=0)
     assert (again.new, again.known) == (0, 5)
 
 
 def test_a_failed_page_keeps_the_last_run_so_nothing_is_missed(session):
     before = dt.datetime(2026, 10, 26, tzinfo=dt.UTC)
     last_run(session, before)
-    stats = jobicy.import_jobicy(
-        session, FakeClient([page(1), jobicy.JobicyError("HTTP 500")]), now=NOW, delay=0
+    stats = boards_jobicy.import_jobicy(
+        session, FakeClient([page(1), boards_jobicy.JobicyError("HTTP 500")]), now=NOW, delay=0
     )
     assert stats.error == "HTTP 500"
     # page 1 is stored
@@ -137,7 +137,7 @@ def test_sync_step_reports_counts_and_can_be_turned_off(session):
         session,
         config.Settings(jobicy=True),
         lines.append,
-        client=FakeClient([jobicy.JobicyError("HTTP 503")]),
+        client=FakeClient([boards_jobicy.JobicyError("HTTP 503")]),
     )
     assert lines == [
         "jobicy: 0 pages, 0 fresh jobs, 0 new, 0 already stored, 0 skipped as noise",

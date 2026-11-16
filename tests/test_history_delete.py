@@ -10,10 +10,10 @@ import test_manual
 import job_radar.history.applications as history_applications
 import job_radar.history.contacts as history_contacts
 import job_radar.history.rejections as history_rejections
-import job_radar.linkedin.rejections as linkedin_rejections
-import job_radar.manual as manual
 import job_radar.models as models
 import job_radar.review.notes as review_notes
+import job_radar.sources.linkedin.rejections as linkedin_rejections
+import job_radar.sources.manual as sources_manual
 
 
 def kinds(session, company_id) -> list[str]:
@@ -48,9 +48,9 @@ def test_every_record_on_the_card_has_a_delete_button(client, session):
     test_contacts.add_email(
         session, "m1", from_addr="anna@acme.com", subject="Quick chat?", company=o.company
     )
-    manual.add_event(session, o, "call", dt.datetime(2026, 10, 1, tzinfo=dt.UTC), "intro")
-    manual.add_event(session, o, "applied", dt.datetime(2026, 9, 1, tzinfo=dt.UTC))
-    manual.add_event(session, o, "rejection", dt.datetime(2026, 10, 2, tzinfo=dt.UTC))
+    sources_manual.add_event(session, o, "call", dt.datetime(2026, 10, 1, tzinfo=dt.UTC), "intro")
+    sources_manual.add_event(session, o, "applied", dt.datetime(2026, 9, 1, tzinfo=dt.UTC))
+    sources_manual.add_event(session, o, "rejection", dt.datetime(2026, 10, 2, tzinfo=dt.UTC))
     history = history_contacts.company_history(session, o.company_id)
     # the email, the call, the application and the rejection
     assert len(history) == 4

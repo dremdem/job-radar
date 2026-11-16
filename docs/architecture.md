@@ -34,7 +34,7 @@ flowchart TB
 
 ## A vacancy's path
 
-1. **Arrives.** A source module parses its input into a plain dataclass: an alert email (`linkedin/alerts.py`), an hh.ru digest (`hh/digests.py`), a Telegram post (`telegram/posts.py`), a board API page (`himalayas.py`, `boards.py`, …), or a page the user sends with the bookmarklet (`linkedin/capture.py`, `hh/capture.py`).
+1. **Arrives.** A source module parses its input into a plain dataclass: an alert email (`sources/linkedin/alerts.py`), an hh.ru digest (`sources/hh/digests.py`), a Telegram post (`sources/telegram/posts.py`), a board API page (`sources/boards/himalayas.py`, `sources/boards/feeds.py`, …), or a page the user sends with the bookmarklet (`sources/linkedin/capture.py`, `sources/hh/capture.py`).
 2. **Is stored once.** `dedup.py` upserts idempotently: one `Company` per normalized name (legal suffixes dropped, aliases), one `SourceRecord` per source and external id, one `JobSnapshot` per distinct description (by SHA-256). Re-running any import never creates duplicates. The same vacancy seen in two different sources stays two opportunities; only a repost of a vacancy already applied to (same company, same title) is merged into it (`review/applied_duplicates.py`).
 3. **Is scored.** `scoring/rules.py` gives 0–10 from title and location, every rule leaving a `Reason`. `scoring/description.py` adds Python-in-description checks; `review/notes.py` and `history/rejections.py` adjust for what the user said and what companies answered.
 4. **Is filtered.** `review/auto_ignore.py` moves noise out of *To review* (hybrid, country-only, Claude said skip, …), each with the rule's name; `review/applied_duplicates.py` attaches a repost of a vacancy already applied to.
@@ -94,7 +94,7 @@ uv run python -c "import sqlite3; sqlite3.connect('data/job_radar.db').backup(sq
 | Entry points | `cli.py` (`job-radar`), `web/app.py`, `./jr` (shell helper) |
 | Storage | `models.py`, `db.py`, `dedup.py`, `migrations/` (Alembic) |
 | Mail port | `mail.py` (`FetchBody`, `MessageGone`: what importers need from Gmail) |
-| Sources | `sources/titles.py` and `sources/http.py` (shared title filters, User-Agent, HTML reader), `gmail/`, `linkedin/`, `hh/`, `telegram/`, `himalayas.py`, `hackernews.py`, `remoteok.py`, `jobicy.py`, `fdetimes.py`, `boards.py`, `manual.py` |
+| Sources | `sources/gmail/`, `sources/linkedin/`, `sources/hh/`, `sources/telegram/`, `sources/boards/` (`himalayas.py`, `hackernews.py`, `remoteok.py`, `jobicy.py`, `fdetimes.py`, `feeds.py`), `sources/manual.py`, shared `sources/titles.py` and `sources/http.py` (title filters, User-Agent, HTML reader), `sources/capture_read.js` |
 | Profile | `profile/home.py`, `profile/stack.py` |
 | Scoring and filters | `scoring/rules.py`, `scoring/description.py`, `scoring/language.py`, `scoring/findings.py`, `review/notes.py`, `review/suggestions.py`, `review/auto_ignore.py`, `review/applied_duplicates.py` |
 | History | `history/applications.py`, `history/rejections.py`, `history/contacts.py` |

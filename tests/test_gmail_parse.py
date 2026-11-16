@@ -1,4 +1,4 @@
-"""Tests for job_radar.gmail.parse: headers, dates, direction and bodies of Gmail API
+"""Tests for job_radar.sources.gmail.parse: headers, dates, direction and bodies of Gmail API
 messages (docs/gmail.md).
 """
 
@@ -6,8 +6,8 @@ import datetime as dt
 
 import gmail_fakes
 
-import job_radar.gmail.parse as gmail_parse
 import job_radar.models as models
+import job_radar.sources.gmail.parse as gmail_parse
 
 SENT_AT = dt.datetime(2026, 9, 1, 10, 30, tzinfo=dt.UTC)
 

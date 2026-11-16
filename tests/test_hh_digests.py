@@ -1,4 +1,4 @@
-"""Tests for job_radar.hh.digests: parsing hh.ru subscription digests and importing
+"""Tests for job_radar.sources.hh.digests: parsing hh.ru subscription digests and importing
 their developer vacancies once (docs/hh.md#digests).
 """
 
@@ -7,8 +7,8 @@ import pathlib
 
 import sqlalchemy as sa
 
-import job_radar.hh.digests as hh_digests
 import job_radar.models as models
+import job_radar.sources.hh.digests as hh_digests
 
 DIGEST = (pathlib.Path(__file__).parent / "fixtures" / "hh" / "digest.html").read_text()
 

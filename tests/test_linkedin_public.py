@@ -1,4 +1,4 @@
-"""Tests for job_radar.linkedin.public: the opt-in guest search behind alert emails,
+"""Tests for job_radar.sources.linkedin.public: the opt-in guest search behind alert emails,
 its limits and stops on blocking (docs/linkedin-public-search.md).
 """
 
@@ -9,10 +9,10 @@ import re
 import pytest
 import sqlalchemy as sa
 
-import job_radar.linkedin.alerts as linkedin_alerts
-import job_radar.linkedin.public as linkedin_public
 import job_radar.models as models
 import job_radar.scoring.rules as scoring_rules
+import job_radar.sources.linkedin.alerts as linkedin_alerts
+import job_radar.sources.linkedin.public as linkedin_public
 
 FIXTURE = (
     pathlib.Path(__file__).parent / "fixtures" / "linkedin_public" / "search_page.html"

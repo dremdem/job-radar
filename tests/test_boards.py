@@ -10,8 +10,8 @@ import pathlib
 import pytest
 import sqlalchemy as sa
 
-import job_radar.boards as boards
 import job_radar.models as models
+import job_radar.sources.boards.feeds as boards_feeds
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "boards"
 NOW = dt.datetime(2026, 10, 28, 8, 0, tzinfo=dt.UTC)
@@ -40,7 +40,7 @@ class FakeClient:
     def get(self, url: str) -> bytes:
         self.urls.append(url)
         if self.fail and self.fail in url:
-            raise boards.BoardError("HTTP 503")
+            raise boards_feeds.BoardError("HTTP 503")
         return body_for(url)
 
 
@@ -49,14 +49,16 @@ def by_title(jobs, start):
 
 
 def test_locations():
-    assert boards.location("Worldwide") == "Worldwide (Remote)"
-    assert boards.location("Anywhere in the World") == "Worldwide (Remote)"
-    assert boards.location("") == "Worldwide (Remote)"
-    assert boards.location("USA Only") == "Remote, USA Only"
+    assert boards_feeds.location("Worldwide") == "Worldwide (Remote)"
+    assert boards_feeds.location("Anywhere in the World") == "Worldwide (Remote)"
+    assert boards_feeds.location("") == "Worldwide (Remote)"
+    assert boards_feeds.location("USA Only") == "Remote, USA Only"
 
 
 def test_remotive_fields():
-    j = by_title(boards.parse_remotive(fixture("remotive.json")), "Software Engineer, AI Coding")
+    j = by_title(
+        boards_feeds.parse_remotive(fixture("remotive.json")), "Software Engineer, AI Coding"
+    )
     assert (j.id, j.company, j.location) == ("2091158", "Askable", "Worldwide (Remote)")
     assert j.url.startswith("https://remotive.com/")
     assert j.published_at == dt.datetime(2026, 10, 17, 16, 4, 29, tzinfo=dt.UTC)
@@ -64,7 +66,7 @@ def test_remotive_fields():
 
 def test_working_nomads_fields():
     j = by_title(
-        boards.parse_workingnomads(fixture("workingnomads.json")), "Senior Django Developer"
+        boards_feeds.parse_workingnomads(fixture("workingnomads.json")), "Senior Django Developer"
     )
     assert (j.id, j.company, j.location) == ("1925616", "Proxify", "Remote, CET (+/- 3 hours)")
     # from -04:00
@@ -72,27 +74,29 @@ def test_working_nomads_fields():
 
 
 def test_we_work_remotely_splits_company_and_role():
-    j = by_title(boards.parse_weworkremotely(fixture("weworkremotely.rss")), "Applied AI Engineers")
+    j = by_title(
+        boards_feeds.parse_weworkremotely(fixture("weworkremotely.rss")), "Applied AI Engineers"
+    )
     assert (j.company, j.location) == ("Toptal", "Remote, USA Only")
     assert j.url == j.id and j.url.startswith("https://weworkremotely.com/remote-jobs/toptal-")
     assert "<p>" not in j.description and j.description
 
 
 def test_noise_filter():
-    jobs = boards.parse_remotive(fixture("remotive.json")) + boards.parse_workingnomads(
+    jobs = boards_feeds.parse_remotive(fixture("remotive.json")) + boards_feeds.parse_workingnomads(
         fixture("workingnomads.json")
     )
-    assert not boards.wants(by_title(jobs, "Freelance Writer"))
-    assert not boards.wants(by_title(jobs, "Looking For Online ESL Teachers"))
+    assert not boards_feeds.wants(by_title(jobs, "Freelance Writer"))
+    assert not boards_feeds.wants(by_title(jobs, "Looking For Online ESL Teachers"))
     # no Python
-    assert not boards.wants(by_title(jobs, "Tech Lead Full-Stack Rails"))
-    assert boards.wants(by_title(jobs, "Senior Backend Developer (Python)"))
+    assert not boards_feeds.wants(by_title(jobs, "Tech Lead Full-Stack Rails"))
+    assert boards_feeds.wants(by_title(jobs, "Senior Backend Developer (Python)"))
 
 
 def test_a_title_with_another_stack_and_no_python_is_skipped():
     # Lemon.io posts list Python in the boilerplate of every stack's vacancy.
     base = by_title(
-        boards.parse_workingnomads(fixture("workingnomads.json")), "Senior DevOps Engineer"
+        boards_feeds.parse_workingnomads(fixture("workingnomads.json")), "Senior DevOps Engineer"
     )
     assert "Python" in base.description
     for title in (
@@ -103,22 +107,22 @@ def test_a_title_with_another_stack_and_no_python_is_skipped():
         "Senior .NET Full-stack Developer",
         "Senior C++ Engineer",
     ):
-        assert not boards.wants(dataclasses.replace(base, title=title)), title
-    assert boards.wants(dataclasses.replace(base, title="Senior Python/React Developer"))
-    assert boards.wants(base)
+        assert not boards_feeds.wants(dataclasses.replace(base, title=title)), title
+    assert boards_feeds.wants(dataclasses.replace(base, title="Senior Python/React Developer"))
+    assert boards_feeds.wants(base)
 
 
 def test_we_work_remotely_location_is_the_region_not_the_country_list():
     rss = fixture("weworkremotely.rss").replace(
         b"<country></country>", b"<country>Andorra, Albania, Thailand</country>", 1
     )
-    jobs = boards.parse_weworkremotely(rss)
+    jobs = boards_feeds.parse_weworkremotely(rss)
     assert {j.location for j in jobs} <= {"Worldwide (Remote)", "Remote, USA Only"}
 
 
 def test_sync_imports_each_board_once(session):
     client = FakeClient()
-    results = boards.import_boards(session, client, now=NOW)
+    results = boards_feeds.import_boards(session, client, now=NOW)
     counts = {s.label: (s.jobs, s.old, s.skipped, s.new) for s in results}
     assert counts == {
         "Remotive": (4, 0, 2, 2),
@@ -126,33 +130,33 @@ def test_sync_imports_each_board_once(session):
         # Five jobs in both categories count once; one is from 2024.
         "We Work Remotely": (5, 1, 1, 3),
     }
-    assert len(client.urls) == sum(len(b.urls) for b in boards.BOARDS)
+    assert len(client.urls) == sum(len(b.urls) for b in boards_feeds.BOARDS)
     types = list(session.scalars(sa.select(models.SourceRecord.source_type)))
     assert types.count(models.SourceType.REMOTIVE) == 2
     assert types.count(models.SourceType.WORKINGNOMADS) == 3
     assert types.count(models.SourceType.WEWORKREMOTELY) == 3
 
     later = NOW + dt.timedelta(hours=7)
-    again = boards.import_boards(session, FakeClient(), now=later)
+    again = boards_feeds.import_boards(session, FakeClient(), now=later)
     assert [(s.new, s.known) for s in again] == [(0, 2), (0, 3), (0, 3)]
     assert session.query(models.Opportunity).count() == 8
 
 
 def test_each_board_is_read_at_most_every_six_hours(session):
-    boards.import_boards(session, FakeClient(), now=NOW)
+    boards_feeds.import_boards(session, FakeClient(), now=NOW)
     client = FakeClient()
-    results = boards.import_boards(session, client, now=NOW + dt.timedelta(hours=5))
+    results = boards_feeds.import_boards(session, client, now=NOW + dt.timedelta(hours=5))
     assert client.urls == []
     assert all(s.waited for s in results)
 
 
 def test_a_failed_board_does_not_stop_the_others_and_is_retried(session):
-    results = boards.import_boards(session, FakeClient(fail="workingnomads"), now=NOW)
+    results = boards_feeds.import_boards(session, FakeClient(fail="workingnomads"), now=NOW)
     assert [s.error for s in results] == [None, "HTTP 503", None]
     assert [s.new for s in results] == [2, 0, 3]
     # Not marked as read: the next sync tries it again.
     client = FakeClient()
-    retry = boards.import_boards(session, client, now=NOW + dt.timedelta(hours=1))
+    retry = boards_feeds.import_boards(session, client, now=NOW + dt.timedelta(hours=1))
     assert [s.waited for s in retry] == [True, False, True]
     assert retry[1].new == 3
 
@@ -181,5 +185,5 @@ def test_weworkremotely_feed_with_entities_is_refused():
         b'<!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]><rss><channel><item>'
         b"<title>&b;</title></item></channel></rss>"
     )
-    with pytest.raises(boards.BoardError):
-        boards.parse_weworkremotely(bomb)
+    with pytest.raises(boards_feeds.BoardError):
+        boards_feeds.parse_weworkremotely(bomb)
