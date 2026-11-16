@@ -1,4 +1,4 @@
-"""Tests for job_radar.telegram.mcp_reader: what is read from telegram-mcp and that
+"""Tests for job_radar.sources.telegram.mcp_reader: what is read from telegram-mcp and that
 only ``read_messages`` is ever called (docs/telegram.md).
 """
 
@@ -9,9 +9,9 @@ import types
 
 import pytest
 
-import job_radar.telegram.mcp_reader as telegram_mcp_reader
-import job_radar.telegram.sources as telegram_sources
-import job_radar.telegram.sync as telegram_sync
+import job_radar.sources.telegram.mcp_reader as telegram_mcp_reader
+import job_radar.sources.telegram.sources as telegram_sources
+import job_radar.sources.telegram.sync as telegram_sync
 
 NOW = dt.datetime(2026, 10, 1, 12, 0, tzinfo=dt.UTC)
 

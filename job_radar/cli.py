@@ -43,7 +43,7 @@ def db_merge_hh_duplicates(
     apply: t.Annotated[bool, typer.Option("--apply", help="Merge; without it only list.")] = False,
 ) -> None:
     """Merge vacancies made from hh.ru notices into the same one from another source (#172)."""
-    import job_radar.hh.notifications as hh_notifications
+    import job_radar.sources.hh.notifications as hh_notifications
 
     settings = config.Settings()
     db.upgrade_database(settings.database_url)
@@ -138,12 +138,12 @@ def demo(
 @gmail_app.command("auth")
 def gmail_auth() -> None:
     """Open the browser for one-time read-only Gmail consent and store the token."""
-    import job_radar.gmail.auth as gmail_auth_mod
+    import job_radar.sources.gmail.auth as jr_gmail_auth
 
     settings = config.Settings()
     try:
-        gmail_auth_mod.authorize(settings.gmail_client_secret, settings.gmail_token)
-    except gmail_auth_mod.GmailAuthError as e:
+        jr_gmail_auth.authorize(settings.gmail_client_secret, settings.gmail_token)
+    except jr_gmail_auth.GmailAuthError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e
     typer.echo(f"Token saved to {settings.gmail_token}")
@@ -293,7 +293,7 @@ def _import_contacts(session) -> None:
 
 
 def _sync_gmail(names: list[str] | None, since: dt.datetime | None) -> None:
-    import job_radar.gmail.queries as gmail_queries
+    import job_radar.sources.gmail.queries as gmail_queries
 
     unknown = set(names or []) - gmail_queries.QUERIES.keys()
     if unknown:

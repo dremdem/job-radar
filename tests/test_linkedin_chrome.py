@@ -10,10 +10,10 @@ import time
 import pytest
 import sqlalchemy as sa
 
-import job_radar.linkedin.alerts as linkedin_alerts
-import job_radar.linkedin.chrome as linkedin_chrome
 import job_radar.models as models
 import job_radar.review.auto_ignore as review_auto_ignore
+import job_radar.sources.linkedin.alerts as linkedin_alerts
+import job_radar.sources.linkedin.chrome as linkedin_chrome
 
 VISIBLE = "We build payments.\nRequirements:\n- Python, FastAPI"
 FOLDED = "\n- PostgreSQL\nFully remote, worldwide."
@@ -427,7 +427,7 @@ def test_parse_tabs():
 
 def test_chrome_fill_has_its_own_pause(engine, database_url, tmp_path, session):
     """#252: 2-4 s by default, saved apart from the guest pause (10-40 s)."""
-    import job_radar.linkedin.public as linkedin_public
+    import job_radar.sources.linkedin.public as linkedin_public
 
     assert linkedin_chrome.load_chrome_pause(session) == linkedin_public.PauseSettings(2, 4)
     with web(database_url, tmp_path, lambda job: None, linkedin_chrome=True) as client:

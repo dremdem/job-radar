@@ -3,8 +3,8 @@
 import sqlalchemy as sa
 
 import job_radar.dedup as dedup
-import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.models as models
+import job_radar.sources.linkedin.alerts as linkedin_alerts
 
 S = models.OpportunityState
 

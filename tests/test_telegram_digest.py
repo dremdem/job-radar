@@ -1,4 +1,4 @@
-"""Tests for job_radar.telegram.digest: digest links, category and vacancy pages and
+"""Tests for job_radar.sources.telegram.digest: digest links, category and vacancy pages and
 the import, with a fake Telegraph (docs/telegram.md#digests-digital-nomads).
 """
 
@@ -9,11 +9,11 @@ import pathlib
 
 import sqlalchemy as sa
 
-import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.models as models
-import job_radar.telegram.digest as telegram_digest
-import job_radar.telegram.sources as telegram_sources
-import job_radar.telegram.sync as telegram_sync
+import job_radar.sources.linkedin.alerts as linkedin_alerts
+import job_radar.sources.telegram.digest as telegram_digest
+import job_radar.sources.telegram.sources as telegram_sources
+import job_radar.sources.telegram.sync as telegram_sync
 
 FIX = json.loads(
     (pathlib.Path(__file__).parent / "fixtures" / "telegram" / "digest.json").read_text()

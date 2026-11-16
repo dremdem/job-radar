@@ -1,4 +1,4 @@
-"""Tests for job_radar.gmail.client: request pacing, rate-limit retries and reading
+"""Tests for job_radar.sources.gmail.client: request pacing, rate-limit retries and reading
 message bodies, with fake requests and a fake clock (docs/gmail.md).
 """
 
@@ -6,7 +6,7 @@ import googleapiclient.errors as googleapiclient_errors
 import httplib2
 import pytest
 
-import job_radar.gmail.client as gmail_client
+import job_radar.sources.gmail.client as gmail_client
 
 
 def http_error(status: int, reason: str = "") -> googleapiclient_errors.HttpError:

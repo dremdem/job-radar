@@ -1,4 +1,4 @@
-"""Tests for job_radar.linkedin.rejections: detecting rejection emails and recording
+"""Tests for job_radar.sources.linkedin.rejections: detecting rejection emails and recording
 them on the company (docs/data-model.md).
 """
 
@@ -10,10 +10,10 @@ import pytest
 import sqlalchemy as sa
 
 import job_radar.history.rejections as history_rejections
-import job_radar.linkedin.alerts as linkedin_alerts
-import job_radar.linkedin.rejections as linkedin_rejections
 import job_radar.mail as mail
 import job_radar.models as models
+import job_radar.sources.linkedin.alerts as linkedin_alerts
+import job_radar.sources.linkedin.rejections as linkedin_rejections
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "rejections"
 

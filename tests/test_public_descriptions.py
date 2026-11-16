@@ -9,9 +9,9 @@ import re
 import sqlalchemy as sa
 
 import job_radar.dedup as dedup
-import job_radar.linkedin.public as linkedin_public
 import job_radar.models as models
 import job_radar.review.auto_ignore as review_auto_ignore
+import job_radar.sources.linkedin.public as linkedin_public
 
 POSTING = (
     pathlib.Path(__file__).parent / "fixtures" / "linkedin_public" / "job_posting.html"

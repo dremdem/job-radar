@@ -5,8 +5,8 @@ updating one row after a capture or a state change (docs/queue.md).
 import sqlalchemy as sa
 
 import job_radar.dedup as dedup
-import job_radar.linkedin.capture as linkedin_capture
 import job_radar.models as models
+import job_radar.sources.linkedin.capture as linkedin_capture
 
 
 def vacancy(

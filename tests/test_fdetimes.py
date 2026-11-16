@@ -16,9 +16,9 @@ import sqlalchemy as sa
 
 import job_radar.config as config
 import job_radar.dedup as dedup
-import job_radar.fdetimes as fdetimes
 import job_radar.models as models
 import job_radar.pipeline as pipeline
+import job_radar.sources.boards.fdetimes as boards_fdetimes
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "fdetimes"
 LIST = (FIXTURES / "jobs.html").read_text()
@@ -42,7 +42,7 @@ class FakeList:
 
 
 def by_slug(slug: str):
-    return next(j for j in fdetimes.parse_jobs(LIST) if j.slug == slug)
+    return next(j for j in boards_fdetimes.parse_jobs(LIST) if j.slug == slug)
 
 
 def titles(session) -> set[str]:
@@ -53,7 +53,7 @@ def titles(session) -> set[str]:
 
 
 def test_list_page_rows():
-    jobs = fdetimes.parse_jobs(LIST)
+    jobs = boards_fdetimes.parse_jobs(LIST)
     assert len(jobs) == 23
     assert [j.kind for j in jobs].count("fde") == 15
     celonis = by_slug(CELONIS)
@@ -80,24 +80,32 @@ def test_list_page_rows():
 
 
 def test_title_filter():
-    assert fdetimes.wants_title("Forward Deployed Engineer - India")
-    assert fdetimes.wants_title("Tencent Cloud Smart Mobility - FDE Delivery Architect")
-    assert not fdetimes.wants_title("Manager, Forward Deployed Engineering - Munich")
-    assert not fdetimes.wants_title(
+    assert boards_fdetimes.wants_title("Forward Deployed Engineer - India")
+    assert boards_fdetimes.wants_title("Tencent Cloud Smart Mobility - FDE Delivery Architect")
+    assert not boards_fdetimes.wants_title("Manager, Forward Deployed Engineering - Munich")
+    assert not boards_fdetimes.wants_title(
         "Deployment Strategist, Public Sector (Federal & SLED) - North America"
     )
-    assert not fdetimes.wants_title("Sr. Sales Engineer (Forward Deployed Engineer - Pre Sales)")
+    assert not boards_fdetimes.wants_title(
+        "Sr. Sales Engineer (Forward Deployed Engineer - Pre Sales)"
+    )
 
 
 def test_regions_setting():
-    assert fdetimes.parse_regions("") == ("north-america", "europe", "apac", "remote", "other")
-    assert fdetimes.parse_regions(" Remote, apac ") == ("remote", "apac")
+    assert boards_fdetimes.parse_regions("") == (
+        "north-america",
+        "europe",
+        "apac",
+        "remote",
+        "other",
+    )
+    assert boards_fdetimes.parse_regions(" Remote, apac ") == ("remote", "apac")
     with pytest.raises(ValueError, match="unknown FDE Times region 'asia'"):
-        fdetimes.parse_regions("remote,asia")
+        boards_fdetimes.parse_regions("remote,asia")
 
 
 def test_first_run_reads_seven_days_back(session):
-    stats = fdetimes.import_fdetimes(session, FakeList(), now=NOW)
+    stats = boards_fdetimes.import_fdetimes(session, FakeList(), now=NOW)
     # Since 2026-11-03 04:00: 13 FDE roles and 8 related ones. Related roles are off by
     # default; of the FDE ones two managers and a strategist are not developer roles.
     assert (stats.listed, stats.fresh, stats.new, stats.known, stats.skipped) == (23, 21, 10, 0, 11)
@@ -125,15 +133,15 @@ def test_first_run_reads_seven_days_back(session):
 
 
 def test_a_role_is_never_imported_twice(session):
-    fdetimes.import_fdetimes(session, FakeList(), now=NOW)
-    again = fdetimes.import_fdetimes(session, FakeList(), now=NOW)
+    boards_fdetimes.import_fdetimes(session, FakeList(), now=NOW)
+    again = boards_fdetimes.import_fdetimes(session, FakeList(), now=NOW)
     # The second run reads from a week before the first: every role of the first again.
     assert (again.new, again.known, again.skipped) == (0, 10, 11)
     assert len(session.scalars(sa.select(models.SourceRecord)).all()) == 10
 
 
 def test_regions_and_related_roles(session):
-    stats = fdetimes.import_fdetimes(
+    stats = boards_fdetimes.import_fdetimes(
         session, FakeList(), now=NOW, regions=("remote",), related=True
     )
     # Remote: two FDE roles, and of the related ones only a manager (not a developer role).
@@ -145,28 +153,33 @@ def test_regions_and_related_roles(session):
 
 
 def test_related_roles_when_asked(session):
-    stats = fdetimes.import_fdetimes(session, FakeList(), now=NOW, related=True)
+    stats = boards_fdetimes.import_fdetimes(session, FakeList(), now=NOW, related=True)
     # not the two AI Deployment Managers
     assert stats.new == 10 + 6
     assert "Applied AI Engineer, Large Enterprise" in titles(session)
 
 
 def test_a_failed_request_keeps_the_last_run(session):
-    stats = fdetimes.import_fdetimes(session, FakeList(fdetimes.FDETimesError("HTTP 503")), now=NOW)
+    stats = boards_fdetimes.import_fdetimes(
+        session, FakeList(boards_fdetimes.FDETimesError("HTTP 503")), now=NOW
+    )
     assert stats.error == "HTTP 503" and stats.new == 0
     assert session.get(models.SyncCursor, "fdetimes") is None
 
 
 def test_client_reports_the_http_status():
-    with pytest.raises(fdetimes.FDETimesError, match="HTTP 503"):
-        fdetimes.FDETimesClient(lambda url: (503, "")).jobs_page()
+    with pytest.raises(boards_fdetimes.FDETimesError, match="HTTP 503"):
+        boards_fdetimes.FDETimesClient(lambda url: (503, "")).jobs_page()
     asked = []
-    assert fdetimes.FDETimesClient(lambda url: asked.append(url) or (200, LIST)).jobs_page() == LIST
+    assert (
+        boards_fdetimes.FDETimesClient(lambda url: asked.append(url) or (200, LIST)).jobs_page()
+        == LIST
+    )
     assert asked == ["https://fdetimes.net/en/jobs/"]
 
 
 def test_auto_ignore_rules_run_on_import(session):
-    fdetimes.import_fdetimes(session, FakeList(), now=NOW)
+    boards_fdetimes.import_fdetimes(session, FakeList(), now=NOW)
     india = session.scalar(
         sa.select(models.Opportunity).where(
             models.Opportunity.title == "Forward Deployed Engineer - India"
@@ -184,7 +197,7 @@ def test_a_copy_of_an_applied_vacancy_joins_it(session):
     )
     session.add(applied)
     session.commit()
-    fdetimes.import_fdetimes(session, FakeList(), now=NOW)
+    boards_fdetimes.import_fdetimes(session, FakeList(), now=NOW)
     same = session.scalars(
         sa.select(models.Opportunity).where(
             models.Opportunity.title == "Forward Deployed Engineer - CPG/Retail"
@@ -198,7 +211,7 @@ def test_a_copy_of_an_applied_vacancy_joins_it(session):
 
 
 def test_description_from_the_job_posting_data():
-    text = fdetimes.parse_job_page(JOB)
+    text = boards_fdetimes.parse_job_page(JOB)
     assert text.startswith("Remote · Co-op, about 20 hours a week")
     assert "Python and other backend programming languages, plus SQL." in text
     assert "<p>" not in text
@@ -206,9 +219,9 @@ def test_description_from_the_job_posting_data():
 
 def test_description_from_the_page_without_the_data():
     page = JOB[: JOB.index('<script type="application/ld+json">')]
-    text = fdetimes.parse_job_page(page)
+    text = boards_fdetimes.parse_job_page(page)
     assert text.startswith("Remote · Co-op") and "Job description" not in text
-    assert fdetimes.parse_job_page("<html><body>Not found</body></html>") is None
+    assert boards_fdetimes.parse_job_page("<html><body>Not found</body></html>") is None
 
 
 class FakePages:
@@ -223,25 +236,25 @@ class FakePages:
         return self.answers.get(slug, (200, JOB))
 
 
-def client(http_get, **extra) -> fdetimes.PageClient:
+def client(http_get, **extra) -> boards_fdetimes.PageClient:
     waits = extra.pop("waits", [])
-    return fdetimes.PageClient(
+    return boards_fdetimes.PageClient(
         http_get, pause=(10, 40), rand=lambda a, b: 12.0, sleep=waits.append, **extra
     )
 
 
 def pending_slugs(session) -> list[str]:
-    return [r.external_id for _, r in fdetimes.without_description(session)]
+    return [r.external_id for _, r in boards_fdetimes.without_description(session)]
 
 
 def test_descriptions_for_to_review_vacancies_with_a_pause(session):
-    fdetimes.import_fdetimes(session, FakeList(), now=NOW)
+    boards_fdetimes.import_fdetimes(session, FakeList(), now=NOW)
     todo = pending_slugs(session)
     # the India role is auto-ignored
     assert len(todo) == 9
     waits = []
     pages = FakePages({})
-    stats = fdetimes.import_descriptions(session, client(pages, waits=waits), max_per_run=3)
+    stats = boards_fdetimes.import_descriptions(session, client(pages, waits=waits), max_per_run=3)
     assert (stats.total, stats.requests, stats.saved, stats.errors) == (3, 3, 3, 0)
     # best score first
     assert pages.asked == todo[:3]
@@ -255,11 +268,11 @@ def test_descriptions_for_to_review_vacancies_with_a_pause(session):
 
 
 def test_gone_error_and_blocked(session):
-    fdetimes.import_fdetimes(session, FakeList(), now=NOW)
+    boards_fdetimes.import_fdetimes(session, FakeList(), now=NOW)
     first, second, third, fourth, *rest = pending_slugs(session)
     pages = FakePages({first: (404, ""), second: (500, ""), third: (200, "<html></html>"),
                        fourth: (429, "")})  # fmt: skip
-    stats = fdetimes.import_descriptions(session, client(pages))
+    stats = boards_fdetimes.import_descriptions(session, client(pages))
     # 429: no more requests this run
     assert pages.asked == [first, second, third, fourth]
     assert (stats.requests, stats.saved, stats.gone, stats.errors) == (4, 0, 1, 2)
@@ -275,11 +288,11 @@ def test_gone_error_and_blocked(session):
 
 
 def test_stop_before_the_next_request(session):
-    fdetimes.import_fdetimes(session, FakeList(), now=NOW)
+    boards_fdetimes.import_fdetimes(session, FakeList(), now=NOW)
     stop = threading.Event()
     pages = FakePages({})
     page_client = client(pages, waits=[], stop=stop, on_wait=lambda s: stop.set())
-    stats = fdetimes.import_descriptions(session, page_client)
+    stats = boards_fdetimes.import_descriptions(session, page_client)
     # Stop pressed during the pause after the first page: no second request.
     assert stats.stopped and stats.requests == 1 and len(pages.asked) == 1
 
@@ -293,9 +306,9 @@ def settings(tmp_path, database_url, **extra) -> config.Settings:
 
 
 def test_descriptions_job_reads_fdetimes_without_linkedin(tmp_path, session, database_url):
-    fdetimes.import_fdetimes(session, FakeList(), now=NOW)
+    boards_fdetimes.import_fdetimes(session, FakeList(), now=NOW)
     first = pending_slugs(session)[0]
-    import job_radar.linkedin.public as linkedin_public
+    import job_radar.sources.linkedin.public as linkedin_public
 
     linkedin_public.save_pause(session, linkedin_public.PauseSettings(0, 0))
     lines, progress = [], []
@@ -330,7 +343,7 @@ def test_sync_step(tmp_path, session, database_url):
         session,
         settings(tmp_path, database_url),
         lines.append,
-        FakeList(fdetimes.FDETimesError("x")),
+        FakeList(boards_fdetimes.FDETimesError("x")),
     )
     assert lines == ["fdetimes: could not read the job list: x"]
     lines.clear()

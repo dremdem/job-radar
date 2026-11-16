@@ -1,4 +1,4 @@
-"""Tests for job_radar.gmail.sync: storing messages per query, cursors, idempotent
+"""Tests for job_radar.sources.gmail.sync: storing messages per query, cursors, idempotent
 re-runs and which bodies are kept (docs/gmail.md).
 """
 
@@ -7,9 +7,9 @@ import datetime as dt
 import gmail_fakes
 import sqlalchemy as sa
 
-import job_radar.gmail.queries as gmail_queries
-import job_radar.gmail.sync as gmail_sync
 import job_radar.models as models
+import job_radar.sources.gmail.queries as gmail_queries
+import job_radar.sources.gmail.sync as gmail_sync
 
 ALERTS = gmail_queries.QUERIES["linkedin_alerts"].query
 PROPOSALS = gmail_queries.QUERIES["job_proposal"].query
@@ -112,7 +112,7 @@ def test_build_query_since_overrides_cursor():
 
 
 def test_readonly_scope_only():
-    import job_radar.gmail.auth as gmail_auth
+    import job_radar.sources.gmail.auth as gmail_auth
 
     assert gmail_auth.SCOPES == ["https://www.googleapis.com/auth/gmail.readonly"]
 

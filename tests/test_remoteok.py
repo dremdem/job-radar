@@ -11,7 +11,7 @@ import pathlib
 import sqlalchemy as sa
 
 import job_radar.models as models
-import job_radar.remoteok as remoteok
+import job_radar.sources.boards.remoteok as boards_remoteok
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "remoteok" / "api.json"
 NOW = dt.datetime(2026, 10, 27, tzinfo=dt.UTC)
@@ -22,7 +22,9 @@ def feed() -> list[dict]:
 
 
 def job(position: str):
-    return remoteok.parse_job(next(j for j in feed()[1:] if j["position"].strip() == position))
+    return boards_remoteok.parse_job(
+        next(j for j in feed()[1:] if j["position"].strip() == position)
+    )
 
 
 class FakeClient:
@@ -56,19 +58,19 @@ def test_double_encoded_letters_are_repaired():
         "Remote, Madrid, Madrid, Comunidad de Madrid, España"
     )
     # correct text stays as it is
-    assert remoteok._fix("España") == "España"
-    assert remoteok._fix("Python — remote") == "Python — remote"
+    assert boards_remoteok._fix("España") == "España"
+    assert boards_remoteok._fix("Python — remote") == "Python — remote"
 
 
 def test_title_filter():
-    assert remoteok.wants(job("Senior React Full stack Developer"))
-    assert remoteok.wants(job("APAC Python"))
-    assert not remoteok.wants(job("Risk Analyst"))
-    assert not remoteok.wants(job("Associate Data Scientist"))
+    assert boards_remoteok.wants(job("Senior React Full stack Developer"))
+    assert boards_remoteok.wants(job("APAC Python"))
+    assert not boards_remoteok.wants(job("Risk Analyst"))
+    assert not boards_remoteok.wants(job("Associate Data Scientist"))
 
 
 def test_sync_imports_fresh_jobs_once(session):
-    stats = remoteok.import_remoteok(session, FakeClient(), now=NOW)
+    stats = boards_remoteok.import_remoteok(session, FakeClient(), now=NOW)
     # Nine jobs: two older than 30 days, two not developer roles, five new.
     assert (stats.jobs, stats.old, stats.skipped, stats.new, stats.known) == (9, 2, 2, 5, 0)
     titles = set(session.scalars(sa.select(models.Opportunity.title)))
@@ -90,13 +92,13 @@ def test_sync_imports_fresh_jobs_once(session):
     )
     assert snapshot.raw_text and "<p" not in snapshot.raw_text
 
-    again = remoteok.import_remoteok(session, FakeClient(), now=NOW)
+    again = boards_remoteok.import_remoteok(session, FakeClient(), now=NOW)
     assert (again.new, again.known) == (0, 5)
 
 
 def test_an_unreadable_feed_is_reported(session):
-    stats = remoteok.import_remoteok(
-        session, FakeClient(remoteok.RemoteOKError("HTTP 403")), now=NOW
+    stats = boards_remoteok.import_remoteok(
+        session, FakeClient(boards_remoteok.RemoteOKError("HTTP 403")), now=NOW
     )
     assert stats.error == "HTTP 403"
     assert session.query(models.Opportunity).count() == 0
@@ -106,8 +108,8 @@ def test_sync_step_reports_counts_and_can_be_turned_off(session, monkeypatch):
     import job_radar.config as config
     import job_radar.pipeline as pipeline
 
-    real = remoteok.import_remoteok
-    monkeypatch.setattr(remoteok, "import_remoteok", lambda s, c: real(s, c, now=NOW))
+    real = boards_remoteok.import_remoteok
+    monkeypatch.setattr(boards_remoteok, "import_remoteok", lambda s, c: real(s, c, now=NOW))
     lines: list[str] = []
     pipeline.import_remoteok(
         session, config.Settings(remoteok=True), lines.append, client=FakeClient()

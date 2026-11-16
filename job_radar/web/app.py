@@ -39,11 +39,6 @@ import job_radar.db as db
 import job_radar.history.applications as history_applications
 import job_radar.history.contacts as history_contacts
 import job_radar.history.rejections as history_rejections
-import job_radar.linkedin.alerts as linkedin_alerts
-import job_radar.linkedin.capture as linkedin_capture
-import job_radar.linkedin.chrome as linkedin_chrome
-import job_radar.linkedin.public as linkedin_public
-import job_radar.manual as manual
 import job_radar.models as models
 import job_radar.pipeline as pipeline
 import job_radar.profile.stack as profile_stack
@@ -54,12 +49,17 @@ import job_radar.scoring.description as scoring_description
 import job_radar.scoring.findings as scoring_findings
 import job_radar.scoring.language as scoring_language
 import job_radar.skills as skills
+import job_radar.sources.linkedin.alerts as linkedin_alerts
+import job_radar.sources.linkedin.capture as linkedin_capture
+import job_radar.sources.linkedin.chrome as linkedin_chrome
+import job_radar.sources.linkedin.public as linkedin_public
+import job_radar.sources.manual as sources_manual
 import job_radar.web.description_job as web_description_job
 import job_radar.web.sync_job as web_sync_job
 
 HISTORY_SHOWN = 8
 # What the bookmarklet reads, shared with the Chrome fill (#247): one reader for both.
-CAPTURE_READ = (pathlib.Path(__file__).parent / "capture_read.js").read_text()
+CAPTURE_READ = (pathlib.Path(__file__).parent.parent / "sources" / "capture_read.js").read_text()
 BOOKMARKLETS = {
     name: (pathlib.Path(__file__).parent / f"{name}.js")
     .read_text()
@@ -124,7 +124,7 @@ def local_time(value: dt.datetime | None, fmt: str, tz: dt.tzinfo | None = None)
 
 
 templates.env.filters["local"] = local_time
-templates.env.globals["EVENT_KINDS"] = manual.EVENT_KINDS
+templates.env.globals["EVENT_KINDS"] = sources_manual.EVENT_KINDS
 templates.env.globals["reason_icon"] = review_notes.reason_icon
 templates.env.globals["today"] = lambda: dt.datetime.now().strftime("%Y-%m-%d")
 
@@ -591,7 +591,7 @@ def create_app(
             day = dt.datetime.strptime(at, "%Y-%m-%d") if at else dt.datetime.now()
             # the date you picked, local noon
             when = day.replace(hour=12).astimezone(dt.UTC)
-            manual.add_event(session, opportunity, kind, when, comment)
+            sources_manual.add_event(session, opportunity, kind, when, comment)
         except ValueError as e:
             raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
         return _after_manual(request, session, opportunity, source, tab, filters)
@@ -633,7 +633,7 @@ def create_app(
     ) -> fastapi_responses.HTMLResponse:
         # A vacancy found outside the sources (#182).
         try:
-            opportunity = manual.add_vacancy(
+            opportunity = sources_manual.add_vacancy(
                 session,
                 title=title,
                 company=company,

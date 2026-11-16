@@ -8,7 +8,7 @@ import time
 import fastapi.testclient as fastapi_testclient
 
 import job_radar.config as config
-import job_radar.gmail.auth as gmail_auth
+import job_radar.sources.gmail.auth as gmail_auth
 import job_radar.web.app as web_app
 
 

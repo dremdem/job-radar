@@ -1,13 +1,13 @@
-"""Tests for job_radar.linkedin.capture: search cards and vacancy pages sent by the
+"""Tests for job_radar.sources.linkedin.capture: search cards and vacancy pages sent by the
 bookmarklet (docs/linkedin-capture.md).
 """
 
 import sqlalchemy as sa
 
-import job_radar.linkedin.alerts as linkedin_alerts
-import job_radar.linkedin.capture as linkedin_capture
 import job_radar.models as models
 import job_radar.review.auto_ignore as review_auto_ignore
+import job_radar.sources.linkedin.alerts as linkedin_alerts
+import job_radar.sources.linkedin.capture as linkedin_capture
 
 # Card texts as LinkedIn's logged-in search page shows them (innerText), from the user's screen.
 PFIZER = """Staff Software Engineer (AI Backend Services)

@@ -10,9 +10,9 @@ import pytest
 import sqlalchemy as sa
 
 import job_radar.models as models
-import job_radar.telegram.posts as telegram_posts
-import job_radar.telegram.sources as telegram_sources
-import job_radar.telegram.sync as telegram_sync
+import job_radar.sources.telegram.posts as telegram_posts
+import job_radar.sources.telegram.sources as telegram_sources
+import job_radar.sources.telegram.sync as telegram_sync
 
 POSTS = json.loads(
     (pathlib.Path(__file__).parent / "fixtures" / "telegram" / "posts.json").read_text()

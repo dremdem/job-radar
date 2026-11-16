@@ -1,4 +1,4 @@
-"""Tests for job_radar.manual: events and vacancies added by hand, from the code and
+"""Tests for job_radar.sources.manual: events and vacancies added by hand, from the code and
 the web UI (docs/queue.md#add-by-hand).
 """
 
@@ -9,8 +9,8 @@ import sqlalchemy as sa
 
 import job_radar.dedup as dedup
 import job_radar.history.contacts as history_contacts
-import job_radar.manual as manual
 import job_radar.models as models
+import job_radar.sources.manual as sources_manual
 
 
 def vacancy(session, title="Python Developer", company="Acme"):
@@ -36,18 +36,18 @@ def vacancy(session, title="Python Developer", company="Acme"):
     ],
 )
 def test_source_for_link(link, expected):
-    assert manual.source_for_link(link)[:2] == expected
-    assert manual.source_for_link("  ") is None
+    assert sources_manual.source_for_link(link)[:2] == expected
+    assert sources_manual.source_for_link("  ") is None
 
 
 def test_events_show_in_history_and_applied_rejection_use_their_models(session):
     o = vacancy(session)
     at = dt.datetime(2026, 10, 8, 13, 30, tzinfo=dt.UTC)
-    manual.add_event(session, o, "interview", at, "intro call with HR")
-    manual.add_event(
+    sources_manual.add_event(session, o, "interview", at, "intro call with HR")
+    sources_manual.add_event(
         session, o, "applied", dt.datetime(2026, 9, 12, tzinfo=dt.UTC), "via careers page"
     )
-    manual.add_event(session, o, "rejection", dt.datetime(2026, 10, 9, tzinfo=dt.UTC))
+    sources_manual.add_event(session, o, "rejection", dt.datetime(2026, 10, 9, tzinfo=dt.UTC))
     session.refresh(o)
     assert o.state is models.OpportunityState.APPLIED
     assert session.scalars(sa.select(models.CompanyEvent)).one().kind == "interview"
@@ -58,11 +58,11 @@ def test_events_show_in_history_and_applied_rejection_use_their_models(session):
     assert [e.kind for e in history] == ["rejection", "interview", "applied"]
     assert history[1].text == "intro call with HR" and history[1].event_id is not None
     with pytest.raises(ValueError):
-        manual.add_event(session, o, "party", at)
+        sources_manual.add_event(session, o, "party", at)
 
 
 def test_add_vacancy_scores_links_and_refuses_duplicates(session):
-    o = manual.add_vacancy(
+    o = sources_manual.add_vacancy(
         session,
         title="Senior Python Developer",
         company="Altery",
@@ -88,13 +88,13 @@ def test_add_vacancy_scores_links_and_refuses_duplicates(session):
         opportunity=other,
     )
     session.commit()
-    assert manual.find_by_link(session, "https://www.linkedin.com/jobs/view/777/") == other
+    assert sources_manual.find_by_link(session, "https://www.linkedin.com/jobs/view/777/") == other
     with pytest.raises(ValueError, match=f"#{o.id}"):
-        manual.add_vacancy(
+        sources_manual.add_vacancy(
             session, title="x", company="y", link="https://linkedin.com/jobs/view/4466058649"
         )
     with pytest.raises(ValueError):
-        manual.add_vacancy(session, title=" ", company="y")
+        sources_manual.add_vacancy(session, title=" ", company="y")
 
 
 def test_web_add_event_and_delete_it(client, session):
