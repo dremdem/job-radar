@@ -24,7 +24,7 @@ import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 import job_radar.sources.http as sources_http
 import job_radar.sources.titles as sources_titles
 
@@ -123,7 +123,7 @@ class JobicyStats:
 def _add(session: sa_orm.Session, job: JobicyJob) -> None:
     import job_radar.auto_ignore as auto_ignore
 
-    score = scoring.score_job(job.title, job.location)
+    score = scoring_rules.score_job(job.title, job.location)
     opportunity = models.Opportunity(
         title=job.title[:255],
         company=dedup.get_or_create_company(session, job.company or f"Unknown (Jobicy {job.id})"),

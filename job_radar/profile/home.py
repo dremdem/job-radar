@@ -6,7 +6,7 @@ the regions that include it from here, so no country is written into the code.
 ``Home`` without a profile. See docs/ai.md#stack-vs-your-cv.
 
 Usage:
-    import job_radar.home as home
+    import job_radar.profile.home as profile_home
 """
 
 import dataclasses
@@ -15,7 +15,7 @@ import pathlib
 import re
 
 import job_radar.config as config
-import job_radar.stack as stack
+import job_radar.profile.stack as profile_stack
 
 
 @dataclasses.dataclass(frozen=True)
@@ -51,7 +51,7 @@ def _profile_path() -> pathlib.Path:
 
 def current_home() -> Home:
     """Home from the profile file, re-read when it changes; empty without a profile."""
-    profile = stack.current_profile(_profile_path())
+    profile = profile_stack.current_profile(_profile_path())
     if profile is None:
         return Home()
     return Home(profile.home, tuple(profile.home_regions))

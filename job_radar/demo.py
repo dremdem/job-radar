@@ -20,7 +20,7 @@ import job_radar.claude.analysis as claude_analysis
 import job_radar.claude.prompt as claude_prompt
 import job_radar.dedup as dedup
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 
 DEMO_SUFFIX = "(demo)"
 
@@ -254,7 +254,7 @@ DEMO_OPPORTUNITIES = [
 
 def _add(session: sa_orm.Session, demo: Demo) -> None:
     # as a real import would give it
-    score = scoring.score_job(demo.title, demo.location)
+    score = scoring_rules.score_job(demo.title, demo.location)
     opportunity = models.Opportunity(
         title=demo.title,
         company=dedup.get_or_create_company(session, f"{demo.company} {DEMO_SUFFIX}"),

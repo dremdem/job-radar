@@ -27,9 +27,9 @@ import job_radar.auto_ignore as auto_ignore
 import job_radar.claude.memory as claude_memory
 import job_radar.claude.prompt as claude_prompt
 import job_radar.claude.runner as claude_runner
-import job_radar.description as jr_description
 import job_radar.models as models
-import job_radar.stack as stack
+import job_radar.profile.stack as profile_stack
+import job_radar.scoring.description as scoring_description
 
 SETTINGS_KEY = "claude"
 MODELS = ("sonnet", "opus", "haiku")
@@ -89,7 +89,7 @@ def enqueue(session: sa_orm.Session, opportunity_ids: list[int]) -> int:
     added = 0
     for opportunity_id in dict.fromkeys(opportunity_ids):
         opportunity = session.get(models.Opportunity, opportunity_id)
-        if opportunity is None or not jr_description.latest_description(opportunity):
+        if opportunity is None or not scoring_description.latest_description(opportunity):
             continue
         current = latest(session, opportunity_id)
         if current is not None and current.state in PENDING:
@@ -125,7 +125,7 @@ def enqueue_new_descriptions(session: sa_orm.Session) -> int:
 def without_description(session: sa_orm.Session, opportunity_ids: list[int]) -> int:
     """How many of these vacancies have no description (and so are not queued)."""
     found = (session.get(models.Opportunity, i) for i in dict.fromkeys(opportunity_ids))
-    return sum(1 for o in found if o is not None and not jr_description.latest_description(o))
+    return sum(1 for o in found if o is not None and not scoring_description.latest_description(o))
 
 
 def latest_done(session: sa_orm.Session, opportunity_id: int) -> models.ClaudeAnalysis | None:
@@ -411,7 +411,7 @@ class Worker:
             settings = load_claude_settings(session)
 
             o = job.opportunity
-            description = jr_description.latest_description(o)
+            description = scoring_description.latest_description(o)
             if not description:
                 job.state, job.error = "failed", "no description saved for this vacancy"
                 job.finished_at = dt.datetime.now(dt.UTC)
@@ -419,7 +419,7 @@ class Worker:
                 return True
             prompt = claude_prompt.analysis_prompt(
                 cv=self._cv(),
-                profile=stack.current_profile(self.profile_path),
+                profile=profile_stack.current_profile(self.profile_path),
                 title=o.title,
                 company=o.company.name,
                 location=o.location,

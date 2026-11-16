@@ -20,7 +20,7 @@ import job_radar.hh.notifications as hh_notifications
 import job_radar.models as models
 import job_radar.notes as notes
 import job_radar.rejections as rejections
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 
 # Kinds you can add; "applied" and "rejection" become an Application and a Rejection.
 EVENT_KINDS = {
@@ -152,7 +152,7 @@ def add_vacancy(
         raise ValueError(f"State must be one of {', '.join(s.value for s in MANUAL_STATES)}")
     if existing := find_by_link(session, link):
         raise ValueError(f"Already here: #{existing.id} {existing.title}")
-    score = scoring.score_job(title, location or None)
+    score = scoring_rules.score_job(title, location or None)
     opportunity = models.Opportunity(
         title=title[:255],
         company=dedup.get_or_create_company(session, company),

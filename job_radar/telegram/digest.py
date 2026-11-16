@@ -25,7 +25,7 @@ import sqlalchemy.orm as sa_orm
 import job_radar.dedup as dedup
 import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 import job_radar.telegram.sources as telegram_sources
 import job_radar.telegram.sync as telegram_sync
 
@@ -189,7 +189,7 @@ def _add_vacancy(
     text = f"{item.title}\n{page.description}"
     if not (source.wants_title(item.title) and source.keywords.search(text)):
         return
-    score = scoring.score_job(item.title, "Remote")
+    score = scoring_rules.score_job(item.title, "Remote")
     opportunity = models.Opportunity(
         title=item.title[:255],
         company=dedup.get_or_create_company(

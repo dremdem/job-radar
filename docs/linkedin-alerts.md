@@ -36,7 +36,7 @@ Links in the email carry personal tokens (`otpToken`, `midToken`, `midSig`, `trk
 
 ## Score
 
-Rule-based, from title and location only (`job_radar/scoring.py`). Starts at 5, each rule adds or subtracts, result is clamped to 0–10. Every rule that fired is kept as a reason and shown in the queue:
+Rule-based, from title and location only (`job_radar/scoring/rules.py`). Starts at 5, each rule adds or subtracts, result is clamped to 0–10. Every rule that fired is kept as a reason and shown in the queue:
 
 - **positives**: Senior/Staff/Lead, Python, Backend, FastAPI/Django/Flask, Platform/Data;
 - **risks**: Frontend, Java/.NET/PHP/… without Python, Junior/Intern, Full-stack, on-site/hybrid, remote limited to one country ("remote in Germany" is not "remote from <your `home`>"); `home` or one of `home_regions` from the [Profile](ai.md#stack-vs-your-cv) in the location is +1.

@@ -407,7 +407,7 @@ def analyze_descriptions(
     """Work mode and residence from descriptions with a local model (docs/ai.md)."""
     import job_radar.ai.analysis as ai_analysis
     import job_radar.ai.ollama as ai_ollama
-    import job_radar.stack as stack
+    import job_radar.profile.stack as profile_stack
 
     if not settings.ai_analysis:
         echo("ai: disabled (JOB_RADAR_AI_ANALYSIS=false).")
@@ -419,7 +419,7 @@ def analyze_descriptions(
         except ai_ollama.OllamaError as e:
             echo(f"ai: skipped: {e}")
             return
-    profile = stack.load_profile(settings.profile)
+    profile = profile_stack.load_profile(settings.profile)
     if profile is None:
         echo(f"ai: no {settings.profile}; the stack check is skipped (see profile.example.yaml).")
     stats = ai_analysis.analyze_pending(

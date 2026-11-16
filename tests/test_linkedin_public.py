@@ -12,7 +12,7 @@ import sqlalchemy as sa
 import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.linkedin.public as linkedin_public
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 
 FIXTURE = (
     pathlib.Path(__file__).parent / "fixtures" / "linkedin_public" / "search_page.html"
@@ -254,8 +254,8 @@ def test_blocked_stops_until_next_day(session):
 
 
 def test_score_without_known_work_format(thailand):
-    known = scoring.score_job("Python Developer", "Porto, Portugal")
-    unknown = scoring.score_job("Python Developer", "Porto, Portugal", remote_known=False)
+    known = scoring_rules.score_job("Python Developer", "Porto, Portugal")
+    unknown = scoring_rules.score_job("Python Developer", "Porto, Portugal", remote_known=False)
     assert "No remote marker in location" in [r.text for r in known.reasons]
     texts = [r.text for r in unknown.reasons]
     assert "No remote marker in location" not in texts

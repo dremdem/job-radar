@@ -23,7 +23,7 @@ import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 import job_radar.sources.http as sources_http
 import job_radar.sources.titles as sources_titles
 
@@ -199,7 +199,7 @@ def latest_thread(data: dict[str, t.Any]) -> dict[str, t.Any] | None:
 def _add(session: sa_orm.Session, post: HackerNewsPost) -> None:
     import job_radar.auto_ignore as auto_ignore
 
-    score = scoring.score_job(post.title, post.location)
+    score = scoring_rules.score_job(post.title, post.location)
     opportunity = models.Opportunity(
         title=post.title[:255],
         company=dedup.get_or_create_company(session, post.company or f"Unknown (HN {post.id})"),

@@ -133,7 +133,7 @@ Only the latest such reason counts. Like the rejection penalty it is applied whe
 
 ## Vacancy language
 
-A title written in another language usually means the job needs that language. The title is checked without any external service (`job_radar/language.py`):
+A title written in another language usually means the job needs that language. The title is checked without any external service (`job_radar/scoring/language.py`):
 
 - non-Latin scripts: Chinese, Japanese, Korean, Arabic, Hebrew, Thai, Greek; **Cyrillic is treated as Russian and accepted**;
 - Latin-script languages (Spanish, Portuguese, French, German, Italian, Polish, Dutch) by typical words ("Desarrollador", "Entwickler", "Développeur", "Schwerpunkt", "remoto", "h/f", …) and letters (`ñ`, `ç`, `ß`, `ã`, `ł`, …); a single weak hint is not enough;

@@ -36,9 +36,9 @@ flowchart TB
 
 1. **Arrives.** A source module parses its input into a plain dataclass: an alert email (`linkedin/alerts.py`), an hh.ru digest (`hh/digests.py`), a Telegram post (`telegram/posts.py`), a board API page (`himalayas.py`, `boards.py`, …), or a page the user sends with the bookmarklet (`linkedin/capture.py`, `hh/capture.py`).
 2. **Is stored once.** `dedup.py` upserts idempotently: one `Company` per normalized name (legal suffixes dropped, aliases), one `SourceRecord` per source and external id, one `JobSnapshot` per distinct description (by SHA-256). Re-running any import never creates duplicates. The same vacancy seen in two different sources stays two opportunities; only a repost of a vacancy already applied to (same company, same title) is merged into it (`applied_duplicates.py`).
-3. **Is scored.** `scoring.py` gives 0–10 from title and location, every rule leaving a `Reason`. `description.py` adds Python-in-description checks; `notes.py` and `rejections.py` adjust for what the user said and what companies answered.
+3. **Is scored.** `scoring/rules.py` gives 0–10 from title and location, every rule leaving a `Reason`. `scoring/description.py` adds Python-in-description checks; `notes.py` and `rejections.py` adjust for what the user said and what companies answered.
 4. **Is filtered.** `auto_ignore.py` moves noise out of *To review* (hybrid, country-only, Claude said skip, …), each with the rule's name; `applied_duplicates.py` attaches a repost of a vacancy already applied to.
-5. **Is analyzed.** With a description, it is queued for Claude (`claude/analysis.py`). Optionally the local model extracts work mode and residence first (`ai/analysis.py`); `findings.py` reads what it stored.
+5. **Is analyzed.** With a description, it is queued for Claude (`claude/analysis.py`). Optionally the local model extracts work mode and residence first (`ai/analysis.py`); `scoring/findings.py` reads what it stored.
 6. **Is decided by the user** in the queue: interested, ignore with a reason, applied. Mail about it later lands in the company history (`contacts.py`, `applications.py`).
 
 ## Sync
@@ -95,7 +95,8 @@ uv run python -c "import sqlite3; sqlite3.connect('data/job_radar.db').backup(sq
 | Storage | `models.py`, `db.py`, `dedup.py`, `migrations/` (Alembic) |
 | Mail port | `mail.py` (`FetchBody`, `MessageGone`: what importers need from Gmail) |
 | Sources | `sources/titles.py` and `sources/http.py` (shared title filters, User-Agent, HTML reader), `gmail/`, `linkedin/`, `hh/`, `telegram/`, `himalayas.py`, `hackernews.py`, `remoteok.py`, `jobicy.py`, `fdetimes.py`, `boards.py`, `manual.py` |
-| Scoring and filters | `scoring.py`, `description.py`, `language.py`, `stack.py`, `notes.py`, `suggestions.py`, `auto_ignore.py`, `applied_duplicates.py` |
+| Profile | `profile/home.py`, `profile/stack.py` |
+| Scoring and filters | `scoring/rules.py`, `scoring/description.py`, `scoring/language.py`, `scoring/findings.py`, `notes.py`, `suggestions.py`, `auto_ignore.py`, `applied_duplicates.py` |
 | History | `applications.py`, `rejections.py`, `contacts.py` |
 | AI | `ai/` (Ollama), `claude/` (Claude Code), `skills.py` (skills gap report) |
 | Background jobs | `pipeline.py`, `web/sync_job.py`, `web/description_job.py` |

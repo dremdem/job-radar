@@ -19,7 +19,7 @@ import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 import job_radar.telegram.posts as telegram_posts
 import job_radar.telegram.sources as telegram_sources
 
@@ -103,7 +103,7 @@ def _create_vacancy(
         return None
     message_id = int(message["id"])
     company_name = job.company or f"Unknown ({source.name} {message_id})"
-    score = scoring.score_job(job.title, job.location)
+    score = scoring_rules.score_job(job.title, job.location)
     opportunity = models.Opportunity(
         title=job.title[:255],
         company=dedup.get_or_create_company(session, company_name),

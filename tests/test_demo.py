@@ -50,12 +50,12 @@ def test_demo_cli(engine, database_url, monkeypatch):
 
 
 def test_demo_vacancies_have_descriptions_and_reasons(session):
-    import job_radar.description as description
+    import job_radar.scoring.description as scoring_description
 
     jr_demo.seed_demo(session)
     for o in session.scalars(sa.select(models.Opportunity)):
         assert o.location and o.score is not None and o.score_reasons, o.title
-        assert description.latest_description(o), o.title
+        assert scoring_description.latest_description(o), o.title
         assert all(r.url.startswith("https://example.com/") for r in o.source_records)
 
 

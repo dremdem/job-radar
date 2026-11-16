@@ -1,4 +1,4 @@
-"""Tests for job_radar.stack and the local stack check: technologies a description
+"""Tests for job_radar.profile.stack and the local stack check: technologies a description
 mentions that the profile lacks (docs/ai.md#stack-vs-your-cv).
 """
 
@@ -8,9 +8,9 @@ import pytest
 import test_ai_analysis
 
 import job_radar.ai.analysis as ai_analysis
-import job_radar.findings as findings
 import job_radar.models as models
-import job_radar.stack as jr_stack
+import job_radar.profile.stack as profile_stack
+import job_radar.scoring.findings as scoring_findings
 
 KNOWN = {"Python", "TypeScript", "Kafka", "Docker"}
 GO_JOB = (
@@ -43,16 +43,18 @@ class FakeModel:
 
 def test_load_known(tmp_path):
     path = tmp_path / "profile.yaml"
-    assert jr_stack.load_known(path) is None
+    assert profile_stack.load_known(path) is None
     path.write_text("known:\n  - python\n  - Go\n")
-    assert jr_stack.load_known(path) == {"python", "go"}
+    assert profile_stack.load_known(path) == {"python", "go"}
 
 
 def test_unknown_mentions_respects_case_and_profile():
-    names = [tech.name for tech in jr_stack.unknown_mentions(GO_JOB, {k.lower() for k in KNOWN})]
+    names = [
+        tech.name for tech in profile_stack.unknown_mentions(GO_JOB, {k.lower() for k in KNOWN})
+    ]
     # "go!" as a verb and the known Docker / TypeScript do not count.
     assert names == ["Go", "Kotlin", "Rust", "Prometheus"]
-    assert [tech.name for tech in jr_stack.unknown_mentions("We use golang.", set())] == ["Go"]
+    assert [tech.name for tech in profile_stack.unknown_mentions("We use golang.", set())] == ["Go"]
 
 
 def test_check_stack_keeps_required_gaps_only():
@@ -91,12 +93,12 @@ def test_stack_risks():
         ]
         + [{"skill": "Scala", "status": "nice_to_have", "quote": "Scala"}]
     )
-    found = findings.stack_risks(analysis)
+    found = scoring_findings.stack_risks(analysis)
     assert found[0][1].text == "Requires Go (not in your CV) — “Go in production”"
     assert len(found) == 4
     # capped
     assert sum(points for points, _ in found) == -3.0
-    assert findings.stack_risks(models.DescriptionAnalysis(stack=None)) == []
+    assert scoring_findings.stack_risks(models.DescriptionAnalysis(stack=None)) == []
 
 
 def test_analyze_pending_checks_stack_also_for_analyzed_descriptions(session):
@@ -135,20 +137,22 @@ def test_queue_shows_stack_gap(client, session):
     ],
 )
 def test_known_alternative(quote):
-    assert jr_stack.known_alternative(quote, {"python", "javascript", "aws"})
+    assert profile_stack.known_alternative(quote, {"python", "javascript", "aws"})
 
 
 def test_slash_counts_only_next_to_a_known_name():
-    assert jr_stack.known_alternative("MLOps, AWS/GCP/Azure", {"aws", "gcp"})
-    assert not jr_stack.known_alternative("Azure, Docker, Kubernetes, GitOps, CI/CD", {"docker"})
+    assert profile_stack.known_alternative("MLOps, AWS/GCP/Azure", {"aws", "gcp"})
+    assert not profile_stack.known_alternative(
+        "Azure, Docker, Kubernetes, GitOps, CI/CD", {"docker"}
+    )
 
 
 def test_no_alternative_without_a_choice():
-    assert not jr_stack.known_alternative("Strong Go and Python skills", {"python"})
-    assert not jr_stack.known_alternative("PyTorch или TensorFlow", {"python"})
+    assert not profile_stack.known_alternative("Strong Go and Python skills", {"python"})
+    assert not profile_stack.known_alternative("PyTorch или TensorFlow", {"python"})
 
 
 def test_optional_wording_beats_required():
-    assert jr_stack.says_optional("Будет плюсом: Опыт работы с OpenTelemetry")
-    assert jr_stack.says_optional("Kafka is a plus")
-    assert not jr_stack.says_optional("5+ years of Go in production")
+    assert profile_stack.says_optional("Будет плюсом: Опыт работы с OpenTelemetry")
+    assert profile_stack.says_optional("Kafka is a plus")
+    assert not profile_stack.says_optional("5+ years of Go in production")

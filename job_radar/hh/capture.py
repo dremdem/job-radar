@@ -17,7 +17,7 @@ import sqlalchemy.orm as sa_orm
 import job_radar.dedup as dedup
 import job_radar.hh.notifications as hh_notifications
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 
 MAX_TEXT = 20000
 
@@ -61,7 +61,7 @@ def import_hh_capture(session: sa_orm.Session, payload: dict[str, t.Any], stats)
     )
     outcome = []
     if record is None:
-        score = scoring.score_job(title, location or None)
+        score = scoring_rules.score_job(title, location or None)
         opportunity = models.Opportunity(
             title=title[:255],
             company=dedup.get_or_create_company(session, company or f"Unknown (hh {vacancy_id})"),

@@ -39,9 +39,6 @@ import job_radar.claude.runner as jr_claude_runner
 import job_radar.config as config
 import job_radar.contacts as contacts
 import job_radar.db as db
-import job_radar.description as jr_description
-import job_radar.findings as findings
-import job_radar.language as jr_language
 import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.linkedin.capture as linkedin_capture
 import job_radar.linkedin.chrome as linkedin_chrome
@@ -50,9 +47,12 @@ import job_radar.manual as manual
 import job_radar.models as models
 import job_radar.notes as notes
 import job_radar.pipeline as pipeline
+import job_radar.profile.stack as profile_stack
 import job_radar.rejections as rejections
+import job_radar.scoring.description as scoring_description
+import job_radar.scoring.findings as scoring_findings
+import job_radar.scoring.language as scoring_language
 import job_radar.skills as skills
-import job_radar.stack as stack
 import job_radar.suggestions as suggestions
 import job_radar.web.description_job as web_description_job
 import job_radar.web.sync_job as web_sync_job
@@ -78,18 +78,18 @@ def bookmarklet(base_url: str, name: str = "bookmarklet") -> str:
 templates = fastapi_templating.Jinja2Templates(
     directory=pathlib.Path(__file__).parent / "templates"
 )
-templates.env.filters["highlight_python"] = jr_description.highlight_python
+templates.env.filters["highlight_python"] = scoring_description.highlight_python
 
 
-_LINK = re.compile(rf"\[([^\]]+)\]\(({jr_description.URL})\)|({jr_description.URL})")
+_LINK = re.compile(rf"\[([^\]]+)\]\(({scoring_description.URL})\)|({scoring_description.URL})")
 
 
 def _link(m: re.Match[str]) -> str:
     """A Markdown [text](url) or a bare URL (#241); http(s) only."""
     if m.group(2):
-        return jr_description.link(m.group(2), m.group(1))
-    url = m.group(3).rstrip(jr_description.URL_TRAILING)
-    return jr_description.link(url) + m.group(3)[len(url) :]
+        return scoring_description.link(m.group(2), m.group(1))
+    url = m.group(3).rstrip(scoring_description.URL_TRAILING)
+    return scoring_description.link(url) + m.group(3)[len(url) :]
 
 
 def chat_markup(text: str) -> markupsafe.Markup:
@@ -757,7 +757,10 @@ def create_app(
     ) -> fastapi_responses.HTMLResponse:
         everything = scope == "all"
         report = skills.build_report(
-            session, stack.load_profile(settings.profile), days=days or None, everything=everything
+            session,
+            profile_stack.load_profile(settings.profile),
+            days=days or None,
+            everything=everything,
         )
         report.rows = skills.sort_rows(report.rows, sort, dir)
         context = {"report": report, "days": days, "scope": scope, "message": ""}
@@ -775,14 +778,14 @@ def create_app(
     ) -> fastapi_responses.HTMLResponse:
         if level not in ("known", "learnable", "blockers") or not name.strip():
             raise fastapi.HTTPException(status_code=422, detail="Unknown level")
-        profile = stack.load_profile(settings.profile) or stack.Profile()
+        profile = profile_stack.load_profile(settings.profile) or profile_stack.Profile()
         lists = {k: [x for x in getattr(profile, k) if x.lower() != name.strip().lower()]
                  for k in ("known", "learnable", "blockers")}  # fmt: skip
         lists[level].append(name.strip())
-        stack.save_profile(settings.profile, dataclasses.replace(profile, **lists))
+        profile_stack.save_profile(settings.profile, dataclasses.replace(profile, **lists))
         report = skills.build_report(
             session,
-            stack.load_profile(settings.profile),
+            profile_stack.load_profile(settings.profile),
             days=days or None,
             everything=scope == "all",
         )
@@ -832,10 +835,10 @@ def create_app(
 
     @app.get("/profile", response_class=fastapi_responses.HTMLResponse)
     def profile_page(request: fastapi.Request) -> fastapi_responses.HTMLResponse:
-        profile = stack.load_profile(settings.profile) or stack.Profile()
+        profile = profile_stack.load_profile(settings.profile) or profile_stack.Profile()
         context = {
             "profile": dataclasses.asdict(profile),
-            "lists": stack.LISTS,
+            "lists": profile_stack.LISTS,
             "path": settings.profile,
         }
         context["message"] = None
@@ -855,7 +858,7 @@ def create_app(
         def lines(text: str) -> list[str]:
             return [line.strip() for line in text.splitlines() if line.strip()]
 
-        profile = stack.Profile(
+        profile = profile_stack.Profile(
             lines(known),
             lines(learnable),
             lines(blockers),
@@ -863,7 +866,7 @@ def create_app(
             home=home.strip(),
             home_regions=lines(home_regions),
         )
-        stack.save_profile(settings.profile, profile)
+        profile_stack.save_profile(settings.profile, profile)
         asked = ai_analysis.recheck_stack(session)
         message = "Saved." + (
             f" The stack of {asked} vacancies in To review is checked again at the next Sync."
@@ -872,7 +875,7 @@ def create_app(
         )
         context = {
             "profile": dataclasses.asdict(profile),
-            "lists": stack.LISTS,
+            "lists": profile_stack.LISTS,
             "path": settings.profile,
         }
         context["message"] = message
@@ -1296,7 +1299,7 @@ def _fetch_log(session: sa_orm.Session, days: int) -> tuple[list[dict], list[Log
     return rows, list(by_day.values())
 
 
-def _first_gap(analysis, profile: stack.Profile | None) -> str:
+def _first_gap(analysis, profile: profile_stack.Profile | None) -> str:
     """The first required technology not known, to prefill the Stack chip."""
     for item in (analysis.stack or []) if analysis else []:
         if item.get("status") == "required" and (
@@ -1306,9 +1309,9 @@ def _first_gap(analysis, profile: stack.Profile | None) -> str:
     return ""
 
 
-def _profile(session: sa_orm.Session) -> stack.Profile | None:
+def _profile(session: sa_orm.Session) -> profile_stack.Profile | None:
     settings = session.info.get("settings")
-    return stack.current_profile(settings.profile) if settings else None
+    return profile_stack.current_profile(settings.profile) if settings else None
 
 
 def _score(
@@ -1317,12 +1320,12 @@ def _score(
     """The score shown and sorted by, its extra reasons, and the description used."""
     eff_score = rejections.effective_score(opportunity.score, rejected=rejected_at is not None)
     extra_reasons = []
-    description = jr_description.latest_description(opportunity)
+    description = scoring_description.latest_description(opportunity)
     effects = (
         notes.location_penalty(session, opportunity),
-        jr_language.language_risk(opportunity.title, description),
-        jr_description.python_risk(opportunity.title, description),
-        *findings.risks(findings.latest_analysis(opportunity), _profile(session)),
+        scoring_language.language_risk(opportunity.title, description),
+        scoring_description.python_risk(opportunity.title, description),
+        *scoring_findings.risks(scoring_findings.latest_analysis(opportunity), _profile(session)),
     )
     for penalty in effects:
         if penalty is None:
@@ -1342,7 +1345,7 @@ def _row_context(
     rejected_at = rejected.get(opportunity.company_id)
     history = contacts.company_history(session, opportunity.company_id)
     eff_score, extra_reasons, description = _score(session, opportunity, rejected_at)
-    python_check = jr_description.check_python(description) if description else None
+    python_check = scoring_description.check_python(description) if description else None
     others = contacts.other_vacancies(session, opportunity.company_id, opportunity.id)
     applied = [e.at for e in history if e.kind == "applied"]
     applied += [at for o, at in others if o.state is models.OpportunityState.APPLIED]
@@ -1363,11 +1366,11 @@ def _row_context(
         "suggestions": suggestions.suggest(
             opportunity,
             description=description,
-            analysis=findings.latest_analysis(opportunity),
+            analysis=scoring_findings.latest_analysis(opportunity),
             profile=_profile(session),
             claude=claude_analysis.latest(session, opportunity.id),
         ),
-        "stack_hint": _first_gap(findings.latest_analysis(opportunity), _profile(session)),
+        "stack_hint": _first_gap(scoring_findings.latest_analysis(opportunity), _profile(session)),
         "country": notes.country_from_location(opportunity.location) or "",
         "reason_kinds": [k for k in models.NoteKind if k is not models.NoteKind.NOTE],
     }

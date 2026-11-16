@@ -11,7 +11,7 @@ Usage:
 
 import typing as t
 
-import job_radar.stack as stack
+import job_radar.profile.stack as profile_stack
 
 # 2: ignore_reason (#117); 3: memory (#215); 4: home from the profile
 PROMPT_VERSION = "4"
@@ -23,13 +23,13 @@ FACTS = [
 ]
 
 
-def facts(profile: stack.Profile) -> list[str]:
+def facts(profile: profile_stack.Profile) -> list[str]:
     if not profile.home:
         return FACTS
     return [FACTS[0], f"I live in {profile.home} and will not relocate.", *FACTS[1:]]
 
 
-def _from(profile: stack.Profile | None) -> str:
+def _from(profile: profile_stack.Profile | None) -> str:
     """ " from Thailand" or nothing, for sentences about remote work."""
     return f" from {profile.home}" if profile and profile.home else ""
 
@@ -125,7 +125,7 @@ _HONEST = (
 )
 
 
-def quick_prompts(profile: stack.Profile | None) -> list[tuple[str, str]]:
+def quick_prompts(profile: profile_stack.Profile | None) -> list[tuple[str, str]]:
     remote_from = _from(profile)
     home_ru = f" (живу: {profile.home})" if profile and profile.home else ""
     return [
@@ -204,7 +204,7 @@ def _list(title: str, items: list[str]) -> str:
 def analysis_prompt(
     *,
     cv: str | None,
-    profile: stack.Profile | None,
+    profile: profile_stack.Profile | None,
     title: str,
     company: str,
     location: str | None,
@@ -212,7 +212,7 @@ def analysis_prompt(
     description: str,
     memory: str = "",
 ) -> str:
-    profile = profile or stack.Profile()
+    profile = profile or profile_stack.Profile()
     parts = [
         "# About me",
         _list("Facts", facts(profile)),

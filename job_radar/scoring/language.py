@@ -7,13 +7,13 @@ required"). ``vacancy_language`` combines them and ``language_risk`` turns the r
 a score effect. See docs/applications.md#vacancy-language.
 
 Usage:
-    import job_radar.language as language
+    import job_radar.scoring.language as scoring_language
 """
 
 import functools
 import re
 
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 
 # a hard blocker (#115)
 LANGUAGE_PENALTY = -8.0
@@ -183,17 +183,17 @@ def vacancy_language(title: str, description: str | None) -> str | None:
 @functools.lru_cache(maxsize=8192)
 def language_risk(
     title: str, description: str | None = None
-) -> tuple[float, scoring.Reason] | None:
+) -> tuple[float, scoring_rules.Reason] | None:
     if language := detect_title_language(title):
-        return LANGUAGE_PENALTY, scoring.Reason(
+        return LANGUAGE_PENALTY, scoring_rules.Reason(
             "-", f"Title in {language}: the job likely needs {language}"
         )
     if description and (language := detect_text_language(description)):
-        return LANGUAGE_PENALTY, scoring.Reason(
+        return LANGUAGE_PENALTY, scoring_rules.Reason(
             "-", f"Description in {language}: the job likely needs {language}"
         )
     if description and (required := required_language(description)):
         language, sentence = required
         shown = sentence if len(sentence) <= 160 else sentence[:159] + "…"
-        return LANGUAGE_PENALTY, scoring.Reason("-", f"Requires {language} — “{shown}”")
+        return LANGUAGE_PENALTY, scoring_rules.Reason("-", f"Requires {language} — “{shown}”")
     return None

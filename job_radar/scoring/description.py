@@ -6,7 +6,7 @@ reason and a score effect, and ``highlight_python`` renders the description as s
 with Python mentions marked and links clickable. See docs/queue.md#description-checks.
 
 Usage:
-    import job_radar.description as description
+    import job_radar.scoring.description as scoring_description
 """
 
 import dataclasses
@@ -17,7 +17,7 @@ import re
 import markupsafe
 
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 
 PYTHON_BONUS = 0.5
 NO_PYTHON_PENALTY = -3.0
@@ -88,16 +88,18 @@ def lacks_python(title: str, description: str | None) -> bool:
 
 # pure text check, run for every vacancy in a list (#180)
 @functools.lru_cache(maxsize=8192)
-def python_risk(title: str, description: str | None) -> tuple[float, scoring.Reason] | None:
+def python_risk(title: str, description: str | None) -> tuple[float, scoring_rules.Reason] | None:
     """Score effect of Python in the description; None without a description or with Python
     already in the title."""
     if not description or _PYTHON.search(title):
         return None
     check = check_python(description)
     if check.mentions == 0:
-        return NO_PYTHON_PENALTY, scoring.Reason("-", "No Python in description")
+        return NO_PYTHON_PENALTY, scoring_rules.Reason("-", "No Python in description")
     also = f"; also {', '.join(check.related)}" if check.related else ""
-    return PYTHON_BONUS, scoring.Reason("+", f"Python in description (x{check.mentions}{also})")
+    return PYTHON_BONUS, scoring_rules.Reason(
+        "+", f"Python in description (x{check.mentions}{also})"
+    )
 
 
 # On escaped text: "&" only as "&amp;", so a quote (&#34;) or "<" ends the URL.

@@ -13,10 +13,10 @@ import dataclasses
 import re
 import typing as t
 
-import job_radar.findings as findings
-import job_radar.language as jr_language
 import job_radar.models as models
-import job_radar.stack as stack
+import job_radar.profile.stack as profile_stack
+import job_radar.scoring.findings as scoring_findings
+import job_radar.scoring.language as scoring_language
 
 MAX_SUGGESTIONS = 3
 # Russian names Claude uses in its gaps ("Нидерландский или французский").
@@ -39,8 +39,8 @@ class Suggestion:
 
 
 def _language_in(text: str) -> str | None:
-    if match := jr_language._NAME.search(text):
-        return jr_language._NAMES[match.group(1).casefold()]
+    if match := scoring_language._NAME.search(text):
+        return scoring_language._NAMES[match.group(1).casefold()]
     lowered = text.casefold()
     return next((lang for stem, lang in _RUSSIAN_NAMES.items() if stem in lowered), None)
 
@@ -118,16 +118,16 @@ def suggest(
     *,
     description: str | None,
     analysis: models.DescriptionAnalysis | None = None,
-    profile: stack.Profile | None = None,
+    profile: profile_stack.Profile | None = None,
     claude: models.ClaudeAnalysis | None = None,
 ) -> list[Suggestion]:
     """Up to three different reasons, the most certain first."""
     found: list[Suggestion] = []
     title = opportunity.title if opportunity is not None else ""
-    if language := jr_language.vacancy_language(title, description):
+    if language := scoring_language.vacancy_language(title, description):
         found.append(_language(language))
     if analysis is not None:
-        if restriction := findings.residence_restriction(analysis):
+        if restriction := scoring_findings.residence_restriction(analysis):
             found.append(
                 Suggestion(models.NoteKind.ONLY_LOCATION, restriction, f"only {restriction}")
             )

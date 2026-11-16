@@ -1,11 +1,11 @@
-"""Tests for job_radar.description: Python mentions in a description, their quote,
+"""Tests for job_radar.scoring.description: Python mentions in a description, their quote,
 score effect and highlighting (docs/queue.md#description-checks).
 """
 
 import json
 import pathlib
 
-import job_radar.description as description
+import job_radar.scoring.description as scoring_description
 
 EMPAT = json.loads(
     (
@@ -19,13 +19,13 @@ ECARSTRADE = (
 
 
 def test_real_description_mentions_python():
-    check = description.check_python(EMPAT)
+    check = scoring_description.check_python(EMPAT)
     assert check.mentions >= 1
     assert "python" in check.quote.lower()
 
 
 def test_counts_python_forms_and_related_tools():
-    check = description.check_python(
+    check = scoring_description.check_python(
         ECARSTRADE + " We like python-based tools and Python3 scripts."
     )
     assert check.mentions == 3
@@ -34,27 +34,27 @@ def test_counts_python_forms_and_related_tools():
 
 
 def test_no_python():
-    check = description.check_python("We build services in Go and Rust on Kubernetes.")
+    check = scoring_description.check_python("We build services in Go and Rust on Kubernetes.")
     assert (check.mentions, check.related, check.quote) == (0, [], "")
 
 
 def test_quote_is_short_and_around_the_mention():
     text = "x " * 400 + "Experience with Python is required." + " y" * 400
-    quote = description.check_python(text).quote
+    quote = scoring_description.check_python(text).quote
     assert "Python is required" in quote and len(quote) <= 220
 
 
 def test_python_risk():
-    points, reason = description.python_risk("Backend Engineer", ECARSTRADE)
+    points, reason = scoring_description.python_risk("Backend Engineer", ECARSTRADE)
     assert points > 0 and reason.sign == "+"
     assert reason.text == "Python in description (x1; also asyncio, FastAPI)"
-    points, reason = description.python_risk("Backend Engineer", "Go and Rust only.")
+    points, reason = scoring_description.python_risk("Backend Engineer", "Go and Rust only.")
     assert (points, reason.sign, reason.text) == (-3.0, "-", "No Python in description")
 
 
 def test_python_risk_needs_a_description_and_respects_the_title():
-    assert description.python_risk("Backend Engineer", None) is None
-    assert description.python_risk("Senior Python Developer", "Go and Rust only.") is None
+    assert scoring_description.python_risk("Backend Engineer", None) is None
+    assert scoring_description.python_risk("Senior Python Developer", "Go and Rust only.") is None
 
 
 def test_latest_snapshot_mixes_stored_and_new_snapshots(session):
@@ -82,4 +82,4 @@ def test_latest_snapshot_mixes_stored_and_new_snapshots(session):
     record = o.source_records[0]
     _, created = dedup.add_snapshot(session, record, "new text")
     assert created and record.snapshots[-1].retrieved_at.tzinfo is not None
-    assert description.latest_description(o) == "new text"
+    assert scoring_description.latest_description(o) == "new text"
