@@ -1,26 +1,36 @@
-"""Forward Deployed Engineer roles from FDE Times' public job list. See docs/fdetimes.md."""
+"""Forward Deployed Engineer roles from FDE Times' public job list.
 
+The list page is plain HTML without login: ``parse_jobs`` reads every role with its
+region, kind and date, and ``import_fdetimes`` stores the fresh developer roles of the
+chosen regions, remembering the last run in a ``SyncCursor``. Descriptions come from the
+role pages, one paced request each, through ``import_descriptions`` (the Descriptions
+job), which the user can stop between requests. See docs/fdetimes.md.
+
+Usage:
+    import job_radar.fdetimes as fdetimes
+"""
+
+import collections.abc as cabc
+import dataclasses
+import datetime as dt
 import json
 import random
 import re
 import threading
 import time
+import typing as t
 import urllib.error
 import urllib.request
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
-from typing import Protocol
 
-from bs4 import BeautifulSoup
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import bs4
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .dedup import add_snapshot, get_or_create_company
-from .himalayas import EXCLUDE_TITLE, USER_AGENT, _text
-from .models import Opportunity, OpportunityState, SourceRecord, SourceType, SyncCursor
-from .scoring import score_job
-from .telegram.sources import DEFAULT_TITLE
+import job_radar.dedup as dedup
+import job_radar.himalayas as himalayas
+import job_radar.models as models
+import job_radar.scoring as scoring
+import job_radar.telegram.sources as telegram_sources
 
 BASE_URL = "https://fdetimes.net"
 LIST_URL = f"{BASE_URL}/en/jobs/"
@@ -29,22 +39,26 @@ CURSOR = "fdetimes"
 REGIONS = ("north-america", "europe", "apac", "remote", "other")
 # The time is when the company posted the role (some carry only a date), and a role can
 # reach the board days later: re-read a week before the last run. One request either way.
-MARGIN = timedelta(days=7)
-GONE = (404, 410)  # the role was taken down: the vacancy is not available
-BLOCKED = (403, 429)  # stop asking for this run
+MARGIN = dt.timedelta(days=7)
+# the role was taken down: the vacancy is not available
+GONE = (404, 410)
+# stop asking for this run
+BLOCKED = (403, 429)
 _SLUG = re.compile(r"^/en/jobs/([a-z0-9][a-z0-9-]*)/?$")
 
 # (http status, body); a non-200 status is returned, not raised.
-HttpGet = Callable[[str], tuple[int, str]]
+HttpGet = cabc.Callable[[str], tuple[int, str]]
 
 
 class FDETimesError(Exception):
+    """The FDE Times list or a role page could not be read."""
+
     pass
 
 
 def urllib_get(url: str) -> tuple[int, str]:
     # A fresh request every time: no cookies, no session.
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(url, headers={"User-Agent": himalayas.USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             return response.status, response.read().decode("utf-8", "replace")
@@ -54,11 +68,15 @@ def urllib_get(url: str) -> tuple[int, str]:
         raise FDETimesError(str(getattr(e, "reason", e))) from e
 
 
-class Client(Protocol):
+class Client(t.Protocol):
+    """What the import needs from FDE Times: the job list page. Tests pass a fake."""
+
     def jobs_page(self) -> str: ...
 
 
 class FDETimesClient:
+    """The real client: one plain HTTPS request for the job list."""
+
     def __init__(self, http_get: HttpGet = urllib_get):
         self._get = http_get
 
@@ -69,15 +87,18 @@ class FDETimesClient:
         return body
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class FDEJob:
+    """One role from the FDE Times list."""
+
     slug: str
     title: str
     company: str
     location: str
     region: str
-    kind: str  # "fde" or "related"
-    posted_at: datetime
+    # "fde" or "related"
+    kind: str
+    posted_at: dt.datetime
 
     @property
     def url(self) -> str:
@@ -87,11 +108,11 @@ class FDEJob:
 def parse_jobs(html: str) -> list[FDEJob]:
     """Every role on the list page; rows without a link or a date are left out."""
     jobs = []
-    for row in BeautifulSoup(html, "html.parser").select("div.job[data-kind]"):
+    for row in bs4.BeautifulSoup(html, "html.parser").select("div.job[data-kind]"):
         link = row.select_one("a.t[href]")
         match = _SLUG.match(link["href"]) if link else None
         try:
-            posted = datetime.fromisoformat(row.get("data-posted", "")).astimezone(UTC)
+            posted = dt.datetime.fromisoformat(row.get("data-posted", "")).astimezone(dt.UTC)
         except ValueError:
             continue
         if not match:
@@ -114,8 +135,8 @@ def parse_jobs(html: str) -> list[FDEJob]:
 
 def wants_title(title: str) -> bool:
     """A developer-type role: the Himalayas title filter."""
-    return bool(re.search(DEFAULT_TITLE, title, re.IGNORECASE)) and not re.search(
-        EXCLUDE_TITLE, title, re.IGNORECASE
+    return bool(re.search(telegram_sources.DEFAULT_TITLE, title, re.IGNORECASE)) and not re.search(
+        himalayas.EXCLUDE_TITLE, title, re.IGNORECASE
     )
 
 
@@ -128,30 +149,37 @@ def parse_regions(text: str) -> tuple[str, ...]:
     return regions or REGIONS
 
 
-@dataclass
+@dataclasses.dataclass
 class FDETimesStats:
-    listed: int = 0  # roles on the page
-    fresh: int = 0  # published since the last run
+    """Counters of one list import, for the sync status line."""
+
+    # roles on the page
+    listed: int = 0
+    # published since the last run
+    fresh: int = 0
     new: int = 0
     known: int = 0
-    skipped: int = 0  # not the kind, region or role asked for
+    # not the kind, region or role asked for
+    skipped: int = 0
     error: str | None = None
 
 
-def _add(session: Session, job: FDEJob) -> None:
-    from .auto_ignore import apply_rules
+def _add(session: sa_orm.Session, job: FDEJob) -> None:
+    import job_radar.auto_ignore as auto_ignore
 
-    score = score_job(job.title, job.location or None)
-    opportunity = Opportunity(
+    score = scoring.score_job(job.title, job.location or None)
+    opportunity = models.Opportunity(
         title=job.title[:255],
-        company=get_or_create_company(session, job.company or f"Unknown (FDE Times {job.slug})"),
+        company=dedup.get_or_create_company(
+            session, job.company or f"Unknown (FDE Times {job.slug})"
+        ),
         location=job.location or None,
         score=score.value,
         score_reasons=[r.as_dict() for r in score.reasons],
     )
     session.add(
-        SourceRecord(
-            source_type=SourceType.FDETIMES,
+        models.SourceRecord(
+            source_type=models.SourceType.FDETIMES,
             external_id=job.slug,
             url=job.url,
             opportunity=opportunity,
@@ -159,24 +187,24 @@ def _add(session: Session, job: FDEJob) -> None:
     )
     session.flush()
     session.refresh(opportunity)
-    apply_rules(session, opportunity)
+    auto_ignore.apply_rules(session, opportunity)
 
 
 def import_fdetimes(
-    session: Session,
+    session: sa_orm.Session,
     client: Client,
     *,
-    now: datetime | None = None,
+    now: dt.datetime | None = None,
     first_run_days: float = 7,
     regions: tuple[str, ...] = REGIONS,
     related: bool = False,
 ) -> FDETimesStats:
-    now = now or datetime.now(UTC)
-    state = session.get(SyncCursor, CURSOR)
+    now = now or dt.datetime.now(dt.UTC)
+    state = session.get(models.SyncCursor, CURSOR)
     if state and state.last_run_at:
-        since = state.last_run_at.replace(tzinfo=state.last_run_at.tzinfo or UTC) - MARGIN
+        since = state.last_run_at.replace(tzinfo=state.last_run_at.tzinfo or dt.UTC) - MARGIN
     else:
-        since = now - timedelta(days=first_run_days)
+        since = now - dt.timedelta(days=first_run_days)
     stats = FDETimesStats()
     try:
         jobs = parse_jobs(client.jobs_page())
@@ -192,16 +220,16 @@ def import_fdetimes(
         if job.kind not in kinds or job.region not in regions or not wants_title(job.title):
             stats.skipped += 1
         elif session.scalar(
-            select(SourceRecord.id).where(
-                SourceRecord.source_type == SourceType.FDETIMES,
-                SourceRecord.external_id == job.slug,
+            sa.select(models.SourceRecord.id).where(
+                models.SourceRecord.source_type == models.SourceType.FDETIMES,
+                models.SourceRecord.external_id == job.slug,
             )
         ):
             stats.known += 1
         else:
             _add(session, job)
             stats.new += 1
-    state = state or SyncCursor(name=CURSOR)
+    state = state or models.SyncCursor(name=CURSOR)
     state.last_run_at = now
     session.add(state)
     session.commit()
@@ -213,7 +241,7 @@ def import_fdetimes(
 
 def parse_job_page(html: str) -> str | None:
     """The description of a role page: its JobPosting data, else the description block."""
-    soup = BeautifulSoup(html, "html.parser")
+    soup = bs4.BeautifulSoup(html, "html.parser")
     for script in soup.find_all("script", type="application/ld+json"):
         try:
             data = json.loads(script.string or "")
@@ -222,14 +250,14 @@ def parse_job_page(html: str) -> str | None:
         for item in data if isinstance(data, list) else [data]:
             if not (isinstance(item, dict) and item.get("@type") == "JobPosting"):
                 continue
-            if text := _text(str(item.get("description") or "")):
+            if text := himalayas._text(str(item.get("description") or "")):
                 return text
     article = soup.select_one("article#job-desc")
     if article is None:
         return None
     for heading in article.select(".job-desc-h"):
         heading.decompose()
-    return _text(str(article)) or None
+    return himalayas._text(str(article)) or None
 
 
 class Stopped(Exception):
@@ -244,10 +272,10 @@ class PageClient:
         http_get: HttpGet = urllib_get,
         *,
         pause: tuple[float, float] = (10.0, 40.0),
-        sleep: Callable[[float], object] | None = None,
-        rand: Callable[[float, float], float] = random.uniform,
+        sleep: cabc.Callable[[float], object] | None = None,
+        rand: cabc.Callable[[float, float], float] = random.uniform,
         stop: threading.Event | None = None,
-        on_wait: Callable[[float], None] | None = None,
+        on_wait: cabc.Callable[[float], None] | None = None,
     ):
         self._get, self._pause, self._sleep, self._rand = http_get, pause, sleep, rand
         self._stop, self._on_wait = stop, on_wait
@@ -278,8 +306,10 @@ class PageClient:
         return self._get(JOB_URL.format(slug=slug))
 
 
-@dataclass
+@dataclasses.dataclass
 class FDEDescriptionStats:
+    """Counters of one description run over role pages."""
+
     total: int = 0
     requests: int = 0
     saved: int = 0
@@ -288,18 +318,20 @@ class FDEDescriptionStats:
     blocked: bool = False
     reason: str | None = None
     stopped: bool = False
-    problems: list[str] = field(default_factory=list)
+    problems: list[str] = dataclasses.field(default_factory=list)
 
 
-def without_description(session: Session) -> list[tuple[Opportunity, SourceRecord]]:
+def without_description(
+    session: sa_orm.Session,
+) -> list[tuple[models.Opportunity, models.SourceRecord]]:
     """To review vacancies from FDE Times with no description from any source, best first."""
     rows = session.scalars(
-        select(Opportunity)
-        .join(SourceRecord)
+        sa.select(models.Opportunity)
+        .join(models.SourceRecord)
         .where(
-            Opportunity.state == OpportunityState.NEW,
-            Opportunity.unavailable_at.is_(None),
-            SourceRecord.source_type == SourceType.FDETIMES,
+            models.Opportunity.state == models.OpportunityState.NEW,
+            models.Opportunity.unavailable_at.is_(None),
+            models.SourceRecord.source_type == models.SourceType.FDETIMES,
         )
         .distinct()
     ).all()
@@ -307,20 +339,20 @@ def without_description(session: Session) -> list[tuple[Opportunity, SourceRecor
     for o in rows:
         if any(r.snapshots for r in o.source_records):
             continue
-        record = next(r for r in o.source_records if r.source_type is SourceType.FDETIMES)
+        record = next(r for r in o.source_records if r.source_type is models.SourceType.FDETIMES)
         out.append((o, record))
     return sorted(out, key=lambda pair: -(pair[0].score if pair[0].score is not None else -1))
 
 
 def import_descriptions(
-    session: Session,
+    session: sa_orm.Session,
     client: PageClient,
     *,
     max_per_run: int = 50,
-    on_progress: Callable[[FDEDescriptionStats], None] | None = None,
+    on_progress: cabc.Callable[[FDEDescriptionStats], None] | None = None,
 ) -> FDEDescriptionStats:
     """Description from the role page for To review vacancies without one (docs/fdetimes.md)."""
-    from .auto_ignore import apply_rules, mark_unavailable
+    import job_radar.auto_ignore as auto_ignore
 
     def progress() -> None:
         if on_progress:
@@ -340,12 +372,12 @@ def import_descriptions(
             status, body = None, str(e)
         stats.requests += 1
         if status == 200 and (description := parse_job_page(body)):
-            add_snapshot(session, record, description)
+            dedup.add_snapshot(session, record, description)
             stats.saved += 1
             session.refresh(opportunity)
-            apply_rules(session, opportunity)
+            auto_ignore.apply_rules(session, opportunity)
         elif status in GONE:
-            mark_unavailable(session, opportunity)
+            auto_ignore.mark_unavailable(session, opportunity)
             stats.gone += 1
         elif status in BLOCKED:
             stats.blocked, stats.reason = True, f"HTTP {status}"

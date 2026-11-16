@@ -1,37 +1,51 @@
-"""Fresh Python jobs from the Remote OK public JSON feed. See docs/remoteok.md."""
+"""Fresh Python jobs from the Remote OK public JSON feed.
 
+``RemoteOKClient`` reads the feed, ``parse_job`` turns an item into a ``RemoteOKJob``,
+``wants`` keeps developer roles that mention Python, and ``import_remoteok`` stores the
+new ones. See docs/remoteok.md.
+
+Usage:
+    import job_radar.remoteok as remoteok
+"""
+
+import dataclasses
+import datetime as dt
 import json
 import re
+import typing as t
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .dedup import add_snapshot, get_or_create_company
-from .himalayas import EXCLUDE_TITLE, USER_AGENT, _text
-from .models import Opportunity, SourceRecord, SourceType
-from .scoring import score_job
-from .telegram.sources import DEFAULT_KEYWORDS, DEFAULT_TITLE
+import job_radar.dedup as dedup
+import job_radar.himalayas as himalayas
+import job_radar.models as models
+import job_radar.scoring as scoring
+import job_radar.telegram.sources as telegram_sources
 
 FEED_URL = "https://remoteok.com/api?tag=python"
-MAX_AGE = timedelta(days=30)
+MAX_AGE = dt.timedelta(days=30)
 
 
 class RemoteOKError(Exception):
+    """The Remote OK feed could not be read."""
+
     pass
 
 
-class Client(Protocol):
-    def feed(self) -> list[dict[str, Any]]: ...
+class Client(t.Protocol):
+    """What the import needs from Remote OK: the feed items. Tests pass a fake."""
+
+    def feed(self) -> list[dict[str, t.Any]]: ...
 
 
 class RemoteOKClient:
-    def feed(self) -> list[dict[str, Any]]:
-        request = urllib.request.Request(FEED_URL, headers={"User-Agent": USER_AGENT})
+    """The real client over the public Remote OK JSON feed."""
+
+    def feed(self) -> list[dict[str, t.Any]]:
+        request = urllib.request.Request(FEED_URL, headers={"User-Agent": himalayas.USER_AGENT})
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 data = json.loads(response.read())
@@ -44,8 +58,10 @@ class RemoteOKClient:
         return data
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class RemoteOKJob:
+    """One job from the Remote OK feed, in the shape the import stores."""
+
     id: str
     url: str
     title: str
@@ -54,7 +70,7 @@ class RemoteOKJob:
     salary: str | None
     description: str
     tags: list[str]
-    published_at: datetime
+    published_at: dt.datetime
 
 
 def _fix(text: str) -> str:
@@ -65,7 +81,7 @@ def _fix(text: str) -> str:
         return text
 
 
-def _salary(raw: dict[str, Any]) -> str | None:
+def _salary(raw: dict[str, t.Any]) -> str | None:
     amounts = [int(v) for v in (raw.get("salary_min"), raw.get("salary_max")) if v]
     if not amounts:
         return None
@@ -73,7 +89,7 @@ def _salary(raw: dict[str, Any]) -> str | None:
     return f"{text} USD / year"
 
 
-def parse_job(raw: dict[str, Any]) -> RemoteOKJob:
+def parse_job(raw: dict[str, t.Any]) -> RemoteOKJob:
     place = " ".join(_fix(str(raw.get("location") or "")).split()).strip(" ,")
     return RemoteOKJob(
         id=str(raw["id"]),
@@ -82,24 +98,26 @@ def parse_job(raw: dict[str, Any]) -> RemoteOKJob:
         company=" ".join(_fix(str(raw.get("company") or "")).split()),
         location=f"Remote, {place}" if place else "Remote",
         salary=_salary(raw),
-        description=_text(_fix(str(raw.get("description") or ""))),
-        tags=[str(t) for t in raw.get("tags") or []],
-        published_at=datetime.fromtimestamp(int(raw["epoch"]), UTC),
+        description=himalayas._text(_fix(str(raw.get("description") or ""))),
+        tags=[str(tag) for tag in raw.get("tags") or []],
+        published_at=dt.datetime.fromtimestamp(int(raw["epoch"]), dt.UTC),
     )
 
 
 def wants(job: RemoteOKJob) -> bool:
     """A developer role (title filter) that mentions Python somewhere."""
-    if not re.search(DEFAULT_TITLE, job.title, re.IGNORECASE):
+    if not re.search(telegram_sources.DEFAULT_TITLE, job.title, re.IGNORECASE):
         return False
-    if re.search(EXCLUDE_TITLE, job.title, re.IGNORECASE):
+    if re.search(himalayas.EXCLUDE_TITLE, job.title, re.IGNORECASE):
         return False
     text = "\n".join([job.title, " ".join(job.tags), job.description])
-    return bool(re.search(DEFAULT_KEYWORDS, text, re.IGNORECASE))
+    return bool(re.search(telegram_sources.DEFAULT_KEYWORDS, text, re.IGNORECASE))
 
 
-@dataclass
+@dataclasses.dataclass
 class RemoteOKStats:
+    """Counters of one import, for the sync status line."""
+
     jobs: int = 0
     old: int = 0
     new: int = 0
@@ -108,33 +126,38 @@ class RemoteOKStats:
     error: str | None = None
 
 
-def _add(session: Session, job: RemoteOKJob) -> None:
-    from .auto_ignore import apply_rules
+def _add(session: sa_orm.Session, job: RemoteOKJob) -> None:
+    import job_radar.auto_ignore as auto_ignore
 
-    score = score_job(job.title, job.location)
-    opportunity = Opportunity(
+    score = scoring.score_job(job.title, job.location)
+    opportunity = models.Opportunity(
         title=job.title[:255],
-        company=get_or_create_company(session, job.company or f"Unknown (Remote OK {job.id})"),
+        company=dedup.get_or_create_company(
+            session, job.company or f"Unknown (Remote OK {job.id})"
+        ),
         location=job.location,
         salary=job.salary,
         score=score.value,
         score_reasons=[r.as_dict() for r in score.reasons],
     )
-    record = SourceRecord(
-        source_type=SourceType.REMOTEOK, external_id=job.id, url=job.url, opportunity=opportunity
+    record = models.SourceRecord(
+        source_type=models.SourceType.REMOTEOK,
+        external_id=job.id,
+        url=job.url,
+        opportunity=opportunity,
     )
     session.add(record)
     session.flush()
     if job.description:
-        add_snapshot(session, record, job.description)
+        dedup.add_snapshot(session, record, job.description)
     session.refresh(opportunity)
-    apply_rules(session, opportunity)
+    auto_ignore.apply_rules(session, opportunity)
 
 
 def import_remoteok(
-    session: Session, client: Client, *, now: datetime | None = None
+    session: sa_orm.Session, client: Client, *, now: dt.datetime | None = None
 ) -> RemoteOKStats:
-    now = now or datetime.now(UTC)
+    now = now or dt.datetime.now(dt.UTC)
     stats = RemoteOKStats()
     try:
         feed = client.feed()
@@ -142,7 +165,8 @@ def import_remoteok(
         stats.error = str(e)
         return stats
     for raw in feed:
-        if "id" not in raw or "epoch" not in raw:  # the terms-of-use element
+        # the terms-of-use element
+        if "id" not in raw or "epoch" not in raw:
             continue
         job = parse_job(raw)
         stats.jobs += 1
@@ -151,9 +175,9 @@ def import_remoteok(
         elif not wants(job):
             stats.skipped += 1
         elif session.scalar(
-            select(SourceRecord.id).where(
-                SourceRecord.source_type == SourceType.REMOTEOK,
-                SourceRecord.external_id == job.id,
+            sa.select(models.SourceRecord.id).where(
+                models.SourceRecord.source_type == models.SourceType.REMOTEOK,
+                models.SourceRecord.external_id == job.id,
             )
         ):
             stats.known += 1

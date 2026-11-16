@@ -1,19 +1,23 @@
 """Pages the user sent with the bookmarklet: job cards and, on a vacancy, its description.
 
-The bookmarklet only reads a page the user opened; parsing happens here so it can be tested.
-See docs/linkedin-capture.md.
+The bookmarklet only reads a page the user opened; parsing happens here so it can be
+tested. ``import_capture`` creates vacancies from search cards and stores the description
+of the open vacancy; the Chrome fill reuses it. See docs/linkedin-capture.md.
+
+Usage:
+    import job_radar.linkedin.capture as linkedin_capture
 """
 
+import dataclasses
 import re
-from dataclasses import dataclass, field
-from typing import Any
+import typing as t
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..dedup import add_snapshot
-from ..models import SourceRecord, SourceType
-from .alerts import LINKEDIN_SOURCES, AlertJob, add_linkedin_job
+import job_radar.dedup as dedup
+import job_radar.linkedin.alerts as linkedin_alerts
+import job_radar.models as models
 
 _NOISE = re.compile(
     r"^(promoted( by hirer)?|viewed|applied|saved|new|top applicant|easy apply|"
@@ -45,7 +49,7 @@ def _lines(text: str) -> list[str]:
     return out
 
 
-def parse_card_text(job_id: str, text: str) -> AlertJob | None:
+def parse_card_text(job_id: str, text: str) -> linkedin_alerts.AlertJob | None:
     """Title, company, location, salary and Easy Apply from a search card's visible text."""
     easy_apply = any(
         item.strip().lower() == "easy apply"
@@ -57,7 +61,7 @@ def parse_card_text(job_id: str, text: str) -> AlertJob | None:
     lines = [line for line in lines if line != salary]
     if len(lines) < 2:
         return None
-    return AlertJob(
+    return linkedin_alerts.AlertJob(
         job_id=job_id,
         title=lines[0],
         company=lines[1],
@@ -67,8 +71,10 @@ def parse_card_text(job_id: str, text: str) -> AlertJob | None:
     )
 
 
-@dataclass
+@dataclasses.dataclass
 class CaptureStats:
+    """What one bookmarklet page added: cards, new vacancies, descriptions."""
+
     cards: int = 0
     new: int = 0
     known: int = 0
@@ -77,7 +83,7 @@ class CaptureStats:
     # What happened to the open vacancy, e.g. "Acme — Engineer: description saved".
     vacancy: str = ""
     # New or changed opportunities, so an open queue tab can redraw them.
-    opportunity_ids: list[int] = field(default_factory=list)
+    opportunity_ids: list[int] = dataclasses.field(default_factory=list)
 
     def touch(self, opportunity_id: int | None) -> None:
         if opportunity_id is not None and opportunity_id not in self.opportunity_ids:
@@ -87,30 +93,32 @@ class CaptureStats:
         return {**self.__dict__, "opportunity_ids": list(self.opportunity_ids)}
 
 
-def _record(session: Session, job_id: str) -> SourceRecord | None:
+def _record(session: sa_orm.Session, job_id: str) -> models.SourceRecord | None:
     return session.scalar(
-        select(SourceRecord).where(
-            SourceRecord.source_type.in_(LINKEDIN_SOURCES), SourceRecord.external_id == job_id
+        sa.select(models.SourceRecord).where(
+            models.SourceRecord.source_type.in_(linkedin_alerts.LINKEDIN_SOURCES),
+            models.SourceRecord.external_id == job_id,
         )
     )
 
 
-def _job_id(value: Any) -> str | None:
+def _job_id(value: t.Any) -> str | None:
     text = str(value or "").strip()
     return text if text.isdigit() else None
 
 
-def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
+def import_capture(session: sa_orm.Session, payload: dict[str, t.Any]) -> CaptureStats:
     stats = CaptureStats()
-    if payload.get("source") == "hh":  # an hh.ru vacancy page (#136)
-        from ..hh.capture import import_hh_capture
+    # an hh.ru vacancy page (#136)
+    if payload.get("source") == "hh":
+        import job_radar.hh.capture as hh_capture
 
-        import_hh_capture(session, payload, stats)
+        hh_capture.import_hh_capture(session, payload, stats)
         session.commit()
         return stats
     detail = payload.get("detail") or {}
     detail_id = _job_id(detail.get("job_id"))
-    own_card: AlertJob | None = None
+    own_card: linkedin_alerts.AlertJob | None = None
     for card in payload.get("cards") or []:
         job_id = _job_id(card.get("job_id"))
         if job_id and job_id == detail_id:
@@ -122,7 +130,7 @@ def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
         job = parse_card_text(job_id, str(card.get("text") or "")[:_MAX_TEXT]) if job_id else None
         if job is None:
             stats.skipped += 1
-        elif add_linkedin_job(session, job, SourceType.LINKEDIN_CAPTURE):
+        elif linkedin_alerts.add_linkedin_job(session, job, models.SourceType.LINKEDIN_CAPTURE):
             stats.new += 1
             stats.touch(_record(session, job.job_id).opportunity_id)
         else:
@@ -140,11 +148,13 @@ def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
         location = (detail.get("location") or "").strip() or None
         # Prefer the vacancy's own card (it has the location and Easy Apply), else the tab title.
         from_title = (
-            AlertJob(job_id, title, company, location, None, None) if title and company else None
+            linkedin_alerts.AlertJob(job_id, title, company, location, None, None)
+            if title and company
+            else None
         )
         job = own_card or from_title
         if record is None and job is not None:
-            add_linkedin_job(session, job, SourceType.LINKEDIN_CAPTURE)
+            linkedin_alerts.add_linkedin_job(session, job, models.SourceType.LINKEDIN_CAPTURE)
             stats.new += 1
             created = True
             record = _record(session, job_id)
@@ -152,24 +162,25 @@ def import_capture(session: Session, payload: dict[str, Any]) -> CaptureStats:
         outcome = []
         if created:
             outcome.append("new")
-        if record is not None and detail.get("not_accepting"):  # before the rules below
-            from ..auto_ignore import mark_not_accepting
+        # before the rules below
+        if record is not None and detail.get("not_accepting"):
+            import job_radar.auto_ignore as auto_ignore
 
-            mark_not_accepting(session, record.opportunity)
+            auto_ignore.mark_not_accepting(session, record.opportunity)
             outcome.append("not accepting applications")
         if record is None:
             outcome.append("not recognised (no title or company on the page)")
         elif not description:
             outcome.append("no description found on the page")
         else:
-            _, saved = add_snapshot(session, record, description)
+            _, saved = dedup.add_snapshot(session, record, description)
             stats.descriptions += int(saved)
             outcome.append("description saved" if saved else "description already saved")
             if saved:
-                from ..auto_ignore import apply_rules  # rules that read the description
+                import job_radar.auto_ignore as auto_ignore
 
                 session.refresh(record.opportunity)
-                apply_rules(session, record.opportunity)
+                auto_ignore.apply_rules(session, record.opportunity)
         if record is not None:
             o = record.opportunity
             title, company = o.title, o.company.name

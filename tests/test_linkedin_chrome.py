@@ -738,7 +738,7 @@ def test_a_page_that_never_answers_times_out_and_the_run_goes_on(session, monkey
 def test_failure_while_saving_leaves_the_session_usable(session, monkeypatch):
     from job_radar.linkedin import chrome
 
-    real = chrome.import_capture
+    real = chrome.linkedin_capture.import_capture
 
     def boom(s, payload):
         if payload["detail"]["job_id"] == "4235":
@@ -746,7 +746,7 @@ def test_failure_while_saving_leaves_the_session_usable(session, monkeypatch):
             s.flush()
         return real(s, payload)
 
-    monkeypatch.setattr(chrome, "import_capture", boom)
+    monkeypatch.setattr(chrome.linkedin_capture, "import_capture", boom)
     hh_vacancy(session, "4235", score=9)
     hh_vacancy(session, "4236", score=8)
     stats = run(session, FakeBrowser())

@@ -1,59 +1,59 @@
 """Chrome fill (#247): descriptions of To review vacancies, read in the user's own Chrome.
 
-Playwright MCP in `--extension` mode drives the user's Chrome. The run opens a tab of its
-own, goes through LinkedIn vacancies that have no description one at a time, expands the
-folded description, and reads the page with the bookmarklet's reader (web/capture_read.js)
-into the same `import_capture`. Limits and reasons: docs/adr/0001-chrome-description-fill.md,
-docs/linkedin-chrome-fill.md.
+Playwright MCP in ``--extension`` mode drives the user's Chrome. The run opens a tab of
+its own, goes through LinkedIn and hh.ru vacancies that have no description one at a
+time, expands the folded description, and reads the page with the bookmarklet's reader
+(web/capture_read.js) into the same ``import_capture``. It stops at once on any sign of a
+block (``block_reason``) and marks a vacancy the site says is gone
+(``unavailable_reason``). ``McpBrowser`` talks to Playwright MCP over stdio. Limits and
+reasons: docs/adr/0001-chrome-description-fill.md, docs/linkedin-chrome-fill.md.
+
+Usage:
+    import job_radar.linkedin.chrome as linkedin_chrome
 """
 
 import asyncio
+import collections.abc as cabc
 import contextlib
+import dataclasses
+import datetime as dt
 import json
+import pathlib
 import random
 import re
 import shlex
 import threading
 import time
-from collections.abc import Awaitable, Callable
-from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any, Protocol
-from urllib.parse import urlsplit
+import typing as t
+import urllib.parse as urllib_parse
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..auto_ignore import mark_unavailable
-from ..models import (
-    FILL_PROBLEM,
-    AppSetting,
-    CompanyEvent,
-    LinkedInFetch,
-    Opportunity,
-    OpportunityState,
-    SourceRecord,
-    SourceType,
-)
-from .capture import import_capture
-from .public import PauseSettings, _without_description
+import job_radar.auto_ignore as auto_ignore
+import job_radar.linkedin.capture as linkedin_capture
+import job_radar.linkedin.public as linkedin_public
+import job_radar.models as models
 
-READER = (Path(__file__).parent.parent / "web" / "capture_read.js").read_text().strip()
+READER = (pathlib.Path(__file__).parent.parent / "web" / "capture_read.js").read_text().strip()
 JOB_URL = "https://www.linkedin.com/jobs/view/{job_id}/"
-HH_URL = "https://hh.ru/vacancy/{job_id}"  # hh.ru vacancies too (#260, ADR 0002)
+# hh.ru vacancies too (#260, ADR 0002)
+HH_URL = "https://hh.ru/vacancy/{job_id}"
 MAX_PER_RUN = 50
 # Its own pause between pages, apart from the guest one (#252): by hand the user opens a
 # vacancy and clicks the bookmarklet within seconds.
 PAUSE_KEY = "linkedin_chrome"
-DEFAULT_PAUSE = PauseSettings(2.0, 4.0)
+DEFAULT_PAUSE = linkedin_public.PauseSettings(2.0, 4.0)
 # browser_navigate itself waits for the page's `load`; then the description is polled for,
 # a short random step at a time, at most LOAD_TIMEOUT seconds (#254).
 LOAD_STEP = (0.4, 0.8)
 LOAD_TIMEOUT = 10.0
-EXPAND_WAIT = (0.6, 1.0)  # the click comes 0.3 s after EXPAND returns; unfolding is in-page
-MAX_ERRORS_IN_A_ROW = 3  # the browser or the layout is at fault: stop rather than keep going
-PAGE_TIMEOUT = 60.0  # one vacancy, start to end; a normal one takes under 20 s (#272)
+# the click comes 0.3 s after EXPAND returns; unfolding is in-page
+EXPAND_WAIT = (0.6, 1.0)
+# the browser or the layout is at fault: stop rather than keep going
+MAX_ERRORS_IN_A_ROW = 3
+# one vacancy, start to end; a normal one takes under 20 s (#272)
+PAGE_TIMEOUT = 60.0
 # Only these Playwright MCP tools are ever called (#247): no clicks by reference, no typing.
 ALLOWED_TOOLS = frozenset({"browser_tabs", "browser_navigate", "browser_evaluate"})
 # Added to the command unless it sets them itself (#254). Without them every navigate
@@ -121,21 +121,23 @@ EXPAND = """() => {
 }""".replace("__BOXES__", DESCRIPTION_BOXES).replace("CLICK_DELAY_MS", "300")
 
 
-class Browser(Protocol):
+class Browser(t.Protocol):
     """The few things the fill asks of the browser."""
 
     async def list_tabs(self) -> list[str]: ...
     async def open_tab(self, url: str) -> None: ...
     async def navigate(self, url: str) -> None: ...
-    async def evaluate(self, function: str) -> Any: ...
+    async def evaluate(self, function: str) -> t.Any: ...
     async def close_tab(self) -> None: ...
 
 
 class BrowserError(RuntimeError):
+    """The browser or Playwright MCP failed; the run stops."""
+
     pass
 
 
-@dataclass
+@dataclasses.dataclass
 class SourceProgress:
     """How far a run got with one site (#272)."""
 
@@ -146,30 +148,42 @@ class SourceProgress:
     problems: int = 0
 
 
-@dataclass
+@dataclasses.dataclass
 class FillStats:
-    total: int = 0  # vacancies this run will try
-    requests: int = 0  # pages opened
+    """Counters and the stop reason of one Chrome fill run."""
+
+    # vacancies this run will try
+    total: int = 0
+    # pages opened
+    requests: int = 0
     saved: int = 0
     errors: int = 0
     blocked: bool = False
-    reason: str | None = None  # why it stopped early: "HTTP 429", "authwall", "another page"
-    stopped: bool = False  # by the user
-    sources: dict[str, SourceProgress] = field(default_factory=dict)  # "linkedin", "hh"
-    failed: list[dict[str, Any]] = field(default_factory=list)  # which vacancies, why (#274)
+    # why it stopped early: "HTTP 429", "authwall", "another page"
+    reason: str | None = None
+    # by the user
+    stopped: bool = False
+    # "linkedin", "hh"
+    sources: dict[str, SourceProgress] = dataclasses.field(default_factory=dict)
+    # which vacancies, why (#274)
+    failed: list[dict[str, t.Any]] = dataclasses.field(default_factory=list)
 
 
-def load_chrome_pause(session: Session) -> PauseSettings:
-    row = session.get(AppSetting, PAUSE_KEY)
+def load_chrome_pause(session: sa_orm.Session) -> linkedin_public.PauseSettings:
+    row = session.get(models.AppSetting, PAUSE_KEY)
     if row is None or not isinstance(row.value, dict):
         return DEFAULT_PAUSE
-    known = {k: v for k, v in row.value.items() if k in PauseSettings.__dataclass_fields__}
-    return PauseSettings(**{**asdict(DEFAULT_PAUSE), **known})
+    known = {
+        k: v
+        for k, v in row.value.items()
+        if k in linkedin_public.PauseSettings.__dataclass_fields__
+    }
+    return linkedin_public.PauseSettings(**{**dataclasses.asdict(DEFAULT_PAUSE), **known})
 
 
-def save_chrome_pause(session: Session, value: PauseSettings) -> None:
-    row = session.get(AppSetting, PAUSE_KEY) or AppSetting(key=PAUSE_KEY)
-    row.value = asdict(value)
+def save_chrome_pause(session: sa_orm.Session, value: linkedin_public.PauseSettings) -> None:
+    row = session.get(models.AppSetting, PAUSE_KEY) or models.AppSetting(key=PAUSE_KEY)
+    row.value = dataclasses.asdict(value)
     session.add(row)
     session.commit()
 
@@ -182,7 +196,7 @@ def job_id_of(href: str) -> str | None:
 
 def _is_linkedin(href: str) -> bool:
     """True for linkedin.com and its subdomains, not for a URL that only mentions it."""
-    host = urlsplit(href or "").hostname or ""
+    host = urllib_parse.urlsplit(href or "").hostname or ""
     return host == "linkedin.com" or host.endswith(".linkedin.com")
 
 
@@ -195,7 +209,7 @@ def page_of(href: str) -> tuple[str, str] | None:
     return None
 
 
-def block_reason(probe: dict[str, Any]) -> str | None:
+def block_reason(probe: dict[str, t.Any]) -> str | None:
     """Why the site is not showing the vacancy, or None when it is."""
     status = probe.get("status")
     if status in (403, 429, 999):
@@ -208,7 +222,7 @@ def block_reason(probe: dict[str, Any]) -> str | None:
     return None
 
 
-def unavailable_reason(probe: dict[str, Any]) -> str | None:
+def unavailable_reason(probe: dict[str, t.Any]) -> str | None:
     """Why this one vacancy cannot be read, when the site itself is fine (#272): an hh.ru
     page saying it is not available to you (HTTP 403 on the vacancy's own URL), or a 404/410
     on a vacancy page. Anything else that fails is for block_reason."""
@@ -236,26 +250,26 @@ def mcp_argv(command: str) -> list[str]:
     return argv
 
 
-def own_payload(payload: dict[str, Any], job_id: str) -> dict[str, Any]:
+def own_payload(payload: dict[str, t.Any], job_id: str) -> dict[str, t.Any]:
     """Only the vacancy itself: the "similar jobs" on its page are not imported."""
     cards = [c for c in payload.get("cards") or [] if str(c.get("job_id")) == job_id]
     return {**payload, "cards": cards}
 
 
-Sleep = Callable[[float], Awaitable[None]]
+Sleep = cabc.Callable[[float], cabc.Awaitable[None]]
 
 
 async def fill_descriptions(
-    session: Session,
+    session: sa_orm.Session,
     browser: Browser,
     *,
     pause: tuple[float, float],
     stop: threading.Event | None = None,
     max_per_run: int = MAX_PER_RUN,
     sleep: Sleep = asyncio.sleep,
-    on_wait: Callable[[float], None] | None = None,
-    on_progress: Callable[[FillStats], None] | None = None,
-    echo: Callable[[str], None] | None = None,
+    on_wait: cabc.Callable[[float], None] | None = None,
+    on_progress: cabc.Callable[[FillStats], None] | None = None,
+    echo: cabc.Callable[[str], None] | None = None,
 ) -> FillStats:
     stop = stop or threading.Event()
     stats = FillStats()
@@ -285,7 +299,7 @@ async def fill_descriptions(
             waited += step
         return not stop.is_set()
 
-    async def loaded() -> dict[str, Any]:
+    async def loaded() -> dict[str, t.Any]:
         """The probe once the description is on the page, a block page shows, or time is
         up: navigate already waited for `load`, LinkedIn fills the page after that."""
         waited = 0.0
@@ -299,13 +313,24 @@ async def fill_descriptions(
             waited += step
 
     def log(
-        opportunity: Opportunity, job_id: str, url: str, status: str, detail: str | None = None
+        opportunity: models.Opportunity,
+        job_id: str,
+        url: str,
+        status: str,
+        detail: str | None = None,
     ) -> None:
         session.add(
-            LinkedInFetch(kind="chrome", job_id=job_id, start=0, opportunity_id=opportunity.id,
-                          status=status, detail=detail and detail[:255], at=datetime.now(UTC),
-                          jobs=1 if status == "ok" else 0)
-        )  # fmt: skip
+            models.LinkedInFetch(
+                kind="chrome",
+                job_id=job_id,
+                start=0,
+                opportunity_id=opportunity.id,
+                status=status,
+                detail=detail and detail[:255],
+                at=dt.datetime.now(dt.UTC),
+                jobs=1 if status == "ok" else 0,
+            )
+        )
         if status != "ok":
             _mark(session, opportunity, status, detail or status)
             stats.failed.append(
@@ -320,11 +345,11 @@ async def fill_descriptions(
         source.problems += 1
         errors_in_a_row += 1
 
-    async def visit(opportunity: Opportunity, record: SourceRecord, url: str) -> bool:
+    async def visit(opportunity: models.Opportunity, record: models.SourceRecord, url: str) -> bool:
         """One vacancy, start to end. False when the whole run has to stop."""
         nonlocal tab_url, attempted, uncertain, errors_in_a_row
         job_id = record.external_id
-        hh = record.source_type == SourceType.HH
+        hh = record.source_type == models.SourceType.HH
         source = stats.sources["hh" if hh else "linkedin"]
         site = source.label
         expected = ("hh" if hh else "linkedin", job_id)
@@ -363,7 +388,8 @@ async def fill_descriptions(
             stats.blocked, stats.reason = True, reason
             log(opportunity, job_id, url, "blocked", reason)
             say(f"{site}: {reason} — stopped; the tab is left open for you to see")
-            tab_url = None  # leave it open
+            # leave it open
+            tab_url = None
             return False
         if page_of(str(probe.get("href"))) != expected:
             source.problems += 1
@@ -372,19 +398,21 @@ async def fill_descriptions(
             say(f"stopped: expected job {job_id}, the tab shows {probe.get('href')}")
             tab_url = None
             return False
-        if not hh and await browser.evaluate(EXPAND):  # hh.ru shows it all (#260)
+        # hh.ru shows it all (#260)
+        if not hh and await browser.evaluate(EXPAND):
             await wait(EXPAND_WAIT)
         expanded = time.monotonic()
         payload = await browser.evaluate(f"() => ({READER})()")
         detail = (payload or {}).get("detail") or {}
-        if str(detail.get("job_id")) != job_id:  # the page changed under us
+        # the page changed under us
+        if str(detail.get("job_id")) != job_id:
             source.problems += 1
             stats.blocked, stats.reason = True, "another page in the tab: stopped"
             log(opportunity, job_id, url, "error", "the page changed while reading")
             say(f"stopped: the page changed while reading job {job_id}")
             tab_url = None
             return False
-        result = import_capture(session, own_payload(payload, job_id))
+        result = linkedin_capture.import_capture(session, own_payload(payload, job_id))
         timing = (
             f"open {opened - started:.1f} s · load {ready - opened:.1f} s"
             f" · expand {expanded - ready:.1f} s · read {time.monotonic() - expanded:.1f} s"
@@ -403,18 +431,24 @@ async def fill_descriptions(
     todo = _todo(session)[:max_per_run]
     stats.total = len(todo)
     for key, label in (("linkedin", "LinkedIn"), ("hh", "hh.ru")):
-        count = sum((record.source_type == SourceType.HH) == (key == "hh") for _, record in todo)
+        count = sum(
+            (record.source_type == models.SourceType.HH) == (key == "hh") for _, record in todo
+        )
         if count:
             stats.sources[key] = SourceProgress(label, total=count)
     progress()
-    tab_url: str | None = None  # the page our own tab should be on; None: no tab yet
-    attempted: str | None = None  # the page last asked for; it may have loaded after all
-    uncertain = False  # the last vacancy failed: the tab may show the browser's error page
+    # the page our own tab should be on; None: no tab yet
+    tab_url: str | None = None
+    # the page last asked for; it may have loaded after all
+    attempted: str | None = None
+    # the last vacancy failed: the tab may show the browser's error page
+    uncertain = False
     # The extension's connect page is the run's own tab: use it, and close it at the end,
     # so nothing is left open (#250). Any other tab is the user's: open a new one instead.
     try:
         tabs = await browser.list_tabs() if todo else []
-    except Exception:  # unknown: be safe and open a tab of our own
+    except Exception:
+        # unknown: be safe and open a tab of our own
         tabs = []
     reuse = len(tabs) == 1 and bool(_CONNECT_PAGE.match(tabs[0]))
     errors_in_a_row = 0
@@ -423,14 +457,16 @@ async def fill_descriptions(
             if stop.is_set() or (n and not await human_pause()):
                 stats.stopped = True
                 break
-            hh = record.source_type == SourceType.HH
+            hh = record.source_type == models.SourceType.HH
             url = (HH_URL if hh else JOB_URL).format(job_id=record.external_id)
             # One vacancy's trouble stays that vacancy's (#272): its own time limit, and
             # anything it raises is written down on it.
             try:
                 go_on = await asyncio.wait_for(visit(opportunity, record, url), PAGE_TIMEOUT)
-            except Exception as e:  # a browser or import error of this page
-                session.rollback()  # or the failed flush poisons everything after it
+            except Exception as e:
+                # a browser or import error of this page
+                # or the failed flush poisons everything after it
+                session.rollback()
                 reason = (
                     f"no answer from the browser in {PAGE_TIMEOUT:.0f} s"
                     if isinstance(e, TimeoutError)
@@ -451,62 +487,69 @@ async def fill_descriptions(
     finally:
         progress()
         if tab_url is not None:
-            with contextlib.suppress(Exception):  # the tab may be gone already
+            # the tab may be gone already
+            with contextlib.suppress(Exception):
                 await browser.close_tab()
     return stats
 
 
-def _mark(session: Session, opportunity: Opportunity, status: str, reason: str) -> None:
+def _mark(
+    session: sa_orm.Session, opportunity: models.Opportunity, status: str, reason: str
+) -> None:
     """Flag an unavailable vacancy (#276); write any other problem into its event log, once
     per distinct problem (#272)."""
     if status == "unavailable":
-        mark_unavailable(session, opportunity)
+        auto_ignore.mark_unavailable(session, opportunity)
         return
     comment = f"{opportunity.title}: {reason}"
     known = session.scalar(
-        select(CompanyEvent.id).where(
-            CompanyEvent.opportunity_id == opportunity.id,
-            CompanyEvent.kind == FILL_PROBLEM,
-            CompanyEvent.comment == comment,
+        sa.select(models.CompanyEvent.id).where(
+            models.CompanyEvent.opportunity_id == opportunity.id,
+            models.CompanyEvent.kind == models.FILL_PROBLEM,
+            models.CompanyEvent.comment == comment,
         )
     )
     if known is None:
         session.add(
-            CompanyEvent(
+            models.CompanyEvent(
                 company_id=opportunity.company_id,
                 opportunity_id=opportunity.id,
-                kind=FILL_PROBLEM,
-                at=datetime.now(UTC),
+                kind=models.FILL_PROBLEM,
+                at=dt.datetime.now(dt.UTC),
                 comment=comment,
             )
         )
 
 
-def _todo(session: Session) -> list[tuple[Opportunity, SourceRecord]]:
+def _todo(session: sa_orm.Session) -> list[tuple[models.Opportunity, models.SourceRecord]]:
     """LinkedIn and hh.ru vacancies in To review without a description, best score first.
     One marked unavailable or not accepting waits until you clear its badge (#276, #278)."""
-    closed = Opportunity.unavailable_at.is_not(None) | Opportunity.not_accepting_at.is_not(None)
-    skip = set(session.scalars(select(Opportunity.id).where(closed)))
+    closed = models.Opportunity.unavailable_at.is_not(
+        None
+    ) | models.Opportunity.not_accepting_at.is_not(None)
+    skip = set(session.scalars(sa.select(models.Opportunity.id).where(closed)))
     hh = []
-    for o in session.scalars(select(Opportunity).where(Opportunity.state == OpportunityState.NEW)):
+    for o in session.scalars(
+        sa.select(models.Opportunity).where(models.Opportunity.state == models.OpportunityState.NEW)
+    ):
         if any(r.snapshots for r in o.source_records):
             continue
-        record = next((r for r in o.source_records if r.source_type == SourceType.HH), None)
+        record = next((r for r in o.source_records if r.source_type == models.SourceType.HH), None)
         if record is not None and record.external_id.isdigit():
             hh.append((o, record))
-    linkedin = _without_description(session)
+    linkedin = linkedin_public._without_description(session)
     seen = {o.id for o, _ in linkedin}
     both = linkedin + [pair for pair in hh if pair[0].id not in seen]
     both = [pair for pair in both if pair[0].id not in skip]
     return sorted(both, key=lambda pair: -(pair[0].score if pair[0].score is not None else -1))
 
 
-def _text(result: Any) -> str:
+def _text(result: t.Any) -> str:
     items = getattr(result, "content", None) or []
     return "\n".join(c.text for c in items if getattr(c, "text", None))
 
 
-def parse_result(text: str) -> Any:
+def parse_result(text: str) -> t.Any:
     """The value from a Playwright MCP answer: '### Result\\n<json>\\n### Ran Playwright code…'."""
     m = re.search(r"### Result\s*\n(.*?)(?:\n### |\Z)", text, re.S)
     if not m:
@@ -523,10 +566,10 @@ def parse_result(text: str) -> Any:
 class McpBrowser:
     """The user's Chrome through Playwright MCP (`--extension`), over stdio."""
 
-    def __init__(self, session: Any):
+    def __init__(self, session: t.Any):
         self.session = session
 
-    async def _call(self, tool: str, args: dict[str, Any]) -> str:
+    async def _call(self, tool: str, args: dict[str, t.Any]) -> str:
         if tool not in ALLOWED_TOOLS:
             raise BrowserError(f"tool {tool!r} is not allowed")
         result = await asyncio.wait_for(self.session.call_tool(tool, args), timeout=120)
@@ -544,7 +587,7 @@ class McpBrowser:
     async def navigate(self, url: str) -> None:
         await self._call("browser_navigate", {"url": url})
 
-    async def evaluate(self, function: str) -> Any:
+    async def evaluate(self, function: str) -> t.Any:
         return parse_result(await self._call("browser_evaluate", {"function": function}))
 
     async def close_tab(self) -> None:
@@ -552,14 +595,17 @@ class McpBrowser:
 
 
 async def run_with_chrome(
-    command: str, env: dict[str, str], fill: Callable[[Browser], Awaitable[FillStats]]
+    command: str, env: dict[str, str], fill: cabc.Callable[[Browser], cabc.Awaitable[FillStats]]
 ) -> FillStats:
     """Start Playwright MCP once, connect to the extension once, run the fill."""
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
+    import mcp
+    import mcp.client.stdio as client_stdio
 
     argv = mcp_argv(command)
-    params = StdioServerParameters(command=argv[0], args=argv[1:], env=env)
-    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+    params = mcp.StdioServerParameters(command=argv[0], args=argv[1:], env=env)
+    async with (
+        client_stdio.stdio_client(params) as (read, write),
+        mcp.ClientSession(read, write) as session,
+    ):
         await asyncio.wait_for(session.initialize(), timeout=90)
         return await fill(McpBrowser(session))

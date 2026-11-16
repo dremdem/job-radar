@@ -1,13 +1,24 @@
+"""Vacancies from LinkedIn job alert emails.
+
+``parse_alert`` reads the job cards of one alert email (job id, title, company,
+location, salary, Easy Apply); ``canonical_job_url`` drops tracking and personal tokens
+from links. ``import_alerts`` creates a vacancy for every job id not seen yet, so re-runs
+add nothing twice. See docs/linkedin-alerts.md.
+
+Usage:
+    import job_radar.linkedin.alerts as linkedin_alerts
+"""
+
+import dataclasses
 import re
-from dataclasses import dataclass
 
-from bs4 import BeautifulSoup, Tag
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import bs4
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..dedup import get_or_create_company
-from ..models import EmailMessage, Opportunity, SourceRecord, SourceType
-from ..scoring import score_job
+import job_radar.dedup as dedup
+import job_radar.models as models
+import job_radar.scoring as scoring
 
 ALERT_SENDER = "jobalerts-noreply@linkedin.com"
 _JOB_URL = re.compile(r"linkedin\.com/(?:comm/)?jobs/view/(\d+)")
@@ -16,14 +27,17 @@ _SALARY = re.compile(r"[$€£¥₹]|/\s*(year|yr|month|mo|hour|hr)\b", re.IGNOR
 _INVISIBLE = re.compile("^[\\s\\u00a0\\u034f\\u200b-\\u200d\\ufeff]*$")
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class AlertJob:
+    """One job card of an alert email."""
+
     job_id: str
     title: str
     company: str
     location: str | None
     salary: str | None
-    easy_apply: bool | None  # None: the source does not say
+    # None: the source does not say
+    easy_apply: bool | None
 
     @property
     def url(self) -> str:
@@ -36,15 +50,15 @@ def canonical_job_url(url: str) -> str | None:
     return f"https://www.linkedin.com/jobs/view/{match.group(1)}/" if match else None
 
 
-def _job_anchors(soup: BeautifulSoup) -> dict[str, list[Tag]]:
-    anchors: dict[str, list[Tag]] = {}
+def _job_anchors(soup: bs4.BeautifulSoup) -> dict[str, list[bs4.Tag]]:
+    anchors: dict[str, list[bs4.Tag]] = {}
     for a in soup.find_all("a", href=True):
         if match := _JOB_URL.search(a["href"]):
             anchors.setdefault(match.group(1), []).append(a)
     return anchors
 
 
-def _card(anchor: Tag, others: list[str]) -> Tag:
+def _card(anchor: bs4.Tag, others: list[str]) -> bs4.Tag:
     """Largest ancestor that still mentions no other job."""
     node = anchor
     while node.parent is not None and not any(f"jobs/view/{o}" in str(node.parent) for o in others):
@@ -52,7 +66,7 @@ def _card(anchor: Tag, others: list[str]) -> Tag:
     return node
 
 
-def _parse_card(job_id: str, anchors: list[Tag], card: Tag) -> AlertJob | None:
+def _parse_card(job_id: str, anchors: list[bs4.Tag], card: bs4.Tag) -> AlertJob | None:
     texts = [a.get_text(" ", strip=True) for a in anchors]
     title = min((t for t in texts if t), key=len, default="")
     strings = [s for s in card.stripped_strings if not _INVISIBLE.match(s)]
@@ -74,7 +88,7 @@ def _parse_card(job_id: str, anchors: list[Tag], card: Tag) -> AlertJob | None:
 
 
 def parse_alert(html: str) -> list[AlertJob]:
-    soup = BeautifulSoup(html, "html.parser")
+    soup = bs4.BeautifulSoup(html, "html.parser")
     anchors = _job_anchors(soup)
     jobs = []
     for job_id, job_anchors in anchors.items():
@@ -84,36 +98,43 @@ def parse_alert(html: str) -> list[AlertJob]:
     return jobs
 
 
-@dataclass
+@dataclasses.dataclass
 class ImportStats:
+    """Counters of one alert import, for the sync status line."""
+
     emails: int = 0
     jobs: int = 0
     new: int = 0
 
 
 LINKEDIN_SOURCES = (
-    SourceType.LINKEDIN_ALERT,
-    SourceType.LINKEDIN_SEARCH,
-    SourceType.LINKEDIN_CAPTURE,
-    SourceType.LINKEDIN_LINK,
+    models.SourceType.LINKEDIN_ALERT,
+    models.SourceType.LINKEDIN_SEARCH,
+    models.SourceType.LINKEDIN_CAPTURE,
+    models.SourceType.LINKEDIN_LINK,
 )
 
 
 def add_linkedin_job(
-    session: Session, job: AlertJob, source_type: SourceType, *, remote_known: bool = True
+    session: sa_orm.Session,
+    job: AlertJob,
+    source_type: models.SourceType,
+    *,
+    remote_known: bool = True,
 ) -> bool:
     """Create an opportunity for a LinkedIn job id not seen by any LinkedIn source yet."""
     exists = session.scalar(
-        select(SourceRecord.id).where(
-            SourceRecord.source_type.in_(LINKEDIN_SOURCES), SourceRecord.external_id == job.job_id
+        sa.select(models.SourceRecord.id).where(
+            models.SourceRecord.source_type.in_(LINKEDIN_SOURCES),
+            models.SourceRecord.external_id == job.job_id,
         )
     )
     if exists is not None:
         return False
-    score = score_job(job.title, job.location, remote_known=remote_known)
-    opportunity = Opportunity(
+    score = scoring.score_job(job.title, job.location, remote_known=remote_known)
+    opportunity = models.Opportunity(
         title=job.title,
-        company=get_or_create_company(session, job.company),
+        company=dedup.get_or_create_company(session, job.company),
         location=job.location,
         salary=job.salary,
         easy_apply=job.easy_apply,
@@ -121,30 +142,31 @@ def add_linkedin_job(
         score_reasons=[r.as_dict() for r in score.reasons],
     )
     session.add(
-        SourceRecord(
+        models.SourceRecord(
             source_type=source_type, external_id=job.job_id, url=job.url, opportunity=opportunity
         )
     )
     session.flush()
-    from ..auto_ignore import apply_rules  # the rules read the queue built by this module
+    import job_radar.auto_ignore as auto_ignore
 
-    apply_rules(session, opportunity)
+    auto_ignore.apply_rules(session, opportunity)
     return True
 
 
-def import_alerts(session: Session) -> ImportStats:
+def import_alerts(session: sa_orm.Session) -> ImportStats:
     """Create opportunities for jobs from stored alert emails. Idempotent by LinkedIn job id."""
     stats = ImportStats()
     emails = session.scalars(
-        select(EmailMessage).where(
-            EmailMessage.from_addr.contains(ALERT_SENDER), EmailMessage.body_html.is_not(None)
+        sa.select(models.EmailMessage).where(
+            models.EmailMessage.from_addr.contains(ALERT_SENDER),
+            models.EmailMessage.body_html.is_not(None),
         )
     )
     for email in emails:
         stats.emails += 1
         for job in parse_alert(email.body_html or ""):
             stats.jobs += 1
-            if add_linkedin_job(session, job, SourceType.LINKEDIN_ALERT):
+            if add_linkedin_job(session, job, models.SourceType.LINKEDIN_ALERT):
                 stats.new += 1
     session.commit()
     return stats
