@@ -14,8 +14,8 @@ flowchart TB
     subgraph App["job-radar serve (one process)"]
         direction TB
         WEB[web/app.py<br/>FastAPI routes, Jinja2 + HTMX]
-        SJ[web/sync_job.py<br/>one sync at a time]
-        PL[pipeline.py<br/>every sync step in order]
+        SJ[jobs/sync_job.py<br/>one sync at a time]
+        PL[jobs/pipeline.py<br/>every sync step in order]
         CW[ai/claude/analysis.py<br/>worker pool + chat thread]
     end
     DB[(SQLite<br/>models.py, Alembic)]
@@ -43,7 +43,7 @@ flowchart TB
 
 ## Sync
 
-`pipeline.py` holds every step; the CLI (`job-radar sync gmail`) and the **Sync** button (`web/sync_job.py`) run the same list. Each step reports through one `echo` callback, so the terminal and the web status show the same lines. A failing source is reported and skipped; the others go on. Details: [queue.md](queue.md#sync).
+`jobs/pipeline.py` holds every step; the CLI (`job-radar sync gmail`) and the **Sync** button (`jobs/sync_job.py`) run the same list. Each step reports through one `echo` callback, so the terminal and the web status show the same lines. A failing source is reported and skipped; the others go on. Details: [queue.md](queue.md#sync).
 
 ## Claude analysis
 
@@ -99,7 +99,7 @@ uv run python -c "import sqlite3; sqlite3.connect('data/job_radar.db').backup(sq
 | Scoring and filters | `scoring/rules.py`, `scoring/description.py`, `scoring/language.py`, `scoring/findings.py`, `review/notes.py`, `review/suggestions.py`, `review/auto_ignore.py`, `review/applied_duplicates.py` |
 | History | `history/applications.py`, `history/rejections.py`, `history/contacts.py` |
 | AI | `ai/local/` (Ollama), `ai/claude/` (Claude Code), `ai/skills.py` (skills gap report) |
-| Background jobs | `pipeline.py`, `web/sync_job.py`, `web/description_job.py` |
+| Background jobs | `jobs/pipeline.py`, `jobs/sync_job.py`, `jobs/description_job.py` |
 
 The database schema is described in [data-model.md](data-model.md).
 

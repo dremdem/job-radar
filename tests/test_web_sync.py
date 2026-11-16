@@ -35,13 +35,13 @@ def test_header_has_sync_button(client):
 
 
 def test_status_lists_steps(engine, database_url):
-    import job_radar.pipeline as pipeline
+    import job_radar.jobs.pipeline as jobs_pipeline
 
     def runner(echo, on_steps):
         steps = [
-            pipeline.Step("gmail", "Gmail"),
-            pipeline.Step("telegram", "Telegram"),
-            pipeline.Step("ai", "AI analysis"),
+            jobs_pipeline.Step("gmail", "Gmail"),
+            jobs_pipeline.Step("telegram", "Telegram"),
+            jobs_pipeline.Step("ai", "AI analysis"),
         ]
         steps[0].state, steps[0].summary = (
             "failed",

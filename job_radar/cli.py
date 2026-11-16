@@ -18,8 +18,8 @@ import typer
 import job_radar.config as config
 import job_radar.db as db
 import job_radar.demo as jr_demo
+import job_radar.jobs.pipeline as jobs_pipeline
 import job_radar.models as models
-import job_radar.pipeline as pipeline
 
 app = typer.Typer(help="Job Radar: local-first job opportunity review.", no_args_is_help=True)
 db_app = typer.Typer(help="Database commands.", no_args_is_help=True)
@@ -112,7 +112,7 @@ def analyze() -> None:
     engine = db.make_engine(settings.database_url)
     try:
         with db.make_session_factory(engine)() as session:
-            pipeline.analyze_descriptions(session, settings, typer.echo)
+            jobs_pipeline.analyze_descriptions(session, settings, typer.echo)
     finally:
         engine.dispose()
 
@@ -183,7 +183,7 @@ def import_descriptions() -> None:
     engine = db.make_engine(settings.database_url)
     try:
         with db.make_session_factory(engine)() as session:
-            pipeline.import_descriptions(session, settings, typer.echo)
+            jobs_pipeline.import_descriptions(session, settings, typer.echo)
     finally:
         engine.dispose()
 
@@ -243,16 +243,16 @@ def sync(
 ) -> None:
     """Import new items from a source."""
     steps = {
-        models.SourceType.TELEGRAM: pipeline.import_telegram,
-        models.SourceType.HIMALAYAS: pipeline.import_himalayas,
-        models.SourceType.HACKERNEWS: pipeline.import_hackernews,
-        models.SourceType.REMOTEOK: pipeline.import_remoteok,
-        models.SourceType.JOBICY: pipeline.import_jobicy,
-        models.SourceType.FDETIMES: pipeline.import_fdetimes,
+        models.SourceType.TELEGRAM: jobs_pipeline.import_telegram,
+        models.SourceType.HIMALAYAS: jobs_pipeline.import_himalayas,
+        models.SourceType.HACKERNEWS: jobs_pipeline.import_hackernews,
+        models.SourceType.REMOTEOK: jobs_pipeline.import_remoteok,
+        models.SourceType.JOBICY: jobs_pipeline.import_jobicy,
+        models.SourceType.FDETIMES: jobs_pipeline.import_fdetimes,
         # One step reads all three small boards (docs/boards.md).
-        models.SourceType.REMOTIVE: pipeline.import_boards,
-        models.SourceType.WORKINGNOMADS: pipeline.import_boards,
-        models.SourceType.WEWORKREMOTELY: pipeline.import_boards,
+        models.SourceType.REMOTIVE: jobs_pipeline.import_boards,
+        models.SourceType.WORKINGNOMADS: jobs_pipeline.import_boards,
+        models.SourceType.WEWORKREMOTELY: jobs_pipeline.import_boards,
     }
     if source in steps:
         step = steps[source]
@@ -271,25 +271,25 @@ def sync(
     _sync_gmail(query, since)
 
 
-# Thin wrappers: the pipeline lives in job_radar/pipeline.py, shared with the web UI.
+# Thin wrappers: the pipeline lives in job_radar/jobs/pipeline.py, shared with the web UI.
 def _import_linkedin(session) -> None:
-    pipeline.import_linkedin(session, typer.echo)
+    jobs_pipeline.import_linkedin(session, typer.echo)
 
 
 def _import_linkedin_search(session, settings: config.Settings) -> None:
-    pipeline.import_linkedin_search(session, settings, typer.echo)
+    jobs_pipeline.import_linkedin_search(session, settings, typer.echo)
 
 
 def _import_rejections(session, client=None, *, recheck: bool = False) -> None:
-    pipeline.import_rejections(session, config.Settings(), typer.echo, client, recheck=recheck)
+    jobs_pipeline.import_rejections(session, config.Settings(), typer.echo, client, recheck=recheck)
 
 
 def _import_applications(session, client=None) -> None:
-    pipeline.import_applications(session, config.Settings(), typer.echo, client)
+    jobs_pipeline.import_applications(session, config.Settings(), typer.echo, client)
 
 
 def _import_contacts(session) -> None:
-    pipeline.import_contacts(session, typer.echo)
+    jobs_pipeline.import_contacts(session, typer.echo)
 
 
 def _sync_gmail(names: list[str] | None, since: dt.datetime | None) -> None:
@@ -302,7 +302,7 @@ def _sync_gmail(names: list[str] | None, since: dt.datetime | None) -> None:
             f"Known: {', '.join(gmail_queries.QUERIES)}",
             param_hint="--query",
         )
-    steps = pipeline.run_sync(
+    steps = jobs_pipeline.run_sync(
         config.Settings(),
         typer.echo,
         names=names,

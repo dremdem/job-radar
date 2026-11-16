@@ -106,19 +106,19 @@ def test_an_unreadable_feed_is_reported(session):
 
 def test_sync_step_reports_counts_and_can_be_turned_off(session, monkeypatch):
     import job_radar.config as config
-    import job_radar.pipeline as pipeline
+    import job_radar.jobs.pipeline as jobs_pipeline
 
     real = boards_remoteok.import_remoteok
     monkeypatch.setattr(boards_remoteok, "import_remoteok", lambda s, c: real(s, c, now=NOW))
     lines: list[str] = []
-    pipeline.import_remoteok(
+    jobs_pipeline.import_remoteok(
         session, config.Settings(remoteok=True), lines.append, client=FakeClient()
     )
     assert lines == [
         "remoteok: 9 jobs, 5 new, 0 already stored, 2 skipped as noise, 2 older than 30 days"
     ]
     lines.clear()
-    pipeline.import_remoteok(
+    jobs_pipeline.import_remoteok(
         session, config.Settings(remoteok=False), lines.append, client=FakeClient()
     )
     assert lines == ["remoteok: disabled (JOB_RADAR_REMOTEOK=false)."]

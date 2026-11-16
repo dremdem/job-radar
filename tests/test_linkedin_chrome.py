@@ -448,8 +448,8 @@ def test_chrome_fill_has_its_own_pause(engine, database_url, tmp_path, session):
 
 def test_pipeline_uses_the_chrome_pause(monkeypatch, database_url, session):
     import job_radar.config as config
-    import job_radar.pipeline as pipeline
-    import job_radar.web.description_job as web_description_job
+    import job_radar.jobs.description_job as jobs_description_job
+    import job_radar.jobs.pipeline as jobs_pipeline
 
     seen = {}
 
@@ -462,8 +462,8 @@ def test_pipeline_uses_the_chrome_pause(monkeypatch, database_url, session):
 
     monkeypatch.setattr(linkedin_chrome, "fill_descriptions", fake_fill)
     monkeypatch.setattr(linkedin_chrome, "run_with_chrome", fake_run)
-    pipeline.chrome_fill_job(
-        config.Settings(database_url=database_url), web_description_job.DescriptionJob()
+    jobs_pipeline.chrome_fill_job(
+        config.Settings(database_url=database_url), jobs_description_job.DescriptionJob()
     )
     assert seen["pause"] == (2, 4)
 

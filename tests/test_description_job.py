@@ -9,8 +9,8 @@ import sqlalchemy as sa
 import test_public_descriptions
 
 import job_radar.config as config
+import job_radar.jobs.pipeline as jobs_pipeline
 import job_radar.models as models
-import job_radar.pipeline as pipeline
 import job_radar.sources.linkedin.public as linkedin_public
 import job_radar.web.app as web_app
 
@@ -133,7 +133,9 @@ def test_sync_starts_the_background_job_instead_of_fetching(tmp_path, engine, da
         ai_analysis=False,
         linkedin_public_search=True,
     )
-    steps = pipeline.run_sync(settings, print, start_descriptions=lambda: started.append(1) or True)
+    steps = jobs_pipeline.run_sync(
+        settings, print, start_descriptions=lambda: started.append(1) or True
+    )
     step = next(s for s in steps if s.key == "descriptions")
     assert started == [1] and (step.state, step.summary) == ("done", "started in the background")
 

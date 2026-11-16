@@ -163,15 +163,15 @@ def test_a_failed_board_does_not_stop_the_others_and_is_retried(session):
 
 def test_sync_step_reports_each_board_and_can_be_turned_off(session):
     import job_radar.config as config
-    import job_radar.pipeline as pipeline
+    import job_radar.jobs.pipeline as jobs_pipeline
 
     lines: list[str] = []
-    pipeline.import_boards(
+    jobs_pipeline.import_boards(
         session, config.Settings(boards=False), lines.append, client=FakeClient()
     )
     assert lines == ["boards: disabled (JOB_RADAR_BOARDS=false)."]
     lines.clear()
-    pipeline.import_boards(
+    jobs_pipeline.import_boards(
         session, config.Settings(boards=True), lines.append, client=FakeClient(fail="remotive")
     )
     assert lines[0] == "boards: Remotive: could not read the feed: HTTP 503"

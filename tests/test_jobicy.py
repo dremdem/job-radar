@@ -125,15 +125,15 @@ def test_a_failed_page_keeps_the_last_run_so_nothing_is_missed(session):
 
 def test_sync_step_reports_counts_and_can_be_turned_off(session):
     import job_radar.config as config
-    import job_radar.pipeline as pipeline
+    import job_radar.jobs.pipeline as jobs_pipeline
 
     lines: list[str] = []
-    pipeline.import_jobicy(
+    jobs_pipeline.import_jobicy(
         session, config.Settings(jobicy=False), lines.append, client=FakeClient()
     )
     assert lines == ["jobicy: disabled (JOB_RADAR_JOBICY=false)."]
     lines.clear()
-    pipeline.import_jobicy(
+    jobs_pipeline.import_jobicy(
         session,
         config.Settings(jobicy=True),
         lines.append,
