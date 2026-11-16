@@ -307,6 +307,9 @@ def test_descriptions_are_off_only_without_both_sources(tmp_path, database_url):
 
 
 def test_sync_step(tmp_path, session, database_url):
+    # The step reads the real clock; a last run at NOW keeps the fixture fresh on any date.
+    session.add(SyncCursor(name="fdetimes", last_run_at=NOW))
+    session.flush()
     lines = []
     pipeline.import_fdetimes(session, settings(tmp_path, database_url), lines.append, FakeList())
     assert lines == [
