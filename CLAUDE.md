@@ -23,9 +23,35 @@ Job Radar: local-first assistant for reviewing job opportunities. Plan and scope
 - No new infrastructure (PostgreSQL, Redis, Celery, Docker) until an issue explicitly calls for it.
 - Commit messages: imperative mood, short subject, body explains *why*.
 
+## Where code goes
+
+The packages of `job_radar` are ordered; a module imports only from lines below its own (names on one line do not import each other, imports inside functions count). `tests/test_layers.py` checks it in CI. Details: [docs/architecture.md](docs/architecture.md#layers).
+
+```
+web  cli
+jobs  demo
+sources
+ai  history
+review
+scoring
+profile
+dedup
+models  db  config  mail
+```
+
+- `web/`: the UI. `app.py` wires, `routes/` has one router per feature, `context.py` builds what templates show, `templating.py` the Jinja environment, `deps.py` the route dependencies. `cli.py` is the other entry point.
+- `jobs/`: background work: `pipeline.py` (every sync step), `sync_job.py`, `description_job.py`. `demo.py` fills a demo database.
+- `sources/`: everything that brings vacancies and mail in: `gmail/`, `linkedin/`, `hh/`, `telegram/`, `boards/`, `manual.py`; shared `titles.py` and `http.py`. A new source goes here.
+- `ai/`: `local/` (Ollama), `claude/` (Claude Code), `skills.py`.
+- `history/`: what happened with a company: applications, rejections, contacts.
+- `review/`: the queue: auto-ignore, applied duplicates, notes, suggestions.
+- `scoring/`: checks that need no model and no decision: `rules.py`, `description.py`, `language.py`, `findings.py` (reads stored model answers).
+- `profile/`: who the user is: `home.py`, `stack.py`.
+- Root: `dedup.py`, `models.py`, `db.py`, `config.py`, `mail.py` (the port Gmail implements), `migrations/`.
+
 ## Code style
 
-- **Import modules, not names.** No `from x import y`: write `import x` or `import a.b as alias` and reach members through the module (`models.Opportunity`, `dt.datetime.now(dt.UTC)`). This holds for project, stdlib and third-party code. Relative imports become absolute (`import job_radar.models as models`). Use the same alias for a module everywhere: `datetime as dt`, `typing as t`, `collections.abc as cabc`, `sqlalchemy as sa`, `sqlalchemy.orm as sa_orm`, top-level project modules by their name (`import job_radar.models as models`), modules of subpackages as `<package>_<module>` (`import job_radar.gmail.client as gmail_client`). Other dotted third-party modules: `<parent>_<module>` (`sqlalchemy.exc as sa_exc`, `email.utils as email_utils`); Alembic's `alembic.op as op` and `alembic.context as context`. When a project alias clashes with a local name, prefix it with `jr_` (`import job_radar.home as jr_home`, `import job_radar.claude.runner as jr_claude_runner`); rename a one-letter local (`t`) rather than the module alias. `from __future__ import ...` is the only exception.
+- **Import modules, not names.** No `from x import y`: write `import x` or `import a.b as alias` and reach members through the module (`models.Opportunity`, `dt.datetime.now(dt.UTC)`). This holds for project, stdlib and third-party code. Relative imports become absolute (`import job_radar.models as models`). Use the same alias for a module everywhere: `datetime as dt`, `typing as t`, `collections.abc as cabc`, `sqlalchemy as sa`, `sqlalchemy.orm as sa_orm`, top-level project modules by their name (`import job_radar.models as models`), modules of subpackages as `<nearest package>_<module>` (`import job_radar.sources.gmail.client as gmail_client`, `import job_radar.scoring.rules as scoring_rules`). Other dotted third-party modules: `<parent>_<module>` (`sqlalchemy.exc as sa_exc`, `email.utils as email_utils`); Alembic's `alembic.op as op` and `alembic.context as context`. When a project alias clashes with a local name, prefix it with `jr_` (`import job_radar.sources.gmail.auth as jr_gmail_auth` where a command function is called `gmail_auth`, `import job_radar.ai.claude.runner as jr_claude_runner`); rename a one-letter local (`t`) rather than the module alias. `from __future__ import ...` is the only exception.
 - **Detailed module docstrings.** Every module starts with a docstring that says what the module is for, its main classes/functions and how it fits into the app, and only then links to `docs/`. It ends with a ready-to-copy import line:
 
   ```python
