@@ -25,7 +25,7 @@ Job Radar: local-first assistant for reviewing job opportunities. Plan and scope
 
 ## Code style (#21)
 
-- **Import modules, not names.** No `from x import y`: write `import x` or `import a.b as alias` and reach members through the module (`models.Opportunity`, `dt.datetime.now(dt.UTC)`). This holds for project, stdlib and third-party code. Relative imports become absolute (`import job_radar.models as models`). Use the same alias for a module everywhere: `datetime as dt`, `typing as t`, `collections.abc as cabc`, `sqlalchemy as sa`, `sqlalchemy.orm as sa_orm`, top-level project modules by their name (`import job_radar.models as models`), modules of subpackages as `<package>_<module>` (`import job_radar.gmail.client as gmail_client`). When the alias clashes with a local name, prefix it with `jr_` (`import job_radar.home as jr_home`). `from __future__ import ...` is the only exception.
+- **Import modules, not names.** No `from x import y`: write `import x` or `import a.b as alias` and reach members through the module (`models.Opportunity`, `dt.datetime.now(dt.UTC)`). This holds for project, stdlib and third-party code. Relative imports become absolute (`import job_radar.models as models`). Use the same alias for a module everywhere: `datetime as dt`, `typing as t`, `collections.abc as cabc`, `sqlalchemy as sa`, `sqlalchemy.orm as sa_orm`, top-level project modules by their name (`import job_radar.models as models`), modules of subpackages as `<package>_<module>` (`import job_radar.gmail.client as gmail_client`). Other dotted third-party modules: `<parent>_<module>` (`sqlalchemy.exc as sa_exc`, `email.utils as email_utils`); Alembic's `alembic.op as op` and `alembic.context as context`. When a project alias clashes with a local name, prefix it with `jr_` (`import job_radar.home as jr_home`, `import job_radar.claude.runner as jr_claude_runner`); rename a one-letter local (`t`) rather than the module alias. `from __future__ import ...` is the only exception.
 - **Detailed module docstrings.** Every module starts with a docstring that says what the module is for, its main classes/functions and how it fits into the app, and only then links to `docs/`. It ends with a ready-to-copy import line:
 
   ```python
@@ -35,8 +35,11 @@ Job Radar: local-first assistant for reviewing job opportunities. Plan and scope
       import job_radar.models as models
   """
   ```
+
+  The `Usage:` line is for modules of the `job_radar` package. Test modules say what they test; migrations keep Alembic's header.
 - **Every class has a docstring** that says what it represents and when it is used.
 - **Comments go on their own line** above the code they explain, never at the end of a code line. Tool directives (`# noqa`, `# type: ignore`, `# fmt: skip`, `# nosec`) stay at the end of the line, because the tools read them there.
+- **Checked in CI:** ruff `D100`/`D101`/`D104`/`D106` for docstrings, `tests/test_code_style.py` for imports, trailing comments and the `Usage:` line.
 
 ## Project rules
 
