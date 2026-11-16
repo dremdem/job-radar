@@ -1,21 +1,29 @@
-"""Work mode and residence from a description: the model extracts, code checks and decides.
+"""Work mode, residence and stack from a description: the model extracts, code decides.
 
-See docs/ai.md.
+``extract`` asks the local model for facts with quotes, ``verify`` keeps only facts whose
+quote is really in the text (``quote_in_text``), and ``risks`` /
+``residence_restriction`` / ``auto_ignore_reason`` turn them into what the queue shows.
+``check_stack`` judges unknown technologies against the user's profile.
+``analyze_pending`` runs over To review vacancies whose newest description has no
+analysis yet; results are stored as ``DescriptionAnalysis``. See docs/ai.md.
+
+Usage:
+    import job_radar.ai.analysis as ai_analysis
 """
 
+import dataclasses
 import difflib
 import re
-from dataclasses import dataclass, field
-from typing import Any, Protocol
+import typing as t
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..description import latest_snapshot
-from ..home import Home, current_home
-from ..models import DescriptionAnalysis, Opportunity, OpportunityState
-from ..scoring import Reason
-from ..stack import Profile, Tech, known_alternative, says_optional, unknown_mentions
+import job_radar.description as description
+import job_radar.home as jr_home
+import job_radar.models as models
+import job_radar.scoring as scoring
+import job_radar.stack as jr_stack
 
 HYBRID_PENALTY = -3.0
 RESIDENCE_PENALTY = -2.5
@@ -23,7 +31,8 @@ MAX_TEXT = 10000
 QUOTE_SHOWN = 160
 # Per required technology, by its level in the profile (docs/ai.md#stack-vs-your-cv).
 STACK_PENALTIES = {"unknown": -1.0, "learnable": -0.5, "blocker": -3.0}
-STACK_PENALTY_MAX = -3.0  # all non-blockers together; blockers are not capped
+# all non-blockers together; blockers are not capped
+STACK_PENALTY_MAX = -3.0
 _LEVEL_TEXT = {"unknown": "not in your CV", "learnable": "learnable", "blocker": "blocker"}
 MAX_STACK_QUESTIONS = 8
 # Places anyone can work from; the user's own home (profile) is open too. Anything else in
@@ -37,9 +46,10 @@ _NOT_A_REQUIREMENT = re.compile(
     r"\bexcept\b|\bexcluding\b|\bprefer|\bideally\b|\bnice to have\b|кроме|предпочт",
     re.IGNORECASE,
 )
-_LETTER = re.compile(r"[^\W\d_]")  # a place has letters; a flag emoji alone is not one
+# a place has letters; a flag emoji alone is not one
+_LETTER = re.compile(r"[^\W\d_]")
 
-SCHEMA: dict[str, Any] = {
+SCHEMA: dict[str, t.Any] = {
     "type": "object",
     "properties": {
         "work_mode": {"enum": ["remote", "hybrid", "onsite", "unknown"]},
@@ -67,7 +77,7 @@ Job description:
 {text}"""
 
 
-STACK_SCHEMA: dict[str, Any] = {
+STACK_SCHEMA: dict[str, t.Any] = {
     "type": "object",
     "properties": {
         "status": {"enum": ["required", "nice_to_have", "not_needed"]},
@@ -85,10 +95,12 @@ teams) or not about {skill}.
 Copy the sentence that shows it exactly into quote."""
 
 
-class Model(Protocol):
+class Model(t.Protocol):
+    """What the analysis needs from a local model: its name and one JSON answer."""
+
     model: str
 
-    def generate_json(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]: ...
+    def generate_json(self, prompt: str, schema: dict[str, t.Any]) -> dict[str, t.Any]: ...
 
 
 def _norm(text: str) -> str:
@@ -100,28 +112,30 @@ def quote_in_text(quote: str, text: str) -> bool:
     q = _norm(quote.replace("...", " ").replace("…", " ").strip(' ."'))
     if len(q) < 3:
         return False
-    t = _norm(text)
-    if q in t:
+    norm_text = _norm(text)
+    if q in norm_text:
         return True
     # Anchor on the longest common piece, then compare the whole quote with that place.
-    match = difflib.SequenceMatcher(None, t, q, autojunk=False).find_longest_match(
-        0, len(t), 0, len(q)
+    match = difflib.SequenceMatcher(None, norm_text, q, autojunk=False).find_longest_match(
+        0, len(norm_text), 0, len(q)
     )
     start = max(0, match.a - match.b)
-    window = t[start : start + len(q) + 10]
+    window = norm_text[start : start + len(q) + 10]
     blocks = difflib.SequenceMatcher(None, window, q, autojunk=False).get_matching_blocks()
     return sum(b.size for b in blocks) >= 0.85 * len(q)
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Facts:
+    """The work mode and residence limits a description supports, with quotes."""
+
     work_mode: str = "unknown"
     work_mode_quote: str = ""
-    residence: list[str] = field(default_factory=list)
+    residence: list[str] = dataclasses.field(default_factory=list)
     residence_quote: str = ""
 
 
-def verify(answer: dict[str, Any], text: str) -> Facts:
+def verify(answer: dict[str, t.Any], text: str) -> Facts:
     """Keep only what the description supports; drop the rest."""
     mode = str(answer.get("work_mode") or "unknown")
     mode_quote = str(answer.get("work_mode_quote") or "")
@@ -145,20 +159,20 @@ def verify(answer: dict[str, Any], text: str) -> Facts:
     return Facts(mode, mode_quote, residence, residence_quote)
 
 
-def extract(text: str, model: Model) -> tuple[Facts, dict[str, Any]]:
+def extract(text: str, model: Model) -> tuple[Facts, dict[str, t.Any]]:
     text = text[:MAX_TEXT]
     answer = model.generate_json(PROMPT.format(text=text), SCHEMA)
     return verify(answer, text), answer
 
 
 def check_stack(
-    text: str, model: Model, known: set[str], extra: list[Tech] | None = None
-) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    text: str, model: Model, known: set[str], extra: list[jr_stack.Tech] | None = None
+) -> tuple[list[dict[str, str]], dict[str, t.Any]]:
     """Unknown technologies the text mentions, each judged by the model and checked by code."""
     text = text[:MAX_TEXT]
     stack: list[dict[str, str]] = []
-    raw: dict[str, Any] = {}
-    for tech in unknown_mentions(text, known, extra)[:MAX_STACK_QUESTIONS]:
+    raw: dict[str, t.Any] = {}
+    for tech in jr_stack.unknown_mentions(text, known, extra)[:MAX_STACK_QUESTIONS]:
         prompt = STACK_PROMPT.format(text=text, skill=tech.name, what=tech.what)
         answer = model.generate_json(prompt, STACK_SCHEMA)
         raw[tech.name] = answer
@@ -167,22 +181,23 @@ def check_stack(
         if status not in ("required", "nice_to_have"):
             status = "not_needed"
         elif not quote_in_text(quote, text) or not tech.search(quote):
-            status, quote = "not_needed", ""  # unsupported: don't invent a requirement
-        elif status == "required" and known_alternative(quote, known):
+            # unsupported: don't invent a requirement
+            status, quote = "not_needed", ""
+        elif status == "required" and jr_stack.known_alternative(quote, known):
             status = "alternative"
-        elif status == "required" and says_optional(quote):
+        elif status == "required" and jr_stack.says_optional(quote):
             status = "nice_to_have"
         stack.append({"skill": tech.name, "status": status, "quote": quote})
     return stack, raw
 
 
 def stack_risks(
-    analysis: DescriptionAnalysis | None, profile: Profile | None = None
-) -> list[tuple[float, Reason]]:
+    analysis: models.DescriptionAnalysis | None, profile: jr_stack.Profile | None = None
+) -> list[tuple[float, scoring.Reason]]:
     """Required technologies by their level in the current profile (known ones drop out)."""
     if analysis is None or not analysis.stack:
         return []
-    out: list[tuple[float, Reason]] = []
+    out: list[tuple[float, scoring.Reason]] = []
     left = STACK_PENALTY_MAX
     for item in analysis.stack:
         if item.get("status") != "required":
@@ -197,7 +212,7 @@ def stack_risks(
         text = (
             f"Requires {item['skill']} ({_LEVEL_TEXT[level]}) — “{_shown(item.get('quote', ''))}”"
         )
-        out.append((points, Reason("-", text)))
+        out.append((points, scoring.Reason("-", text)))
     return out
 
 
@@ -207,34 +222,36 @@ def _shown(quote: str) -> str:
 
 
 def risks(
-    analysis: DescriptionAnalysis | None, profile: Profile | None = None
-) -> list[tuple[float, Reason]]:
+    analysis: models.DescriptionAnalysis | None, profile: jr_stack.Profile | None = None
+) -> list[tuple[float, scoring.Reason]]:
     if analysis is None:
         return []
     out = []
     if analysis.work_mode in ("hybrid", "onsite"):
         mode = "hybrid" if analysis.work_mode == "hybrid" else "on-site"
         text = f"AI: {mode} — “{_shown(analysis.work_mode_quote)}”"
-        out.append((HYBRID_PENALTY, Reason("-", text)))
+        out.append((HYBRID_PENALTY, scoring.Reason("-", text)))
     if restriction := residence_restriction(analysis):
         text = f"AI: only for {restriction} — “{_shown(analysis.residence_quote)}”"
-        out.append((RESIDENCE_PENALTY, Reason("-", text)))
+        out.append((RESIDENCE_PENALTY, scoring.Reason("-", text)))
     return out + stack_risks(analysis, profile)
 
 
-def residence_restriction(analysis: DescriptionAnalysis, home: Home | None = None) -> str | None:
-    home = current_home() if home is None else home
+def residence_restriction(
+    analysis: models.DescriptionAnalysis, home: jr_home.Home | None = None
+) -> str | None:
+    home = jr_home.current_home() if home is None else home
     places = analysis.residence or []
     if not places or any(_OPEN.search(p) or home.listed_in(p) for p in places):
         return None
     return ", ".join(places)
 
 
-def latest_analysis(opportunity: Opportunity) -> DescriptionAnalysis | None:
+def latest_analysis(opportunity: models.Opportunity) -> models.DescriptionAnalysis | None:
     return opportunity.analyses[-1] if opportunity.analyses else None
 
 
-def auto_ignore_reason(opportunity: Opportunity) -> str | None:
+def auto_ignore_reason(opportunity: models.Opportunity) -> str | None:
     analysis = latest_analysis(opportunity)
     if analysis is None:
         return None
@@ -245,28 +262,33 @@ def auto_ignore_reason(opportunity: Opportunity) -> str | None:
     return None
 
 
-@dataclass
+@dataclasses.dataclass
 class AnalysisStats:
+    """Counters of one analysis run, for the sync status line."""
+
     analyzed: int = 0
     flagged: int = 0
     errors: int = 0
-    pending: int = 0  # left for the next run (limit)
+    # left for the next run (limit)
+    pending: int = 0
     last_error: str = ""
 
 
-def pending(session: Session, *, with_stack: bool = False) -> list[Opportunity]:
+def pending(session: sa_orm.Session, *, with_stack: bool = False) -> list[models.Opportunity]:
     """To review vacancies whose latest description lacks an analysis (or, with a profile, its
     stack check), newest first."""
     stack_done = dict(
-        session.execute(select(DescriptionAnalysis.snapshot_id, DescriptionAnalysis.stack)).all()
+        session.execute(
+            sa.select(models.DescriptionAnalysis.snapshot_id, models.DescriptionAnalysis.stack)
+        ).all()
     )
     out = []
     for o in session.scalars(
-        select(Opportunity)
-        .where(Opportunity.state == OpportunityState.NEW)
-        .order_by(Opportunity.id.desc())
+        sa.select(models.Opportunity)
+        .where(models.Opportunity.state == models.OpportunityState.NEW)
+        .order_by(models.Opportunity.id.desc())
     ):
-        snapshot = latest_snapshot(o)
+        snapshot = description.latest_snapshot(o)
         if snapshot is None:
             continue
         if snapshot.id not in stack_done or (with_stack and stack_done[snapshot.id] is None):
@@ -275,15 +297,15 @@ def pending(session: Session, *, with_stack: bool = False) -> list[Opportunity]:
 
 
 def analyze_pending(
-    session: Session,
+    session: sa_orm.Session,
     model: Model,
     *,
     limit: int = 150,
     known: set[str] | None = None,
-    profile: Profile | None = None,
+    profile: jr_stack.Profile | None = None,
 ) -> AnalysisStats:
     """Work mode and residence for new descriptions; the stack check when `known` is given."""
-    from ..auto_ignore import apply_rules
+    import job_radar.auto_ignore as auto_ignore
 
     if profile is not None:
         known = profile.known_set
@@ -292,14 +314,16 @@ def analyze_pending(
     todo = pending(session, with_stack=known is not None)
     stats.pending = max(0, len(todo) - limit)
     for opportunity in todo[:limit]:
-        snapshot = latest_snapshot(opportunity)
+        snapshot = description.latest_snapshot(opportunity)
         analysis = session.scalar(
-            select(DescriptionAnalysis).where(DescriptionAnalysis.snapshot_id == snapshot.id)
+            sa.select(models.DescriptionAnalysis).where(
+                models.DescriptionAnalysis.snapshot_id == snapshot.id
+            )
         )
         try:
             if analysis is None:
                 facts, answer = extract(snapshot.raw_text, model)
-                analysis = DescriptionAnalysis(
+                analysis = models.DescriptionAnalysis(
                     snapshot_id=snapshot.id,
                     opportunity=opportunity,
                     model=model.model,
@@ -313,7 +337,8 @@ def analyze_pending(
                 stack, raw = check_stack(snapshot.raw_text, model, known, extra)
                 analysis.stack = stack
                 analysis.raw = {**(analysis.raw or {}), "stack": raw}
-        except Exception as e:  # one bad answer must not stop the rest
+        except Exception as e:
+            # one bad answer must not stop the rest
             session.rollback()
             stats.errors += 1
             stats.last_error = str(e)
@@ -322,17 +347,22 @@ def analyze_pending(
         session.flush()
         stats.analyzed += 1
         stats.flagged += bool(risks(analysis, profile))
-        apply_rules(session, opportunity)
+        auto_ignore.apply_rules(session, opportunity)
         session.commit()
     return stats
 
 
-def recheck_stack(session: Session) -> int:
+def recheck_stack(session: sa_orm.Session) -> int:
     """Forget the stack check of To review vacancies, so the next run asks with the new profile."""
     rows = session.scalars(
-        select(DescriptionAnalysis)
-        .join(Opportunity, Opportunity.id == DescriptionAnalysis.opportunity_id)
-        .where(Opportunity.state == OpportunityState.NEW, DescriptionAnalysis.stack.is_not(None))
+        sa.select(models.DescriptionAnalysis)
+        .join(
+            models.Opportunity, models.Opportunity.id == models.DescriptionAnalysis.opportunity_id
+        )
+        .where(
+            models.Opportunity.state == models.OpportunityState.NEW,
+            models.DescriptionAnalysis.stack.is_not(None),
+        )
     ).all()
     for row in rows:
         row.stack = None

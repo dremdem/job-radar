@@ -1,13 +1,22 @@
-"""Facts and skills Claude keeps between chats (#215). See docs/claude-memory.md."""
+"""Facts and skills Claude keeps between chats (#215).
 
+Entries are ``ClaudeMemory`` rows; every change is kept as ``ClaudeMemoryChange`` so the
+user can see and undo it. ``apply_reply`` applies the ``<memory>`` blocks of a chat
+answer, ``save`` / ``delete`` are the edits from the Memory page, and ``prompt_section``
+puts the whole memory into a prompt. See docs/claude-memory.md.
+
+Usage:
+    import job_radar.claude.memory as claude_memory
+"""
+
+import datetime as dt
 import json
 import re
-from datetime import UTC, datetime
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..models import ClaudeMemory, ClaudeMemoryChange
+import job_radar.models as models
 
 KINDS = ("fact", "skill")
 MAX_BODY = 2000
@@ -37,33 +46,37 @@ def _name(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")[:64]
 
 
-def _snapshot(entry: ClaudeMemory) -> str:
+def _snapshot(entry: models.ClaudeMemory) -> str:
     return f"[{entry.kind}] {entry.description}\n\n{entry.body}".strip()
 
 
-def entries(session: Session) -> list[ClaudeMemory]:
-    found = session.scalars(select(ClaudeMemory).order_by(ClaudeMemory.name))
+def entries(session: sa_orm.Session) -> list[models.ClaudeMemory]:
+    found = session.scalars(sa.select(models.ClaudeMemory).order_by(models.ClaudeMemory.name))
     return sorted(found, key=lambda e: KINDS.index(e.kind) if e.kind in KINDS else len(KINDS))
 
 
-def changes(session: Session, limit: int = LOG_SHOWN) -> list[ClaudeMemoryChange]:
+def changes(session: sa_orm.Session, limit: int = LOG_SHOWN) -> list[models.ClaudeMemoryChange]:
     return list(
         session.scalars(
-            select(ClaudeMemoryChange).order_by(ClaudeMemoryChange.id.desc()).limit(limit)
+            sa.select(models.ClaudeMemoryChange)
+            .order_by(models.ClaudeMemoryChange.id.desc())
+            .limit(limit)
         )
     )
 
 
-def _log(session: Session, name: str, op: str, by: str, before, after, opportunity_id) -> None:
+def _log(
+    session: sa_orm.Session, name: str, op: str, by: str, before, after, opportunity_id
+) -> None:
     session.add(
-        ClaudeMemoryChange(
+        models.ClaudeMemoryChange(
             name=name, op=op, by=by, before=before, after=after, opportunity_id=opportunity_id
         )
     )
 
 
 def save(
-    session: Session,
+    session: sa_orm.Session,
     kind: str,
     name: str,
     description: str,
@@ -76,22 +89,26 @@ def save(
     name = _name(name)
     if kind not in KINDS or not name:
         return None
-    entry = session.scalar(select(ClaudeMemory).where(ClaudeMemory.name == name))
+    entry = session.scalar(sa.select(models.ClaudeMemory).where(models.ClaudeMemory.name == name))
     before = _snapshot(entry) if entry else None
     if entry is None:
-        entry = ClaudeMemory(name=name)
+        entry = models.ClaudeMemory(name=name)
         session.add(entry)
     entry.kind, entry.description = kind, str(description or "").strip()[:255]
     entry.body = str(body or "").strip()[:MAX_BODY]
-    entry.opportunity_id, entry.updated_at = opportunity_id, datetime.now(UTC)
+    entry.opportunity_id, entry.updated_at = opportunity_id, dt.datetime.now(dt.UTC)
     _log(session, name, "updated" if before else "added", by, before, _snapshot(entry),
          opportunity_id)  # fmt: skip
     session.commit()
     return name
 
 
-def delete(session: Session, name: str, *, by: str, opportunity_id: int | None = None) -> bool:
-    entry = session.scalar(select(ClaudeMemory).where(ClaudeMemory.name == _name(name)))
+def delete(
+    session: sa_orm.Session, name: str, *, by: str, opportunity_id: int | None = None
+) -> bool:
+    entry = session.scalar(
+        sa.select(models.ClaudeMemory).where(models.ClaudeMemory.name == _name(name))
+    )
     if entry is None:
         return False
     _log(session, entry.name, "deleted", by, _snapshot(entry), None, opportunity_id)
@@ -100,7 +117,7 @@ def delete(session: Session, name: str, *, by: str, opportunity_id: int | None =
     return True
 
 
-def apply_reply(session: Session, text: str, opportunity_id: int) -> tuple[str, str | None]:
+def apply_reply(session: sa_orm.Session, text: str, opportunity_id: int) -> tuple[str, str | None]:
     """Apply the <memory> blocks of a chat answer. Returns the answer without them and a note
     of what changed (None when there was no block)."""
     blocks = _BLOCK.findall(text)
@@ -130,7 +147,7 @@ def apply_reply(session: Session, text: str, opportunity_id: int) -> tuple[str, 
     return clean, "; ".join(parts) or "no change"
 
 
-def prompt_section(session: Session) -> str:
+def prompt_section(session: sa_orm.Session) -> str:
     """The whole memory for a prompt: facts first, then skills."""
     found = entries(session)
     lines = ["# Your memory (facts about the candidate and skills, from earlier chats)"]

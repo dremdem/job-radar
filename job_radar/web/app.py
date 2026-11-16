@@ -1,96 +1,68 @@
+"""The web application: the review queue and every page around it.
+
+``create_app`` builds the FastAPI app with its database session, background jobs and
+Claude workers. Pages: the queue (``/``, ``/opportunities``) with a vacancy panel, notes,
+history and chat; Applications, Skills, Memory, Profile and Settings; the LinkedIn request
+log. Buttons post to small endpoints (``/sync``, ``/descriptions``, ``/chrome-fill``,
+``/claude/analyze``) that start background work and report its status for htmx to poll.
+``/api/capture`` receives pages from the bookmarklet. See docs/queue.md and
+docs/settings.md.
+
+Usage:
+    import job_radar.web.app as web_app
+"""
+
+import collections.abc as cabc
+import contextlib
+import dataclasses
+import datetime as dt
 import json
+import pathlib
 import re
-from collections.abc import AsyncIterator, Callable, Iterator
-from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime, timedelta, tzinfo
-from pathlib import Path
-from typing import Annotated
-from urllib.parse import urlencode
+import typing as t
+import urllib.parse as urllib_parse
 
-from fastapi import Body, Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from markupsafe import Markup, escape
-from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload, selectinload
+import fastapi
+import fastapi.responses as fastapi_responses
+import fastapi.templating as fastapi_templating
+import markupsafe
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .. import applications as apps
-from .. import manual, pipeline
-from ..ai.analysis import latest_analysis, recheck_stack
-from ..ai.analysis import risks as ai_risks
-from ..auto_ignore import (
-    CLAUDE_KINDS,
-    Rules,
-    apply_to_review,
-    clear_unavailable,
-    load_rules,
-    parse_claude_kinds,
-    parse_countries,
-    save_rules,
-)
-from ..claude import analysis as claude
-from ..claude import memory as claude_memory
-from ..claude.analysis import ClaudeSettings
-from ..claude.analysis import Worker as ClaudeWorker
-from ..claude.prompt import quick_prompts
-from ..claude.runner import ClaudeCli
-from ..claude.runner import Runner as ClaudeRunner
-from ..config import Settings, get_settings
-from ..contacts import company_history, delete_history_item, other_vacancies
-from ..db import make_engine, make_session_factory, upgrade_database
-from ..description import (
-    URL,
-    URL_TRAILING,
-    check_python,
-    highlight_python,
-    latest_description,
-    link,
-    python_risk,
-)
-from ..language import language_risk
-from ..linkedin.alerts import LINKEDIN_SOURCES
-from ..linkedin.capture import import_capture
-from ..linkedin.chrome import load_chrome_pause, save_chrome_pause
-from ..linkedin.public import PauseSettings, load_pause, save_pause
-from ..models import (
-    FILL_EVENT_KINDS,
-    Application,
-    ApplicationReview,
-    AppSetting,
-    ClaudeMessage,
-    Company,
-    CompanyEvent,
-    EmailMessage,
-    JobSnapshot,
-    LinkedInFetch,
-    NoteKind,
-    Opportunity,
-    OpportunityNote,
-    OpportunityState,
-    Rejection,
-    SourceRecord,
-)
-from ..notes import (
-    add_note,
-    country_from_location,
-    delete_note,
-    ignore_with_reason,
-    location_penalty,
-    reason_icon,
-)
-from ..rejections import effective_score, latest_rejections, toggle_manual_rejection
-from ..skills import SORTS, build_report, sort_rows
-from ..stack import LISTS, Profile, current_profile, load_profile, save_profile
-from ..suggestions import suggest
-from .description_job import DescriptionJob
-from .sync_job import Runner, SyncJob
+import job_radar.ai.analysis as ai_analysis
+import job_radar.applications as applications
+import job_radar.auto_ignore as auto_ignore
+import job_radar.claude.analysis as claude_analysis
+import job_radar.claude.memory as claude_memory
+import job_radar.claude.prompt as claude_prompt
+import job_radar.claude.runner as jr_claude_runner
+import job_radar.config as config
+import job_radar.contacts as contacts
+import job_radar.db as db
+import job_radar.description as jr_description
+import job_radar.language as jr_language
+import job_radar.linkedin.alerts as linkedin_alerts
+import job_radar.linkedin.capture as linkedin_capture
+import job_radar.linkedin.chrome as linkedin_chrome
+import job_radar.linkedin.public as linkedin_public
+import job_radar.manual as manual
+import job_radar.models as models
+import job_radar.notes as notes
+import job_radar.pipeline as pipeline
+import job_radar.rejections as rejections
+import job_radar.skills as skills
+import job_radar.stack as stack
+import job_radar.suggestions as suggestions
+import job_radar.web.description_job as web_description_job
+import job_radar.web.sync_job as web_sync_job
 
 HISTORY_SHOWN = 8
 # What the bookmarklet reads, shared with the Chrome fill (#247): one reader for both.
-CAPTURE_READ = (Path(__file__).parent / "capture_read.js").read_text()
+CAPTURE_READ = (pathlib.Path(__file__).parent / "capture_read.js").read_text()
 BOOKMARKLETS = {
-    name: (Path(__file__).parent / f"{name}.js").read_text().replace("__READ__", CAPTURE_READ)
+    name: (pathlib.Path(__file__).parent / f"{name}.js")
+    .read_text()
+    .replace("__READ__", CAPTURE_READ)
     for name in ("bookmarklet", "bookmarklet_debug")
 }
 
@@ -102,74 +74,76 @@ def bookmarklet(base_url: str, name: str = "bookmarklet") -> str:
     return "javascript:" + code.replace("__BASE__", base_url.rstrip("/"))
 
 
-templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
-templates.env.filters["highlight_python"] = highlight_python
+templates = fastapi_templating.Jinja2Templates(
+    directory=pathlib.Path(__file__).parent / "templates"
+)
+templates.env.filters["highlight_python"] = jr_description.highlight_python
 
 
-_LINK = re.compile(rf"\[([^\]]+)\]\(({URL})\)|({URL})")
+_LINK = re.compile(rf"\[([^\]]+)\]\(({jr_description.URL})\)|({jr_description.URL})")
 
 
 def _link(m: re.Match[str]) -> str:
     """A Markdown [text](url) or a bare URL (#241); http(s) only."""
     if m.group(2):
-        return link(m.group(2), m.group(1))
-    url = m.group(3).rstrip(URL_TRAILING)
-    return link(url) + m.group(3)[len(url) :]
+        return jr_description.link(m.group(2), m.group(1))
+    url = m.group(3).rstrip(jr_description.URL_TRAILING)
+    return jr_description.link(url) + m.group(3)[len(url) :]
 
 
-def chat_markup(text: str) -> Markup:
+def chat_markup(text: str) -> markupsafe.Markup:
     """Claude's light Markdown made safe: escape first, then links, **bold** and "> quote"."""
     lines = []
-    for line in str(escape(text)).splitlines():
+    for line in str(markupsafe.escape(text)).splitlines():
         line = _LINK.sub(_link, line)
         line = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", line)
         if line.startswith("&gt; "):
             line = f'<span class="quote">{line[5:]}</span>'
         lines.append(line)
-    return Markup("\n".join(lines))  # nosec B704: built from escape(text) above
+    return markupsafe.Markup("\n".join(lines))  # nosec B704: built from escape(text) above
 
 
 templates.env.filters["chat_markup"] = chat_markup
 
 
-def _pause_left(until: datetime | None) -> str:
+def _pause_left(until: dt.datetime | None) -> str:
     """ "HH:MM" local while new analyses are paused, else ""."""
-    if until is None or until <= datetime.now(UTC):
+    if until is None or until <= dt.datetime.now(dt.UTC):
         return ""
     return local_time(until, "%H:%M")
 
 
-def local_time(value: datetime | None, fmt: str, tz: tzinfo | None = None) -> str:
+def local_time(value: dt.datetime | None, fmt: str, tz: dt.tzinfo | None = None) -> str:
     """A stored UTC time (naive from SQLite, or aware) in the machine's local zone (#170)."""
     if value is None:
         return ""
     if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
+        value = value.replace(tzinfo=dt.UTC)
     return value.astimezone(tz).strftime(fmt)
 
 
 templates.env.filters["local"] = local_time
 templates.env.globals["EVENT_KINDS"] = manual.EVENT_KINDS
-templates.env.globals["reason_icon"] = reason_icon
-templates.env.globals["today"] = lambda: datetime.now().strftime("%Y-%m-%d")
+templates.env.globals["reason_icon"] = notes.reason_icon
+templates.env.globals["today"] = lambda: dt.datetime.now().strftime("%Y-%m-%d")
 
 # Queue order: undecided first, then the ones worth a look.
 _STATE_ORDER = [
-    OpportunityState.NEW,
-    OpportunityState.INTERESTED,
-    OpportunityState.APPLIED,
-    OpportunityState.IGNORE,
-    OpportunityState.AUTO_IGNORE,
+    models.OpportunityState.NEW,
+    models.OpportunityState.INTERESTED,
+    models.OpportunityState.APPLIED,
+    models.OpportunityState.IGNORE,
+    models.OpportunityState.AUTO_IGNORE,
 ]
 
 
 # Queue tabs: key -> (label, states shown; None = all).
-TABS: dict[str, tuple[str, list[OpportunityState] | None]] = {
-    "review": ("To review", [OpportunityState.NEW]),
-    "interested": ("Interested", [OpportunityState.INTERESTED]),
-    "applied": ("Applied", [OpportunityState.APPLIED]),
-    "ignored": ("Ignored", [OpportunityState.IGNORE]),
-    "auto": ("Auto-ignored", [OpportunityState.AUTO_IGNORE]),
+TABS: dict[str, tuple[str, list[models.OpportunityState] | None]] = {
+    "review": ("To review", [models.OpportunityState.NEW]),
+    "interested": ("Interested", [models.OpportunityState.INTERESTED]),
+    "applied": ("Applied", [models.OpportunityState.APPLIED]),
+    "ignored": ("Ignored", [models.OpportunityState.IGNORE]),
+    "auto": ("Auto-ignored", [models.OpportunityState.AUTO_IGNORE]),
     "all": ("All", None),
 }
 DEFAULT_TAB = "review"
@@ -177,17 +151,21 @@ PER_PAGE = (25, 50, 100, 200)
 DEFAULT_PER_PAGE = 50
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Filters:
     """Queue filters: any part of the text, case-insensitive (non-ASCII too)."""
 
     country: str = ""
     company: str = ""
     title: str = ""
-    q: str = ""  # the inbox search box: title, company or location (#158)
-    desc: str = ""  # "none" / "has": vacancies without / with a saved description (#176)
-    per: str = ""  # vacancies per page, one of PER_PAGE; "" = the default (#180)
-    sort: str = ""  # "" = score, "claude" = Claude match % (#207), "recent" = last action (#199)
+    # the inbox search box: title, company or location (#158)
+    q: str = ""
+    # "none" / "has": vacancies without / with a saved description (#176)
+    desc: str = ""
+    # vacancies per page, one of PER_PAGE; "" = the default (#180)
+    per: str = ""
+    # "" = score, "claude" = Claude match % (#207), "recent" = last action (#199)
+    sort: str = ""
 
     def matches(
         self,
@@ -209,18 +187,18 @@ class Filters:
             and (wanted is None or described is None or described == wanted)
         )
 
-    def matches_opportunity(self, o: Opportunity) -> bool:
+    def matches_opportunity(self, o: models.Opportunity) -> bool:
         described = any(r.snapshots for r in o.source_records)
         return self.matches(o.location, o.company.name, o.title, described)
 
     def with_desc(self, desc: str) -> "Filters":
-        return replace(self, desc=desc)
+        return dataclasses.replace(self, desc=desc)
 
     def with_sort(self, sort: str) -> "Filters":
-        return replace(self, sort=sort)
+        return dataclasses.replace(self, sort=sort)
 
     def with_per(self, per: int) -> "Filters":
-        return replace(self, per="" if per == DEFAULT_PER_PAGE else str(per))
+        return dataclasses.replace(self, per="" if per == DEFAULT_PER_PAGE else str(per))
 
     @property
     def per_page(self) -> int:
@@ -236,29 +214,29 @@ class Filters:
             ("per", self.per),
             ("sort", self.sort),
         )
-        return "/?" + urlencode({"tab": tab} | {k: v for k, v in pairs if v})
+        return "/?" + urllib_parse.urlencode({"tab": tab} | {k: v for k, v in pairs if v})
 
 
 def _tab(value: str | None) -> str:
     return value if value in TABS else DEFAULT_TAB
 
 
-def get_session(request: Request) -> Iterator[Session]:
+def get_session(request: fastapi.Request) -> cabc.Iterator[sa_orm.Session]:
     with request.app.state.session_factory() as session:
         # Row helpers below read per-user files (the profile) through the session.
         session.info["settings"] = request.app.state.settings
         yield session
 
 
-SessionDep = Annotated[Session, Depends(get_session)]
+SessionDep = t.Annotated[sa_orm.Session, fastapi.Depends(get_session)]
 
 
 QUEUE_REDRAW = "jr-refresh-queue"
 
 
 def _redraw_when_over(
-    response: HTMLResponse, polled: bool, state: str, saved: bool
-) -> HTMLResponse:
+    response: fastapi_responses.HTMLResponse, polled: bool, state: str, saved: bool
+) -> fastapi_responses.HTMLResponse:
     """The poll that sees a job end, while the page watched it run, asks the queue to redraw
     its list and counters (#263). A page loaded later already shows the new state."""
     if polled and saved and state in ("done", "failed"):
@@ -267,26 +245,27 @@ def _redraw_when_over(
 
 
 def create_app(
-    settings: Settings | None = None,
-    sync_runner: Runner | None = None,
-    claude_runner: ClaudeRunner | None = None,
+    settings: config.Settings | None = None,
+    sync_runner: web_sync_job.Runner | None = None,
+    claude_runner: jr_claude_runner.Runner | None = None,
     start_worker: bool = True,
-    description_runner: Callable[[DescriptionJob], None] | None = None,
-    chrome_runner: Callable[[DescriptionJob], None] | None = None,
-) -> FastAPI:
+    description_runner: cabc.Callable[[web_description_job.DescriptionJob], None] | None = None,
+    chrome_runner: cabc.Callable[[web_description_job.DescriptionJob], None] | None = None,
+) -> fastapi.FastAPI:
     """``start_worker=False``: tests drive the Claude worker with ``run_once``."""
-    settings = settings or get_settings()
-    sync_job = SyncJob()
-    description_job = DescriptionJob()
+    settings = settings or config.get_settings()
+    sync_job = web_sync_job.SyncJob()
+    description_job = web_description_job.DescriptionJob()
     description_runner = description_runner or (lambda job: pipeline.description_job(settings, job))
 
     def start_descriptions() -> bool:
-        if chrome_job.state == "running":  # one LinkedIn description run at a time
+        # one LinkedIn description run at a time
+        if chrome_job.state == "running":
             return False
         return description_job.start(description_runner)
 
     # The Chrome fill (#247): descriptions read in your own Chrome; tests pass a fake.
-    chrome_job = DescriptionJob(blocked_note="stopped: {reason}")
+    chrome_job = web_description_job.DescriptionJob(blocked_note="stopped: {reason}")
     chrome_runner = chrome_runner or (lambda job: pipeline.chrome_fill_job(settings, job))
 
     # The Sync button runs the same pipeline as `./jr sync`, but leaves the slow LinkedIn
@@ -297,16 +276,17 @@ def create_app(
         )
     )
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    @contextlib.asynccontextmanager
+    async def lifespan(app: fastapi.FastAPI) -> cabc.AsyncIterator[None]:
         # New code may bring new tables; the server must not wait for a CLI command.
-        upgrade_database(settings.database_url)
-        engine = make_engine(settings.database_url)
-        app.state.session_factory = make_session_factory(engine)
+        db.upgrade_database(settings.database_url)
+        engine = db.make_engine(settings.database_url)
+        app.state.session_factory = db.make_session_factory(engine)
         app.state.settings = settings
-        worker = ClaudeWorker(
+        worker = claude_analysis.Worker(
             app.state.session_factory,
-            claude_runner or ClaudeCli(settings.claude_command, settings.claude_workdir),
+            claude_runner
+            or jr_claude_runner.ClaudeCli(settings.claude_command, settings.claude_workdir),
             profile_path=settings.profile,
             cv_path=settings.cv_path,
         )
@@ -320,15 +300,15 @@ def create_app(
         worker.stop()
         engine.dispose()
 
-    app = FastAPI(title="Job Radar", lifespan=lifespan)
+    app = fastapi.FastAPI(title="Job Radar", lifespan=lifespan)
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/", response_class=HTMLResponse)
+    @app.get("/", response_class=fastapi_responses.HTMLResponse)
     def queue(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
         tab: str = DEFAULT_TAB,
         country: str = "",
@@ -339,39 +319,44 @@ def create_app(
         per: str = "",
         sort: str = "",
         page: int = 1,
-    ) -> HTMLResponse:
+    ) -> fastapi_responses.HTMLResponse:
         filters = Filters(country, company, title, q, desc, per, sort)
         return templates.TemplateResponse(
             request, "queue.html", _queue_context(session, _tab(tab), filters, page)
         )
 
-    @app.post("/opportunities/{opportunity_id}/state", response_class=HTMLResponse)
+    @app.post(
+        "/opportunities/{opportunity_id}/state", response_class=fastapi_responses.HTMLResponse
+    )
     def set_state(
-        request: Request,
+        request: fastapi.Request,
         opportunity_id: int,
-        state: Annotated[OpportunityState, Form()],
+        state: t.Annotated[models.OpportunityState, fastapi.Form()],
         session: SessionDep,
-        tab: Annotated[str, Form()] = DEFAULT_TAB,
-        country: Annotated[str, Form()] = "",
-        company: Annotated[str, Form()] = "",
-        title: Annotated[str, Form()] = "",
-        q: Annotated[str, Form()] = "",
-        desc: Annotated[str, Form()] = "",
-        per: Annotated[str, Form()] = "",
-        sort: Annotated[str, Form()] = "",
-        source: Annotated[str, Form(alias="from")] = "",
-    ) -> HTMLResponse:
+        tab: t.Annotated[str, fastapi.Form()] = DEFAULT_TAB,
+        country: t.Annotated[str, fastapi.Form()] = "",
+        company: t.Annotated[str, fastapi.Form()] = "",
+        title: t.Annotated[str, fastapi.Form()] = "",
+        q: t.Annotated[str, fastapi.Form()] = "",
+        desc: t.Annotated[str, fastapi.Form()] = "",
+        per: t.Annotated[str, fastapi.Form()] = "",
+        sort: t.Annotated[str, fastapi.Form()] = "",
+        source: t.Annotated[str, fastapi.Form(alias="from")] = "",
+    ) -> fastapi_responses.HTMLResponse:
         filters = Filters(country, company, title, q, desc, per, sort)
         tab = _tab(tab)
         opportunity = _get_opportunity(session, opportunity_id)
         opportunity.state = state
-        opportunity.state_changed_at = datetime.now(UTC)
-        opportunity.auto_ignore_reason = None  # your choice replaces the rule's
+        opportunity.state_changed_at = dt.datetime.now(dt.UTC)
+        # your choice replaces the rule's
+        opportunity.auto_ignore_reason = None
         session.commit()
-        if source == "page":  # the vacancy page: redraw its buttons only
+        # the vacancy page: redraw its buttons only
+        if source == "page":
             context = {"o": opportunity, "states": _manual_states()}
             return templates.TemplateResponse(request, "_page_state.html", context)
-        if source == "panel":  # the inbox panel (#158)
+        # the inbox panel (#158)
+        if source == "panel":
             return _panel_response(request, session, opportunity, tab, filters)
         # Replace only this row (or remove it when it leaves the tab) and refresh the tab counts
         # out of band: re-rendering the whole queue made the page jump to the end (#70).
@@ -381,16 +366,20 @@ def create_app(
         return templates.TemplateResponse(request, "_row_and_tabs.html", context)
 
     @app.post("/opportunities/{opportunity_id}/unavailable/clear")
-    def clear_unavailable_mark(opportunity_id: int, session: SessionDep) -> RedirectResponse:
+    def clear_unavailable_mark(
+        opportunity_id: int, session: SessionDep
+    ) -> fastapi_responses.RedirectResponse:
         # The cross on the "unavailable" badge: the next Chrome fill may try it again (#276).
         opportunity = _get_opportunity(session, opportunity_id)
-        clear_unavailable(opportunity)
+        auto_ignore.clear_unavailable(opportunity)
         session.commit()
-        return RedirectResponse(f"/opportunities/{opportunity.id}", status_code=303)
+        return fastapi_responses.RedirectResponse(
+            f"/opportunities/{opportunity.id}", status_code=303
+        )
 
-    @app.get("/opportunities/{opportunity_id}/row", response_class=HTMLResponse)
+    @app.get("/opportunities/{opportunity_id}/row", response_class=fastapi_responses.HTMLResponse)
     def opportunity_row(
-        request: Request,
+        request: fastapi.Request,
         opportunity_id: int,
         session: SessionDep,
         tab: str = DEFAULT_TAB,
@@ -402,7 +391,7 @@ def create_app(
         per: str = "",
         sort: str = "",
         notify: bool = False,
-    ) -> HTMLResponse:
+    ) -> fastapi_responses.HTMLResponse:
         # One row for live updates (e.g. a description saved by the bookmarklet in another tab).
         tab, filters = _tab(tab), Filters(country, company, title, q, desc, per, sort)
         opportunity = _get_opportunity(session, opportunity_id)
@@ -417,218 +406,230 @@ def create_app(
             )
         return templates.TemplateResponse(request, "_row_and_tabs.html", context)
 
-    @app.get("/opportunities/{opportunity_id}/panel", response_class=HTMLResponse)
+    @app.get("/opportunities/{opportunity_id}/panel", response_class=fastapi_responses.HTMLResponse)
     def opportunity_panel(
-        request: Request, opportunity_id: int, session: SessionDep, tab: str = DEFAULT_TAB
-    ) -> HTMLResponse:
+        request: fastapi.Request, opportunity_id: int, session: SessionDep, tab: str = DEFAULT_TAB
+    ) -> fastapi_responses.HTMLResponse:
         # The inbox's right-hand panel (#158): the vacancy page's content.
         opportunity = _get_opportunity(session, opportunity_id)
         context = _row_context(session, opportunity) | _claude_context(session, opportunity_id)
         context |= {"tab": _tab(tab), "mode": "panel"}
         return templates.TemplateResponse(request, "_detail.html", context)
 
-    @app.get("/opportunities/{opportunity_id}", response_class=HTMLResponse)
+    @app.get("/opportunities/{opportunity_id}", response_class=fastapi_responses.HTMLResponse)
     def opportunity_page(
-        request: Request, opportunity_id: int, session: SessionDep
-    ) -> HTMLResponse:
+        request: fastapi.Request, opportunity_id: int, session: SessionDep
+    ) -> fastapi_responses.HTMLResponse:
         opportunity = _get_opportunity(session, opportunity_id)
         context = _row_context(session, opportunity) | _claude_context(session, opportunity_id)
         context |= {"tab": DEFAULT_TAB, "mode": "page"}
         return templates.TemplateResponse(request, "opportunity.html", context)
 
-    @app.get("/opportunities/{opportunity_id}/claude", response_class=HTMLResponse)
+    @app.get(
+        "/opportunities/{opportunity_id}/claude", response_class=fastapi_responses.HTMLResponse
+    )
     def opportunity_claude(
-        request: Request, opportunity_id: int, session: SessionDep
-    ) -> HTMLResponse:
+        request: fastapi.Request, opportunity_id: int, session: SessionDep
+    ) -> fastapi_responses.HTMLResponse:
         _get_opportunity(session, opportunity_id)
         context = _claude_context(session, opportunity_id)
         return templates.TemplateResponse(request, "_claude_section.html", context)
 
-    @app.post("/opportunities/{opportunity_id}/claude", response_class=HTMLResponse)
+    @app.post(
+        "/opportunities/{opportunity_id}/claude", response_class=fastapi_responses.HTMLResponse
+    )
     def opportunity_analyze(
-        request: Request, opportunity_id: int, session: SessionDep
-    ) -> HTMLResponse:
+        request: fastapi.Request, opportunity_id: int, session: SessionDep
+    ) -> fastapi_responses.HTMLResponse:
         _get_opportunity(session, opportunity_id)
-        claude.enqueue(session, [opportunity_id])
+        claude_analysis.enqueue(session, [opportunity_id])
         request.app.state.claude_worker.wake()
         context = _claude_context(session, opportunity_id)
         return templates.TemplateResponse(request, "_claude_section.html", context)
 
-    @app.post("/opportunities/{opportunity_id}/chat", response_class=HTMLResponse)
+    @app.post("/opportunities/{opportunity_id}/chat", response_class=fastapi_responses.HTMLResponse)
     def opportunity_ask(
-        request: Request,
+        request: fastapi.Request,
         opportunity_id: int,
         session: SessionDep,
-        text: Annotated[str, Form()] = "",
-    ) -> HTMLResponse:
+        text: t.Annotated[str, fastapi.Form()] = "",
+    ) -> fastapi_responses.HTMLResponse:
         _get_opportunity(session, opportunity_id)
-        if claude.ask(session, opportunity_id, text) is None:
-            raise HTTPException(status_code=422, detail="Empty question or no analysis yet")
+        if claude_analysis.ask(session, opportunity_id, text) is None:
+            raise fastapi.HTTPException(status_code=422, detail="Empty question or no analysis yet")
         request.app.state.claude_worker.wake()
         context = _claude_context(session, opportunity_id)
         return templates.TemplateResponse(request, "_claude_section.html", context)
 
-    @app.post("/opportunities/{opportunity_id}/rejected", response_class=HTMLResponse)
+    @app.post(
+        "/opportunities/{opportunity_id}/rejected", response_class=fastapi_responses.HTMLResponse
+    )
     def set_rejected(
-        request: Request,
+        request: fastapi.Request,
         opportunity_id: int,
         session: SessionDep,
-        tab: Annotated[str, Form()] = DEFAULT_TAB,
-        country: Annotated[str, Form()] = "",
-        company: Annotated[str, Form()] = "",
-        title: Annotated[str, Form()] = "",
-        q: Annotated[str, Form()] = "",
-        desc: Annotated[str, Form()] = "",
-        per: Annotated[str, Form()] = "",
-        sort: Annotated[str, Form()] = "",
-        source: Annotated[str, Form(alias="from")] = "",
-    ) -> HTMLResponse:
+        tab: t.Annotated[str, fastapi.Form()] = DEFAULT_TAB,
+        country: t.Annotated[str, fastapi.Form()] = "",
+        company: t.Annotated[str, fastapi.Form()] = "",
+        title: t.Annotated[str, fastapi.Form()] = "",
+        q: t.Annotated[str, fastapi.Form()] = "",
+        desc: t.Annotated[str, fastapi.Form()] = "",
+        per: t.Annotated[str, fastapi.Form()] = "",
+        sort: t.Annotated[str, fastapi.Form()] = "",
+        source: t.Annotated[str, fastapi.Form(alias="from")] = "",
+    ) -> fastapi_responses.HTMLResponse:
         filters = Filters(country, company, title, q, desc, per, sort)
         # Rejection is per company: redraw this row and its company's other rows only (#138).
         opportunity = _get_opportunity(session, opportunity_id)
-        toggle_manual_rejection(session, opportunity)
+        rejections.toggle_manual_rejection(session, opportunity)
         session.commit()
         if source == "panel":
             return _panel_response(request, session, opportunity, _tab(tab), filters)
         return _company_rows(request, session, opportunity, _tab(tab), filters)
 
-    @app.post("/opportunities/{opportunity_id}/notes", response_class=HTMLResponse)
+    @app.post(
+        "/opportunities/{opportunity_id}/notes", response_class=fastapi_responses.HTMLResponse
+    )
     def add_opportunity_note(
-        request: Request,
+        request: fastapi.Request,
         opportunity_id: int,
         session: SessionDep,
-        action: Annotated[str, Form()],
-        kind: Annotated[NoteKind, Form()] = NoteKind.NOTE,
-        detail: Annotated[str, Form()] = "",
-        comment: Annotated[str, Form()] = "",
-        tab: Annotated[str, Form()] = DEFAULT_TAB,
-        country: Annotated[str, Form()] = "",
-        company: Annotated[str, Form()] = "",
-        title: Annotated[str, Form()] = "",
-        q: Annotated[str, Form()] = "",
-        desc: Annotated[str, Form()] = "",
-        per: Annotated[str, Form()] = "",
-        sort: Annotated[str, Form()] = "",
-        source: Annotated[str, Form(alias="from")] = "",
-    ) -> HTMLResponse:
+        action: t.Annotated[str, fastapi.Form()],
+        kind: t.Annotated[models.NoteKind, fastapi.Form()] = models.NoteKind.NOTE,
+        detail: t.Annotated[str, fastapi.Form()] = "",
+        comment: t.Annotated[str, fastapi.Form()] = "",
+        tab: t.Annotated[str, fastapi.Form()] = DEFAULT_TAB,
+        country: t.Annotated[str, fastapi.Form()] = "",
+        company: t.Annotated[str, fastapi.Form()] = "",
+        title: t.Annotated[str, fastapi.Form()] = "",
+        q: t.Annotated[str, fastapi.Form()] = "",
+        desc: t.Annotated[str, fastapi.Form()] = "",
+        per: t.Annotated[str, fastapi.Form()] = "",
+        sort: t.Annotated[str, fastapi.Form()] = "",
+        source: t.Annotated[str, fastapi.Form(alias="from")] = "",
+    ) -> fastapi_responses.HTMLResponse:
         filters = Filters(country, company, title, q, desc, per, sort)
         # Penalties and history are per company, so the whole queue is re-rendered.
         opportunity = _get_opportunity(session, opportunity_id)
         try:
             if action == "ignore":
-                ignore_with_reason(session, opportunity, kind, detail, comment)
+                notes.ignore_with_reason(session, opportunity, kind, detail, comment)
             elif action == "note":
-                add_note(session, opportunity, NoteKind.NOTE, comment=comment)
+                notes.add_note(session, opportunity, models.NoteKind.NOTE, comment=comment)
             else:
-                raise HTTPException(status_code=422, detail="Unknown action")
+                raise fastapi.HTTPException(status_code=422, detail="Unknown action")
         except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e)) from e
-        if source == "page":  # the vacancy page: show the new state
+            raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
+        # the vacancy page: show the new state
+        if source == "page":
             context = {"o": opportunity, "states": _manual_states()}
             return templates.TemplateResponse(request, "_page_state.html", context)
         if source == "panel":
             return _panel_response(request, session, opportunity, _tab(tab), filters)
         return _company_rows(request, session, opportunity, _tab(tab), filters)
 
-    @app.post("/notes/{note_id}/delete", response_class=HTMLResponse)
+    @app.post("/notes/{note_id}/delete", response_class=fastapi_responses.HTMLResponse)
     def remove_note(
-        request: Request,
+        request: fastapi.Request,
         note_id: int,
         session: SessionDep,
-        tab: Annotated[str, Form()] = DEFAULT_TAB,
-        country: Annotated[str, Form()] = "",
-        company: Annotated[str, Form()] = "",
-        title: Annotated[str, Form()] = "",
-        q: Annotated[str, Form()] = "",
-        desc: Annotated[str, Form()] = "",
-        per: Annotated[str, Form()] = "",
-        sort: Annotated[str, Form()] = "",
-    ) -> HTMLResponse:
+        tab: t.Annotated[str, fastapi.Form()] = DEFAULT_TAB,
+        country: t.Annotated[str, fastapi.Form()] = "",
+        company: t.Annotated[str, fastapi.Form()] = "",
+        title: t.Annotated[str, fastapi.Form()] = "",
+        q: t.Annotated[str, fastapi.Form()] = "",
+        desc: t.Annotated[str, fastapi.Form()] = "",
+        per: t.Annotated[str, fastapi.Form()] = "",
+        sort: t.Annotated[str, fastapi.Form()] = "",
+    ) -> fastapi_responses.HTMLResponse:
         filters = Filters(country, company, title, q, desc, per, sort)
-        note = session.get(OpportunityNote, note_id)
+        note = session.get(models.OpportunityNote, note_id)
         if note is None:
-            raise HTTPException(status_code=404, detail="Note not found")
+            raise fastapi.HTTPException(status_code=404, detail="Note not found")
         opportunity = _get_opportunity(session, note.opportunity_id)
-        delete_note(session, note_id)
+        notes.delete_note(session, note_id)
         return _company_rows(request, session, opportunity, _tab(tab), filters)
 
     def _after_manual(
-        request: Request,
-        session: Session,
-        opportunity: Opportunity,
+        request: fastapi.Request,
+        session: sa_orm.Session,
+        opportunity: models.Opportunity,
         source: str,
         tab: str,
         filters: Filters,
-    ) -> HTMLResponse:
+    ) -> fastapi_responses.HTMLResponse:
         if source == "panel":
             return _panel_response(request, session, opportunity, _tab(tab), filters)
         # The vacancy page: reload it, the history and the state changed.
-        return HTMLResponse("", headers={"HX-Refresh": "true"})
+        return fastapi_responses.HTMLResponse("", headers={"HX-Refresh": "true"})
 
-    @app.post("/opportunities/{opportunity_id}/events", response_class=HTMLResponse)
+    @app.post(
+        "/opportunities/{opportunity_id}/events", response_class=fastapi_responses.HTMLResponse
+    )
     def add_opportunity_event(
-        request: Request,
+        request: fastapi.Request,
         opportunity_id: int,
         session: SessionDep,
-        kind: Annotated[str, Form()],
-        at: Annotated[str, Form()] = "",
-        comment: Annotated[str, Form()] = "",
-        tab: Annotated[str, Form()] = DEFAULT_TAB,
-        country: Annotated[str, Form()] = "",
-        company: Annotated[str, Form()] = "",
-        title: Annotated[str, Form()] = "",
-        q: Annotated[str, Form()] = "",
-        desc: Annotated[str, Form()] = "",
-        per: Annotated[str, Form()] = "",
-        sort: Annotated[str, Form()] = "",
-        source: Annotated[str, Form(alias="from")] = "",
-    ) -> HTMLResponse:
+        kind: t.Annotated[str, fastapi.Form()],
+        at: t.Annotated[str, fastapi.Form()] = "",
+        comment: t.Annotated[str, fastapi.Form()] = "",
+        tab: t.Annotated[str, fastapi.Form()] = DEFAULT_TAB,
+        country: t.Annotated[str, fastapi.Form()] = "",
+        company: t.Annotated[str, fastapi.Form()] = "",
+        title: t.Annotated[str, fastapi.Form()] = "",
+        q: t.Annotated[str, fastapi.Form()] = "",
+        desc: t.Annotated[str, fastapi.Form()] = "",
+        per: t.Annotated[str, fastapi.Form()] = "",
+        sort: t.Annotated[str, fastapi.Form()] = "",
+        source: t.Annotated[str, fastapi.Form(alias="from")] = "",
+    ) -> fastapi_responses.HTMLResponse:
         # An event that is not in the mail: a call, an interview, an offer (#182).
         filters = Filters(country, company, title, q, desc, per, sort)
         opportunity = _get_opportunity(session, opportunity_id)
         try:
-            day = datetime.strptime(at, "%Y-%m-%d") if at else datetime.now()
-            when = day.replace(hour=12).astimezone(UTC)  # the date you picked, local noon
+            day = dt.datetime.strptime(at, "%Y-%m-%d") if at else dt.datetime.now()
+            # the date you picked, local noon
+            when = day.replace(hour=12).astimezone(dt.UTC)
             manual.add_event(session, opportunity, kind, when, comment)
         except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e)) from e
+            raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
         return _after_manual(request, session, opportunity, source, tab, filters)
 
-    @app.post("/history/{kind}/{item_id}/delete", response_class=HTMLResponse)
+    @app.post("/history/{kind}/{item_id}/delete", response_class=fastapi_responses.HTMLResponse)
     def remove_history_item(
-        request: Request,
+        request: fastapi.Request,
         kind: str,
         item_id: int,
         session: SessionDep,
-        opportunity: Annotated[int, Form()],
-        tab: Annotated[str, Form()] = DEFAULT_TAB,
-        country: Annotated[str, Form()] = "",
-        company: Annotated[str, Form()] = "",
-        title: Annotated[str, Form()] = "",
-        q: Annotated[str, Form()] = "",
-        desc: Annotated[str, Form()] = "",
-        per: Annotated[str, Form()] = "",
-        sort: Annotated[str, Form()] = "",
-        source: Annotated[str, Form(alias="from")] = "",
-    ) -> HTMLResponse:
+        opportunity: t.Annotated[int, fastapi.Form()],
+        tab: t.Annotated[str, fastapi.Form()] = DEFAULT_TAB,
+        country: t.Annotated[str, fastapi.Form()] = "",
+        company: t.Annotated[str, fastapi.Form()] = "",
+        title: t.Annotated[str, fastapi.Form()] = "",
+        q: t.Annotated[str, fastapi.Form()] = "",
+        desc: t.Annotated[str, fastapi.Form()] = "",
+        per: t.Annotated[str, fastapi.Form()] = "",
+        sort: t.Annotated[str, fastapi.Form()] = "",
+        source: t.Annotated[str, fastapi.Form(alias="from")] = "",
+    ) -> fastapi_responses.HTMLResponse:
         # Any record of the company history, from the vacancy you are looking at (#225).
         filters = Filters(country, company, title, q, desc, per, sort)
         shown = _get_opportunity(session, opportunity)
-        if not delete_history_item(session, kind, item_id):
-            raise HTTPException(status_code=404, detail="No such history record")
+        if not contacts.delete_history_item(session, kind, item_id):
+            raise fastapi.HTTPException(status_code=404, detail="No such history record")
         return _after_manual(request, session, shown, source, tab, filters)
 
-    @app.post("/opportunities", response_class=HTMLResponse)
+    @app.post("/opportunities", response_class=fastapi_responses.HTMLResponse)
     def add_vacancy(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
-        title: Annotated[str, Form()] = "",
-        company: Annotated[str, Form()] = "",
-        link: Annotated[str, Form()] = "",
-        location: Annotated[str, Form()] = "",
-        state: Annotated[str, Form()] = "new",
-        comment: Annotated[str, Form()] = "",
-    ) -> HTMLResponse:
+        title: t.Annotated[str, fastapi.Form()] = "",
+        company: t.Annotated[str, fastapi.Form()] = "",
+        link: t.Annotated[str, fastapi.Form()] = "",
+        location: t.Annotated[str, fastapi.Form()] = "",
+        state: t.Annotated[str, fastapi.Form()] = "new",
+        comment: t.Annotated[str, fastapi.Form()] = "",
+    ) -> fastapi_responses.HTMLResponse:
         # A vacancy found outside the sources (#182).
         try:
             opportunity = manual.add_vacancy(
@@ -637,41 +638,46 @@ def create_app(
                 company=company,
                 link=link,
                 location=location,
-                state=OpportunityState(state),
+                state=models.OpportunityState(state),
                 comment=comment,
             )
         except ValueError as e:
-            if request.headers.get("HX-Request"):  # show it in the dialog
-                return HTMLResponse(f'<p class="neg mb-2">{escape(str(e))}</p>')
-            raise HTTPException(status_code=422, detail=str(e)) from e
+            # show it in the dialog
+            if request.headers.get("HX-Request"):
+                return fastapi_responses.HTMLResponse(
+                    f'<p class="neg mb-2">{markupsafe.escape(str(e))}</p>'
+                )
+            raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
         url = f"/opportunities/{opportunity.id}"
         if request.headers.get("HX-Request"):
-            return HTMLResponse("", headers={"HX-Redirect": url})
-        return RedirectResponse(url, status_code=303)
+            return fastapi_responses.HTMLResponse("", headers={"HX-Redirect": url})
+        return fastapi_responses.RedirectResponse(url, status_code=303)
 
-    @app.get("/settings", response_class=HTMLResponse)
-    def settings_page(request: Request, session: SessionDep) -> HTMLResponse:
+    @app.get("/settings", response_class=fastapi_responses.HTMLResponse)
+    def settings_page(
+        request: fastapi.Request, session: SessionDep
+    ) -> fastapi_responses.HTMLResponse:
         context = _settings_context(session, settings)
         return templates.TemplateResponse(request, "settings.html", context)
 
-    @app.post("/settings", response_class=HTMLResponse)
+    @app.post("/settings", response_class=fastapi_responses.HTMLResponse)
     def save_settings(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
-        hybrid: Annotated[str | None, Form()] = None,
-        applied: Annotated[str | None, Form()] = None,
-        ignored: Annotated[str | None, Form()] = None,
-        rejected: Annotated[str | None, Form()] = None,
-        no_python: Annotated[str | None, Form()] = None,
-        ai_location: Annotated[str | None, Form()] = None,
-        language: Annotated[str | None, Form()] = None,
-        unavailable: Annotated[str | None, Form()] = None,
-        days: Annotated[int, Form(ge=1, le=3650)] = 90,
-        countries: Annotated[str, Form()] = "",
-        claude_any: Annotated[str | None, Form()] = None,
-        claude_kinds: Annotated[list[str] | None, Form()] = None,
-    ) -> HTMLResponse:
-        rules = Rules(
+        hybrid: t.Annotated[str | None, fastapi.Form()] = None,
+        applied: t.Annotated[str | None, fastapi.Form()] = None,
+        ignored: t.Annotated[str | None, fastapi.Form()] = None,
+        rejected: t.Annotated[str | None, fastapi.Form()] = None,
+        no_python: t.Annotated[str | None, fastapi.Form()] = None,
+        ai_location: t.Annotated[str | None, fastapi.Form()] = None,
+        language: t.Annotated[str | None, fastapi.Form()] = None,
+        unavailable: t.Annotated[str | None, fastapi.Form()] = None,
+        days: t.Annotated[int, fastapi.Form(ge=1, le=3650)] = 90,
+        countries: t.Annotated[str, fastapi.Form()] = "",
+        claude_any: t.Annotated[str | None, fastapi.Form()] = None,
+        claude_kinds: t.Annotated[list[str] | None, fastapi.Form()] = None,
+    ) -> fastapi_responses.HTMLResponse:
+        rules = auto_ignore.Rules(
             hybrid=hybrid is not None,
             applied=applied is not None,
             ignored=ignored is not None,
@@ -681,125 +687,139 @@ def create_app(
             language=language is not None,
             unavailable=unavailable is not None,
             days=days,
-            countries=parse_countries(countries),
+            countries=auto_ignore.parse_countries(countries),
             claude_any=claude_any is not None,
-            claude_kinds=parse_claude_kinds(claude_kinds),
+            claude_kinds=auto_ignore.parse_claude_kinds(claude_kinds),
         )
-        save_rules(session, rules)
+        auto_ignore.save_rules(session, rules)
         context = _settings_context(session, settings)
         context["message"] = "Saved. New vacancies follow these rules."
         return templates.TemplateResponse(request, "settings.html", context)
 
-    @app.post("/claude/analyze", response_class=HTMLResponse)
+    @app.post("/claude/analyze", response_class=fastapi_responses.HTMLResponse)
     def claude_analyze(
-        request: Request, session: SessionDep, ids: Annotated[list[int] | None, Form()] = None
-    ) -> HTMLResponse:
-        added = claude.enqueue(session, ids or [])
-        skipped = claude.without_description(session, ids or [])
+        request: fastapi.Request,
+        session: SessionDep,
+        ids: t.Annotated[list[int] | None, fastapi.Form()] = None,
+    ) -> fastapi_responses.HTMLResponse:
+        added = claude_analysis.enqueue(session, ids or [])
+        skipped = claude_analysis.without_description(session, ids or [])
         request.app.state.claude_worker.wake()
         context = {"skipped": skipped} | {
-            "claude_status": claude.status(session),
+            "claude_status": claude_analysis.status(session),
             "added": added,
             "worker_off": not request.app.state.claude_worker_on,
         }
         return templates.TemplateResponse(request, "_claude_status.html", context)
 
-    @app.get("/claude/status", response_class=HTMLResponse)
-    def claude_status(request: Request, session: SessionDep) -> HTMLResponse:
+    @app.get("/claude/status", response_class=fastapi_responses.HTMLResponse)
+    def claude_status(
+        request: fastapi.Request, session: SessionDep
+    ) -> fastapi_responses.HTMLResponse:
         context = {
-            "claude_status": claude.status(session),
+            "claude_status": claude_analysis.status(session),
             "added": None,
             "worker_off": not request.app.state.claude_worker_on,
         }
         return templates.TemplateResponse(request, "_claude_status.html", context)
 
-    @app.post("/settings/claude", response_class=HTMLResponse)
+    @app.post("/settings/claude", response_class=fastapi_responses.HTMLResponse)
     def save_claude_settings(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
-        model: Annotated[str, Form()] = "sonnet",
-        daily_cap: Annotated[int, Form(ge=0, le=500)] = 30,
-        language: Annotated[str, Form()] = "Russian",
-        parallel: Annotated[int, Form(ge=1, le=claude.MAX_PARALLEL)] = 4,
-        chat_web: Annotated[str | None, Form()] = None,
-        auto_analyze: Annotated[str | None, Form()] = None,
-    ) -> HTMLResponse:
-        if model not in claude.MODELS or language not in claude.LANGUAGES:
-            raise HTTPException(status_code=422, detail="Unknown model or language")
-        value = ClaudeSettings(
+        model: t.Annotated[str, fastapi.Form()] = "sonnet",
+        daily_cap: t.Annotated[int, fastapi.Form(ge=0, le=500)] = 30,
+        language: t.Annotated[str, fastapi.Form()] = "Russian",
+        parallel: t.Annotated[int, fastapi.Form(ge=1, le=claude_analysis.MAX_PARALLEL)] = 4,
+        chat_web: t.Annotated[str | None, fastapi.Form()] = None,
+        auto_analyze: t.Annotated[str | None, fastapi.Form()] = None,
+    ) -> fastapi_responses.HTMLResponse:
+        if model not in claude_analysis.MODELS or language not in claude_analysis.LANGUAGES:
+            raise fastapi.HTTPException(status_code=422, detail="Unknown model or language")
+        value = claude_analysis.ClaudeSettings(
             model, daily_cap, language, parallel, chat_web is not None, auto_analyze is not None
         )
-        claude.save_claude_settings(session, value)
-        request.app.state.claude_worker.wake()  # a higher number starts more at once
+        claude_analysis.save_claude_settings(session, value)
+        # a higher number starts more at once
+        request.app.state.claude_worker.wake()
         context = _settings_context(session, settings) | {"message": "Claude settings saved."}
         return templates.TemplateResponse(request, "settings.html", context)
 
-    @app.get("/skills", response_class=HTMLResponse)
+    @app.get("/skills", response_class=fastapi_responses.HTMLResponse)
     def skills_page(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
         days: int = 0,
         scope: str = "open",
         sort: str = "unlock",
         dir: str = "desc",
-    ) -> HTMLResponse:
+    ) -> fastapi_responses.HTMLResponse:
         everything = scope == "all"
-        report = build_report(
-            session, load_profile(settings.profile), days=days or None, everything=everything
+        report = skills.build_report(
+            session, stack.load_profile(settings.profile), days=days or None, everything=everything
         )
-        report.rows = sort_rows(report.rows, sort, dir)
+        report.rows = skills.sort_rows(report.rows, sort, dir)
         context = {"report": report, "days": days, "scope": scope, "message": ""}
-        context |= {"sort": sort if sort in SORTS else "unlock", "dir": dir}
+        context |= {"sort": sort if sort in skills.SORTS else "unlock", "dir": dir}
         return templates.TemplateResponse(request, "skills.html", context)
 
-    @app.post("/skills/level", response_class=HTMLResponse)
+    @app.post("/skills/level", response_class=fastapi_responses.HTMLResponse)
     def skills_level(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
-        name: Annotated[str, Form()],
-        level: Annotated[str, Form()],
-        days: Annotated[int, Form()] = 0,
-        scope: Annotated[str, Form()] = "open",
-    ) -> HTMLResponse:
+        name: t.Annotated[str, fastapi.Form()],
+        level: t.Annotated[str, fastapi.Form()],
+        days: t.Annotated[int, fastapi.Form()] = 0,
+        scope: t.Annotated[str, fastapi.Form()] = "open",
+    ) -> fastapi_responses.HTMLResponse:
         if level not in ("known", "learnable", "blockers") or not name.strip():
-            raise HTTPException(status_code=422, detail="Unknown level")
-        profile = load_profile(settings.profile) or Profile()
+            raise fastapi.HTTPException(status_code=422, detail="Unknown level")
+        profile = stack.load_profile(settings.profile) or stack.Profile()
         lists = {k: [x for x in getattr(profile, k) if x.lower() != name.strip().lower()]
                  for k in ("known", "learnable", "blockers")}  # fmt: skip
         lists[level].append(name.strip())
-        save_profile(settings.profile, replace(profile, **lists))
-        report = build_report(
-            session, load_profile(settings.profile), days=days or None, everything=scope == "all"
+        stack.save_profile(settings.profile, dataclasses.replace(profile, **lists))
+        report = skills.build_report(
+            session,
+            stack.load_profile(settings.profile),
+            days=days or None,
+            everything=scope == "all",
         )
         message = f"{name.strip()} is now {level.rstrip('s')} in your profile."
         context = {"report": report, "days": days, "scope": scope, "message": message}
         context |= {"sort": "unlock", "dir": "desc"}
         return templates.TemplateResponse(request, "skills.html", context)
 
-    @app.get("/memory", response_class=HTMLResponse)
-    def memory_page(request: Request, session: SessionDep) -> HTMLResponse:
+    @app.get("/memory", response_class=fastapi_responses.HTMLResponse)
+    def memory_page(
+        request: fastapi.Request, session: SessionDep
+    ) -> fastapi_responses.HTMLResponse:
         return _memory_response(request, session)
 
-    @app.post("/memory", response_class=HTMLResponse)
+    @app.post("/memory", response_class=fastapi_responses.HTMLResponse)
     def save_memory(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
-        kind: Annotated[str, Form()],
-        name: Annotated[str, Form(max_length=64)],
-        description: Annotated[str, Form(max_length=255)] = "",
-        body: Annotated[str, Form()] = "",
-    ) -> HTMLResponse:
+        kind: t.Annotated[str, fastapi.Form()],
+        name: t.Annotated[str, fastapi.Form(max_length=64)],
+        description: t.Annotated[str, fastapi.Form(max_length=255)] = "",
+        body: t.Annotated[str, fastapi.Form()] = "",
+    ) -> fastapi_responses.HTMLResponse:
         saved = claude_memory.save(session, kind, name, description, body, by="you")
         if saved is None:
-            raise HTTPException(status_code=422, detail="Unknown kind or empty name")
+            raise fastapi.HTTPException(status_code=422, detail="Unknown kind or empty name")
         return _memory_response(request, session, f"Saved {saved}.")
 
-    @app.post("/memory/{name}/delete", response_class=HTMLResponse)
-    def delete_memory(request: Request, session: SessionDep, name: str) -> HTMLResponse:
+    @app.post("/memory/{name}/delete", response_class=fastapi_responses.HTMLResponse)
+    def delete_memory(
+        request: fastapi.Request, session: SessionDep, name: str
+    ) -> fastapi_responses.HTMLResponse:
         claude_memory.delete(session, name, by="you")
         return _memory_response(request, session, f"Deleted {name}.")
 
-    def _memory_response(request: Request, session: Session, message: str = "") -> HTMLResponse:
+    def _memory_response(
+        request: fastapi.Request, session: sa_orm.Session, message: str = ""
+    ) -> fastapi_responses.HTMLResponse:
         context = {
             "entries": claude_memory.entries(session),
             "changes": claude_memory.changes(session),
@@ -809,28 +829,32 @@ def create_app(
         }
         return templates.TemplateResponse(request, "memory.html", context)
 
-    @app.get("/profile", response_class=HTMLResponse)
-    def profile_page(request: Request) -> HTMLResponse:
-        profile = load_profile(settings.profile) or Profile()
-        context = {"profile": asdict(profile), "lists": LISTS, "path": settings.profile}
+    @app.get("/profile", response_class=fastapi_responses.HTMLResponse)
+    def profile_page(request: fastapi.Request) -> fastapi_responses.HTMLResponse:
+        profile = stack.load_profile(settings.profile) or stack.Profile()
+        context = {
+            "profile": dataclasses.asdict(profile),
+            "lists": stack.LISTS,
+            "path": settings.profile,
+        }
         context["message"] = None
         return templates.TemplateResponse(request, "profile.html", context)
 
-    @app.post("/profile", response_class=HTMLResponse)
+    @app.post("/profile", response_class=fastapi_responses.HTMLResponse)
     def save_profile_page(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
-        known: Annotated[str, Form()] = "",
-        learnable: Annotated[str, Form()] = "",
-        blockers: Annotated[str, Form()] = "",
-        rules: Annotated[str, Form()] = "",
-        home: Annotated[str, Form()] = "",
-        home_regions: Annotated[str, Form()] = "",
-    ) -> HTMLResponse:
+        known: t.Annotated[str, fastapi.Form()] = "",
+        learnable: t.Annotated[str, fastapi.Form()] = "",
+        blockers: t.Annotated[str, fastapi.Form()] = "",
+        rules: t.Annotated[str, fastapi.Form()] = "",
+        home: t.Annotated[str, fastapi.Form()] = "",
+        home_regions: t.Annotated[str, fastapi.Form()] = "",
+    ) -> fastapi_responses.HTMLResponse:
         def lines(text: str) -> list[str]:
             return [line.strip() for line in text.splitlines() if line.strip()]
 
-        profile = Profile(
+        profile = stack.Profile(
             lines(known),
             lines(learnable),
             lines(blockers),
@@ -838,123 +862,148 @@ def create_app(
             home=home.strip(),
             home_regions=lines(home_regions),
         )
-        save_profile(settings.profile, profile)
-        asked = recheck_stack(session)
+        stack.save_profile(settings.profile, profile)
+        asked = ai_analysis.recheck_stack(session)
         message = "Saved." + (
             f" The stack of {asked} vacancies in To review is checked again at the next Sync."
             if asked
             else ""
         )
-        context = {"profile": asdict(profile), "lists": LISTS, "path": settings.profile}
+        context = {
+            "profile": dataclasses.asdict(profile),
+            "lists": stack.LISTS,
+            "path": settings.profile,
+        }
         context["message"] = message
         return templates.TemplateResponse(request, "profile.html", context)
 
-    @app.post("/settings/apply", response_class=HTMLResponse)
-    def apply_settings(request: Request, session: SessionDep) -> HTMLResponse:
-        moved = apply_to_review(session)
+    @app.post("/settings/apply", response_class=fastapi_responses.HTMLResponse)
+    def apply_settings(
+        request: fastapi.Request, session: SessionDep
+    ) -> fastapi_responses.HTMLResponse:
+        moved = auto_ignore.apply_to_review(session)
         word = "vacancy" if moved == 1 else "vacancies"
         context = _settings_context(session, settings)
         context["message"] = f"{moved} {word} auto-ignored from To review."
         return templates.TemplateResponse(request, "settings.html", context)
 
-    @app.post("/sync", response_class=HTMLResponse)
-    def start_sync(request: Request) -> HTMLResponse:
-        sync_job.start(sync_runner)  # a second click just shows the running one
+    @app.post("/sync", response_class=fastapi_responses.HTMLResponse)
+    def start_sync(request: fastapi.Request) -> fastapi_responses.HTMLResponse:
+        # a second click just shows the running one
+        sync_job.start(sync_runner)
         return templates.TemplateResponse(request, "_sync_status.html", {"job": sync_job})
 
-    @app.get("/sync/status", response_class=HTMLResponse)
-    def sync_status(request: Request, polled: bool = False) -> HTMLResponse:
+    @app.get("/sync/status", response_class=fastapi_responses.HTMLResponse)
+    def sync_status(
+        request: fastapi.Request, polled: bool = False
+    ) -> fastapi_responses.HTMLResponse:
         response = templates.TemplateResponse(request, "_sync_status.html", {"job": sync_job})
         return _redraw_when_over(response, polled, sync_job.state, saved=True)
 
-    def descriptions_status(request: Request, off: bool = False) -> HTMLResponse:
+    def descriptions_status(
+        request: fastapi.Request, off: bool = False
+    ) -> fastapi_responses.HTMLResponse:
         context = {"job": description_job, "off": off}
         return templates.TemplateResponse(request, "_descriptions_status.html", context)
 
-    @app.post("/descriptions", response_class=HTMLResponse)
-    def start_description_job(request: Request) -> HTMLResponse:
+    @app.post("/descriptions", response_class=fastapi_responses.HTMLResponse)
+    def start_description_job(request: fastapi.Request) -> fastapi_responses.HTMLResponse:
         if not pipeline.descriptions_on(settings):
             return descriptions_status(request, off=True)
-        start_descriptions()  # a second click just shows the running one
+        # a second click just shows the running one
+        start_descriptions()
         return descriptions_status(request)
 
-    @app.post("/descriptions/stop", response_class=HTMLResponse)
-    def stop_description_job(request: Request) -> HTMLResponse:
+    @app.post("/descriptions/stop", response_class=fastapi_responses.HTMLResponse)
+    def stop_description_job(request: fastapi.Request) -> fastapi_responses.HTMLResponse:
         description_job.stop()
         return descriptions_status(request)
 
-    @app.get("/descriptions/status", response_class=HTMLResponse)
-    def description_job_status(request: Request, polled: bool = False) -> HTMLResponse:
+    @app.get("/descriptions/status", response_class=fastapi_responses.HTMLResponse)
+    def description_job_status(
+        request: fastapi.Request, polled: bool = False
+    ) -> fastapi_responses.HTMLResponse:
         job = description_job
         return _redraw_when_over(descriptions_status(request), polled, job.state, job.saved > 0)
 
-    def chrome_status(request: Request, off: bool = False, busy: bool = False) -> HTMLResponse:
+    def chrome_status(
+        request: fastapi.Request, off: bool = False, busy: bool = False
+    ) -> fastapi_responses.HTMLResponse:
         context = {"job": chrome_job, "off": off, "busy": busy}
         return templates.TemplateResponse(request, "_chrome_status.html", context)
 
-    @app.post("/chrome-fill", response_class=HTMLResponse)
-    def start_chrome_fill(request: Request) -> HTMLResponse:
+    @app.post("/chrome-fill", response_class=fastapi_responses.HTMLResponse)
+    def start_chrome_fill(request: fastapi.Request) -> fastapi_responses.HTMLResponse:
         if not settings.linkedin_chrome:
             return chrome_status(request, off=True)
         if description_job.state == "running":
             return chrome_status(request, busy=True)
-        chrome_job.start(chrome_runner)  # a second click just shows the running one
+        # a second click just shows the running one
+        chrome_job.start(chrome_runner)
         return chrome_status(request)
 
-    @app.post("/chrome-fill/stop", response_class=HTMLResponse)
-    def stop_chrome_fill(request: Request) -> HTMLResponse:
+    @app.post("/chrome-fill/stop", response_class=fastapi_responses.HTMLResponse)
+    def stop_chrome_fill(request: fastapi.Request) -> fastapi_responses.HTMLResponse:
         chrome_job.stop()
         return chrome_status(request)
 
-    @app.get("/chrome-fill/status", response_class=HTMLResponse)
-    def chrome_fill_status(request: Request, polled: bool = False) -> HTMLResponse:
+    @app.get("/chrome-fill/status", response_class=fastapi_responses.HTMLResponse)
+    def chrome_fill_status(
+        request: fastapi.Request, polled: bool = False
+    ) -> fastapi_responses.HTMLResponse:
         job = chrome_job
         return _redraw_when_over(chrome_status(request), polled, job.state, job.saved > 0)
 
-    @app.get("/linkedin/log", response_class=HTMLResponse)
-    def linkedin_log(request: Request, session: SessionDep, days: int = 7) -> HTMLResponse:
+    @app.get("/linkedin/log", response_class=fastapi_responses.HTMLResponse)
+    def linkedin_log(
+        request: fastapi.Request, session: SessionDep, days: int = 7
+    ) -> fastapi_responses.HTMLResponse:
         rows, summary = _fetch_log(session, days)
         context = {"rows": rows, "summary": summary, "days": days}
         return templates.TemplateResponse(request, "linkedin_log.html", context)
 
-    @app.post("/settings/linkedin", response_class=HTMLResponse)
+    @app.post("/settings/linkedin", response_class=fastapi_responses.HTMLResponse)
     def save_linkedin_settings(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
-        pause_from: Annotated[float, Form(ge=0, le=600)] = 10,
-        pause_to: Annotated[float, Form(ge=0, le=600)] = 40,
-    ) -> HTMLResponse:
+        pause_from: t.Annotated[float, fastapi.Form(ge=0, le=600)] = 10,
+        pause_to: t.Annotated[float, fastapi.Form(ge=0, le=600)] = 40,
+    ) -> fastapi_responses.HTMLResponse:
         if pause_from > pause_to:
-            raise HTTPException(status_code=422, detail="From must not be more than To")
-        save_pause(session, PauseSettings(pause_from, pause_to))
+            raise fastapi.HTTPException(status_code=422, detail="From must not be more than To")
+        linkedin_public.save_pause(session, linkedin_public.PauseSettings(pause_from, pause_to))
         context = _settings_context(session, settings) | {"message": "LinkedIn pause saved."}
         return templates.TemplateResponse(request, "settings.html", context)
 
-    @app.post("/settings/chrome-fill", response_class=HTMLResponse)
+    @app.post("/settings/chrome-fill", response_class=fastapi_responses.HTMLResponse)
     def save_chrome_fill_settings(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
-        chrome_from: Annotated[float, Form(ge=0, le=600)] = 2,
-        chrome_to: Annotated[float, Form(ge=0, le=600)] = 4,
-    ) -> HTMLResponse:
+        chrome_from: t.Annotated[float, fastapi.Form(ge=0, le=600)] = 2,
+        chrome_to: t.Annotated[float, fastapi.Form(ge=0, le=600)] = 4,
+    ) -> fastapi_responses.HTMLResponse:
         if chrome_from > chrome_to:
-            raise HTTPException(status_code=422, detail="From must not be more than To")
-        save_chrome_pause(session, PauseSettings(chrome_from, chrome_to))
+            raise fastapi.HTTPException(status_code=422, detail="From must not be more than To")
+        linkedin_chrome.save_chrome_pause(
+            session, linkedin_public.PauseSettings(chrome_from, chrome_to)
+        )
         context = _settings_context(session, settings) | {"message": "Chrome fill pause saved."}
         return templates.TemplateResponse(request, "settings.html", context)
 
-    @app.post("/settings/capture", response_class=HTMLResponse)
+    @app.post("/settings/capture", response_class=fastapi_responses.HTMLResponse)
     def save_capture_settings(
-        request: Request,
+        request: fastapi.Request,
         session: SessionDep,
-        close_after: Annotated[float, Form(ge=0, le=60)] = CLOSE_AFTER,
-    ) -> HTMLResponse:
+        close_after: t.Annotated[float, fastapi.Form(ge=0, le=60)] = CLOSE_AFTER,
+    ) -> fastapi_responses.HTMLResponse:
         save_close_after(session, close_after)
         context = _settings_context(session, settings) | {"message": "Capture setting saved."}
         return templates.TemplateResponse(request, "settings.html", context)
 
-    @app.get("/capture", response_class=HTMLResponse)
-    def capture_page(request: Request, session: SessionDep) -> HTMLResponse:
+    @app.get("/capture", response_class=fastapi_responses.HTMLResponse)
+    def capture_page(
+        request: fastapi.Request, session: SessionDep
+    ) -> fastapi_responses.HTMLResponse:
         base = str(request.base_url)
         context = {
             "bookmarklet": bookmarklet(base),
@@ -963,51 +1012,56 @@ def create_app(
         }
         return templates.TemplateResponse(request, "capture.html", context)
 
-    @app.get("/capture/debug", response_class=HTMLResponse)
-    def capture_debug_page(request: Request) -> HTMLResponse:
+    @app.get("/capture/debug", response_class=fastapi_responses.HTMLResponse)
+    def capture_debug_page(request: fastapi.Request) -> fastapi_responses.HTMLResponse:
         return templates.TemplateResponse(request, "capture_debug.html", {})
 
     @app.post("/api/capture")
-    def capture(session: SessionDep, payload: Annotated[dict, Body()]) -> dict:
+    def capture(session: SessionDep, payload: t.Annotated[dict, fastapi.Body()]) -> dict:
         _save_debug(settings.capture_debug_dir / "last_payload.json", json.dumps(payload, indent=1))
-        return import_capture(session, payload).as_dict()
+        return linkedin_capture.import_capture(session, payload).as_dict()
 
     @app.post("/api/capture/debug")
-    def capture_debug(payload: Annotated[dict, Body()]) -> dict[str, str | int]:
+    def capture_debug(payload: t.Annotated[dict, fastapi.Body()]) -> dict[str, str | int]:
         html = str(payload.get("html") or "")
-        name = f"{datetime.now(UTC):%Y%m%d-%H%M%S}.html"
+        name = f"{dt.datetime.now(dt.UTC):%Y%m%d-%H%M%S}.html"
         path = settings.capture_debug_dir / name
         _save_debug(path, f"<!-- {payload.get('source_url', '')} -->\n{html}")
         return {"file": str(path), "size": len(html)}
 
-    @app.get("/applications", response_class=HTMLResponse)
-    def applications_page(request: Request, session: SessionDep, company: str = "") -> HTMLResponse:
+    @app.get("/applications", response_class=fastapi_responses.HTMLResponse)
+    def applications_page(
+        request: fastapi.Request, session: SessionDep, company: str = ""
+    ) -> fastapi_responses.HTMLResponse:
         return templates.TemplateResponse(
             request, "applications.html", _applications_context(session, company)
         )
 
-    @app.post("/applications/confirm-all", response_class=HTMLResponse)
+    @app.post("/applications/confirm-all", response_class=fastapi_responses.HTMLResponse)
     def applications_confirm_all(
-        request: Request, session: SessionDep, company: Annotated[str, Form()] = ""
-    ) -> HTMLResponse:
-        apps.confirm_all(session, company)  # with a filter: only the suggestions shown
+        request: fastapi.Request,
+        session: SessionDep,
+        company: t.Annotated[str, fastapi.Form()] = "",
+    ) -> fastapi_responses.HTMLResponse:
+        # with a filter: only the suggestions shown
+        applications.confirm_all(session, company)
         return templates.TemplateResponse(
             request, "_applications.html", _applications_context(session, company)
         )
 
-    @app.post("/applications/{app_id}/{action}", response_class=HTMLResponse)
+    @app.post("/applications/{app_id}/{action}", response_class=fastapi_responses.HTMLResponse)
     def applications_review(
-        request: Request,
+        request: fastapi.Request,
         app_id: int,
         action: str,
         session: SessionDep,
-        company: Annotated[str, Form()] = "",
-    ) -> HTMLResponse:
-        handlers = {"confirm": apps.confirm, "dismiss": apps.dismiss}
+        company: t.Annotated[str, fastapi.Form()] = "",
+    ) -> fastapi_responses.HTMLResponse:
+        handlers = {"confirm": applications.confirm, "dismiss": applications.dismiss}
         if action not in handlers:
-            raise HTTPException(status_code=404, detail="Unknown action")
+            raise fastapi.HTTPException(status_code=404, detail="Unknown action")
         if handlers[action](session, app_id) is None:
-            raise HTTPException(status_code=404, detail="Application not found")
+            raise fastapi.HTTPException(status_code=404, detail="Application not found")
         return templates.TemplateResponse(
             request, "_applications.html", _applications_context(session, company)
         )
@@ -1015,7 +1069,7 @@ def create_app(
     return app
 
 
-def _save_debug(path: Path, text: str) -> None:
+def _save_debug(path: pathlib.Path, text: str) -> None:
     # Local diagnostics only: data/ is git-ignored and may hold page content.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -1025,22 +1079,28 @@ def _gmail_link(thread_id: str | None) -> str | None:
     return f"https://mail.google.com/mail/u/0/#all/{thread_id}" if thread_id else None
 
 
-def _applications_context(session: Session, company: str = "") -> dict:
+def _applications_context(session: sa_orm.Session, company: str = "") -> dict:
     rows = session.execute(
-        select(Application, EmailMessage.gmail_thread_id)
-        .outerjoin(EmailMessage, Application.email_message_id == EmailMessage.id)
-        .options(joinedload(Application.company))
-        .where(Application.review != ApplicationReview.DISMISSED)
-        .order_by(Application.applied_at.desc())
+        sa.select(models.Application, models.EmailMessage.gmail_thread_id)
+        .outerjoin(
+            models.EmailMessage, models.Application.email_message_id == models.EmailMessage.id
+        )
+        .options(sa_orm.joinedload(models.Application.company))
+        .where(models.Application.review != models.ApplicationReview.DISMISSED)
+        .order_by(models.Application.applied_at.desc())
     ).all()
     needle = company.strip().casefold()
     items = [
-        {"a": a, "status": apps.application_status(session, a), "gmail": _gmail_link(thread)}
+        {
+            "a": a,
+            "status": applications.application_status(session, a),
+            "gmail": _gmail_link(thread),
+        }
         for a, thread in rows
         if needle in a.company.name.casefold()
     ]
-    suggested = [i for i in items if i["a"].review is ApplicationReview.SUGGESTED]
-    confirmed = [i for i in items if i["a"].review is ApplicationReview.CONFIRMED]
+    suggested = [i for i in items if i["a"].review is models.ApplicationReview.SUGGESTED]
+    confirmed = [i for i in items if i["a"].review is models.ApplicationReview.CONFIRMED]
     return {
         "suggested": suggested,
         "confirmed": confirmed,
@@ -1050,33 +1110,41 @@ def _applications_context(session: Session, company: str = "") -> dict:
     }
 
 
-def _load_opportunities(session: Session, states: list[OpportunityState] | None = None):
-    query = select(Opportunity).options(
-        joinedload(Opportunity.company),
-        selectinload(Opportunity.source_records).selectinload(SourceRecord.snapshots),
+def _load_opportunities(
+    session: sa_orm.Session, states: list[models.OpportunityState] | None = None
+):
+    query = sa.select(models.Opportunity).options(
+        sa_orm.joinedload(models.Opportunity.company),
+        sa_orm.selectinload(models.Opportunity.source_records).selectinload(
+            models.SourceRecord.snapshots
+        ),
     )
     if states is not None:
-        query = query.where(Opportunity.state.in_(states))
+        query = query.where(models.Opportunity.state.in_(states))
     return session.scalars(query).all()
 
 
-def _get_opportunity(session: Session, opportunity_id: int) -> Opportunity:
-    opportunity = session.get(Opportunity, opportunity_id)
+def _get_opportunity(session: sa_orm.Session, opportunity_id: int) -> models.Opportunity:
+    opportunity = session.get(models.Opportunity, opportunity_id)
     if opportunity is None:
-        raise HTTPException(status_code=404, detail="Opportunity not found")
+        raise fastapi.HTTPException(status_code=404, detail="Opportunity not found")
     return opportunity
 
 
 def _panel_response(
-    request: Request, session: Session, opportunity: Opportunity, tab: str, filters: Filters
-) -> HTMLResponse:
+    request: fastapi.Request,
+    session: sa_orm.Session,
+    opportunity: models.Opportunity,
+    tab: str,
+    filters: Filters,
+) -> fastapi_responses.HTMLResponse:
     """The panel redrawn for this vacancy, and the list items of its company out of band
     (updated, or deleted when they left the tab), and the tab counts (#158)."""
     session.refresh(opportunity)
     states = TABS[tab][1]
-    rejected = latest_rejections(session)
+    rejected = rejections.latest_rejections(session)
 
-    def visible(o: Opportunity) -> bool:
+    def visible(o: models.Opportunity) -> bool:
         in_tab = states is None or o.state in states
         return in_tab and filters.matches_opportunity(o)
 
@@ -1085,7 +1153,7 @@ def _panel_response(
     )
     context |= _tabs_context(session, tab, filters) | {"mode": "panel"}
     company = session.scalars(
-        select(Opportunity).where(Opportunity.company_id == opportunity.company_id)
+        sa.select(models.Opportunity).where(models.Opportunity.company_id == opportunity.company_id)
     ).all()
     context["items_shown"] = [_row_context(session, o, rejected) for o in company if visible(o)]
     context["items_gone"] = [o.id for o in company if not visible(o)]
@@ -1093,108 +1161,121 @@ def _panel_response(
 
 
 def _company_rows(
-    request: Request, session: Session, opportunity: Opportunity, tab: str, filters: Filters
-) -> HTMLResponse:
+    request: fastapi.Request,
+    session: sa_orm.Session,
+    opportunity: models.Opportunity,
+    tab: str,
+    filters: Filters,
+) -> fastapi_responses.HTMLResponse:
     """This row (gone when it leaves the tab), the company's other rows out of band, and the
     tab counts: history and penalties are per company, the queue is not re-rendered (#138)."""
     session.refresh(opportunity)
     states = TABS[tab][1]
-    rejected = latest_rejections(session)
+    rejected = rejections.latest_rejections(session)
 
-    def visible(o: Opportunity) -> bool:
+    def visible(o: models.Opportunity) -> bool:
         in_tab = states is None or o.state in states
         return in_tab and filters.matches_opportunity(o)
 
     context = _row_context(session, opportunity, rejected) | _tabs_context(session, tab, filters)
     context["show_row"] = visible(opportunity)
     others = session.scalars(
-        select(Opportunity).where(
-            Opportunity.company_id == opportunity.company_id, Opportunity.id != opportunity.id
+        sa.select(models.Opportunity).where(
+            models.Opportunity.company_id == opportunity.company_id,
+            models.Opportunity.id != opportunity.id,
         )
     ).all()
     context["company_rows"] = [_row_context(session, o, rejected) for o in others if visible(o)]
     return templates.TemplateResponse(request, "_row_and_tabs.html", context)
 
 
-def _claude_context(session: Session, opportunity_id: int) -> dict:
-    current = claude.latest(session, opportunity_id)
-    chat_pending = claude.chat_pending(session, opportunity_id)
+def _claude_context(session: sa_orm.Session, opportunity_id: int) -> dict:
+    current = claude_analysis.latest(session, opportunity_id)
+    chat_pending = claude_analysis.chat_pending(session, opportunity_id)
     return {
         "opportunity_id": opportunity_id,
         "claude": current,
-        "messages": claude.messages(session, opportunity_id),
-        "chat_ready": claude.latest_done(session, opportunity_id) is not None,
-        "quick_prompts": quick_prompts(_profile(session)),
-        "polling": chat_pending or (current is not None and current.state in claude.PENDING),
+        "messages": claude_analysis.messages(session, opportunity_id),
+        "chat_ready": claude_analysis.latest_done(session, opportunity_id) is not None,
+        "quick_prompts": claude_prompt.quick_prompts(_profile(session)),
+        "polling": chat_pending
+        or (current is not None and current.state in claude_analysis.PENDING),
     }
 
 
 CAPTURE_KEY = "capture"
-CLOSE_AFTER = 1.5  # seconds the capture tab stays open after a good result (#221)
+# seconds the capture tab stays open after a good result (#221)
+CLOSE_AFTER = 1.5
 
 
-def load_close_after(session: Session) -> float:
-    row = session.get(AppSetting, CAPTURE_KEY)
+def load_close_after(session: sa_orm.Session) -> float:
+    row = session.get(models.AppSetting, CAPTURE_KEY)
     value = row.value.get("close_after") if row and isinstance(row.value, dict) else None
     return float(value) if isinstance(value, int | float) else CLOSE_AFTER
 
 
-def save_close_after(session: Session, seconds: float) -> None:
-    row = session.get(AppSetting, CAPTURE_KEY) or AppSetting(key=CAPTURE_KEY)
+def save_close_after(session: sa_orm.Session, seconds: float) -> None:
+    row = session.get(models.AppSetting, CAPTURE_KEY) or models.AppSetting(key=CAPTURE_KEY)
     row.value = {"close_after": seconds}
     session.add(row)
     session.commit()
 
 
-def _settings_context(session: Session, settings: Settings) -> dict:
+def _settings_context(session: sa_orm.Session, settings: config.Settings) -> dict:
     return {
-        "rules": load_rules(session),
-        "claude_kinds": CLAUDE_KINDS,
-        "claude": claude.load_claude_settings(session),
-        "pause": load_pause(session),
-        "chrome_pause": load_chrome_pause(session),
+        "rules": auto_ignore.load_rules(session),
+        "claude_kinds": auto_ignore.CLAUDE_KINDS,
+        "claude": claude_analysis.load_claude_settings(session),
+        "pause": linkedin_public.load_pause(session),
+        "chrome_pause": linkedin_chrome.load_chrome_pause(session),
         "chrome_on": settings.linkedin_chrome,
         "close_after": load_close_after(session),
-        "models": claude.MODELS,
-        "languages": claude.LANGUAGES,
+        "models": claude_analysis.MODELS,
+        "languages": claude_analysis.LANGUAGES,
         "cv_path": settings.cv_path,
         "message": None,
     }
 
 
-@dataclass
+@dataclasses.dataclass
 class LogDay:
+    """One day of the LinkedIn request log: requests, saves, errors and blocks."""
+
     day: str
     requests: int = 0
     saved: int = 0
     errors: int = 0
     stops: int = 0
-    blocked_at: datetime | None = None
+    blocked_at: dt.datetime | None = None
     blocked_reason: str | None = None
 
 
-def _fetch_log(session: Session, days: int) -> tuple[list[dict], list[LogDay]]:
+def _fetch_log(session: sa_orm.Session, days: int) -> tuple[list[dict], list[LogDay]]:
     """LinkedIn guest requests of the last ``days`` days, newest first, and one line per
     local day (#205)."""
-    since = datetime.now(UTC) - timedelta(days=max(1, min(days, 90)))
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(days=max(1, min(days, 90)))
     fetches = session.scalars(
-        select(LinkedInFetch)
-        .where(LinkedInFetch.at >= since.replace(tzinfo=None))
-        .order_by(LinkedInFetch.at.desc(), LinkedInFetch.id.desc())
+        sa.select(models.LinkedInFetch)
+        .where(models.LinkedInFetch.at >= since.replace(tzinfo=None))
+        .order_by(models.LinkedInFetch.at.desc(), models.LinkedInFetch.id.desc())
     ).all()
     # Requests logged before #205 have only the LinkedIn job id.
     old = {f.job_id for f in fetches if not f.opportunity_id and f.job_id}
     by_job = dict(
         session.execute(
-            select(SourceRecord.external_id, SourceRecord.opportunity_id).where(
-                SourceRecord.source_type.in_(LINKEDIN_SOURCES), SourceRecord.external_id.in_(old)
+            sa.select(models.SourceRecord.external_id, models.SourceRecord.opportunity_id).where(
+                models.SourceRecord.source_type.in_(linkedin_alerts.LINKEDIN_SOURCES),
+                models.SourceRecord.external_id.in_(old),
             )
         ).all()
     )
     vacancy_of = {f.id: f.opportunity_id or by_job.get(f.job_id) for f in fetches}
     ids = {i for i in vacancy_of.values() if i}
-    query = select(Opportunity).where(Opportunity.id.in_(ids))
-    titles = {o.id: o for o in session.scalars(query.options(joinedload(Opportunity.company)))}
+    query = sa.select(models.Opportunity).where(models.Opportunity.id.in_(ids))
+    titles = {
+        o.id: o
+        for o in session.scalars(query.options(sa_orm.joinedload(models.Opportunity.company)))
+    }
     rows, by_day = [], {}
     for f in fetches:
         at = _utc(f.at)
@@ -1214,7 +1295,7 @@ def _fetch_log(session: Session, days: int) -> tuple[list[dict], list[LogDay]]:
     return rows, list(by_day.values())
 
 
-def _first_gap(analysis, profile: Profile | None) -> str:
+def _first_gap(analysis, profile: stack.Profile | None) -> str:
     """The first required technology not known, to prefill the Stack chip."""
     for item in (analysis.stack or []) if analysis else []:
         if item.get("status") == "required" and (
@@ -1224,23 +1305,23 @@ def _first_gap(analysis, profile: Profile | None) -> str:
     return ""
 
 
-def _profile(session: Session) -> Profile | None:
+def _profile(session: sa_orm.Session) -> stack.Profile | None:
     settings = session.info.get("settings")
-    return current_profile(settings.profile) if settings else None
+    return stack.current_profile(settings.profile) if settings else None
 
 
 def _score(
-    session: Session, opportunity: Opportunity, rejected_at: datetime | None
+    session: sa_orm.Session, opportunity: models.Opportunity, rejected_at: dt.datetime | None
 ) -> tuple[float | None, list, str | None]:
     """The score shown and sorted by, its extra reasons, and the description used."""
-    eff_score = effective_score(opportunity.score, rejected=rejected_at is not None)
+    eff_score = rejections.effective_score(opportunity.score, rejected=rejected_at is not None)
     extra_reasons = []
-    description = latest_description(opportunity)
+    description = jr_description.latest_description(opportunity)
     effects = (
-        location_penalty(session, opportunity),
-        language_risk(opportunity.title, description),
-        python_risk(opportunity.title, description),
-        *ai_risks(latest_analysis(opportunity), _profile(session)),
+        notes.location_penalty(session, opportunity),
+        jr_language.language_risk(opportunity.title, description),
+        jr_description.python_risk(opportunity.title, description),
+        *ai_analysis.risks(ai_analysis.latest_analysis(opportunity), _profile(session)),
     )
     for penalty in effects:
         if penalty is None:
@@ -1252,16 +1333,18 @@ def _score(
     return eff_score, extra_reasons, description
 
 
-def _row_context(session: Session, opportunity: Opportunity, rejected: dict | None = None) -> dict:
+def _row_context(
+    session: sa_orm.Session, opportunity: models.Opportunity, rejected: dict | None = None
+) -> dict:
     if rejected is None:
-        rejected = latest_rejections(session)
+        rejected = rejections.latest_rejections(session)
     rejected_at = rejected.get(opportunity.company_id)
-    history = company_history(session, opportunity.company_id)
+    history = contacts.company_history(session, opportunity.company_id)
     eff_score, extra_reasons, description = _score(session, opportunity, rejected_at)
-    python_check = check_python(description) if description else None
-    others = other_vacancies(session, opportunity.company_id, opportunity.id)
+    python_check = jr_description.check_python(description) if description else None
+    others = contacts.other_vacancies(session, opportunity.company_id, opportunity.id)
     applied = [e.at for e in history if e.kind == "applied"]
-    applied += [at for o, at in others if o.state is OpportunityState.APPLIED]
+    applied += [at for o, at in others if o.state is models.OpportunityState.APPLIED]
     return {
         "history": history[:HISTORY_SHOWN],
         "history_count": _visible_history_count(history),
@@ -1274,31 +1357,37 @@ def _row_context(session: Session, opportunity: Opportunity, rejected: dict | No
         "extra_reasons": extra_reasons,
         "python_quote": python_check.quote if python_check else "",
         "description": description or "",
-        "claude": claude.latest(session, opportunity.id),
-        "chat_count": len(claude.messages(session, opportunity.id)),
-        "suggestions": suggest(
+        "claude": claude_analysis.latest(session, opportunity.id),
+        "chat_count": len(claude_analysis.messages(session, opportunity.id)),
+        "suggestions": suggestions.suggest(
             opportunity,
             description=description,
-            analysis=latest_analysis(opportunity),
+            analysis=ai_analysis.latest_analysis(opportunity),
             profile=_profile(session),
-            claude=claude.latest(session, opportunity.id),
+            claude=claude_analysis.latest(session, opportunity.id),
         ),
-        "stack_hint": _first_gap(latest_analysis(opportunity), _profile(session)),
-        "country": country_from_location(opportunity.location) or "",
-        "reason_kinds": [k for k in NoteKind if k is not NoteKind.NOTE],
+        "stack_hint": _first_gap(ai_analysis.latest_analysis(opportunity), _profile(session)),
+        "country": notes.country_from_location(opportunity.location) or "",
+        "reason_kinds": [k for k in models.NoteKind if k is not models.NoteKind.NOTE],
     }
 
 
-def _tabs_context(session: Session, tab: str, filters: Filters | None = None) -> dict:
+def _tabs_context(session: sa_orm.Session, tab: str, filters: Filters | None = None) -> dict:
     filters = filters or Filters()
-    counts: dict[OpportunityState, int] = {}
+    counts: dict[models.OpportunityState, int] = {}
     rows = session.execute(
-        select(
-            Opportunity.id, Opportunity.state, Opportunity.location, Company.name, Opportunity.title
-        ).join(Opportunity.company)
+        sa.select(
+            models.Opportunity.id,
+            models.Opportunity.state,
+            models.Opportunity.location,
+            models.Company.name,
+            models.Opportunity.title,
+        ).join(models.Opportunity.company)
     ).all()
     described = set(
-        session.scalars(select(SourceRecord.opportunity_id).join(JobSnapshot).distinct())
+        session.scalars(
+            sa.select(models.SourceRecord.opportunity_id).join(models.JobSnapshot).distinct()
+        )
     )
     # Tab counts ignore the description switch; the switch counts the current tab (#186).
     plain = filters.with_desc("")
@@ -1329,10 +1418,10 @@ def _tabs_context(session: Session, tab: str, filters: Filters | None = None) ->
 
 
 def _queue_context(
-    session: Session, tab: str = DEFAULT_TAB, filters: Filters | None = None, page: int = 1
+    session: sa_orm.Session, tab: str = DEFAULT_TAB, filters: Filters | None = None, page: int = 1
 ) -> dict:
     filters = filters or Filters()
-    rejected = latest_rejections(session)
+    rejected = rejections.latest_rejections(session)
     opportunities = [
         o for o in _load_opportunities(session, TABS[tab][1]) if filters.matches_opportunity(o)
     ]
@@ -1342,7 +1431,8 @@ def _queue_context(
         | {"eff_score": _score(session, o, rejected.get(o.company_id))[0]}
         for o in opportunities
     ]
-    if filters.sort == "recent":  # your last action first (#199)
+    # your last action first (#199)
+    if filters.sort == "recent":
         actions = last_actions(session)
         for k in keyed:
             k["last_action"] = actions.get(k["o"].id)
@@ -1354,9 +1444,11 @@ def _queue_context(
             ),
             reverse=True,
         )
-    elif filters.sort == "claude":  # Claude's match % first, unanalysed at the bottom (#207)
-        matches = claude.latest_matches(session)
-        keyed.sort(key=_queue_order)  # equal % keep the score order
+    elif filters.sort == "claude":
+        # Claude's match % first, unanalysed at the bottom (#207)
+        matches = claude_analysis.latest_matches(session)
+        # equal % keep the score order
+        keyed.sort(key=_queue_order)
         keyed.sort(key=lambda k: -matches.get(k["o"].id, -1))
     else:
         keyed.sort(key=_queue_order)
@@ -1386,25 +1478,25 @@ def _queue_context(
         "rows": rows,
         "has_any": context["total"] > 0,
         "states": _manual_states(),
-        "claude_status": claude.status(session),
+        "claude_status": claude_analysis.status(session),
         "added": None,
     }
 
 
-def _utc(value: datetime) -> datetime:
-    return value if value.tzinfo else value.replace(tzinfo=UTC)
+def _utc(value: dt.datetime) -> dt.datetime:
+    return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
 
 
 def _visible_history_count(history: list) -> int:
     """How many contacts the "contacted" badge counts: the Chrome fill's marks are not (#272)."""
-    return sum(e.kind not in FILL_EVENT_KINDS for e in history)
+    return sum(e.kind not in models.FILL_EVENT_KINDS for e in history)
 
 
-def last_actions(session: Session) -> dict[int, tuple[datetime, str]]:
+def last_actions(session: sa_orm.Session) -> dict[int, tuple[dt.datetime, str]]:
     """Per vacancy: when you last did something with it, and what (#199)."""
-    found: dict[int, tuple[datetime, str]] = {}
+    found: dict[int, tuple[dt.datetime, str]] = {}
 
-    def keep(oid: int | None, at: datetime | None, what: str) -> None:
+    def keep(oid: int | None, at: dt.datetime | None, what: str) -> None:
         if oid is None or at is None:
             return
         at = _utc(at)
@@ -1412,26 +1504,36 @@ def last_actions(session: Session) -> dict[int, tuple[datetime, str]]:
             found[oid] = (at, what)
 
     for oid, at, state in session.execute(
-        select(Opportunity.id, Opportunity.state_changed_at, Opportunity.state)
+        sa.select(
+            models.Opportunity.id, models.Opportunity.state_changed_at, models.Opportunity.state
+        )
     ):
         keep(oid, at, state.value.replace("_", " "))
-    for oid, at in session.execute(select(Application.opportunity_id, Application.applied_at)):
+    for oid, at in session.execute(
+        sa.select(models.Application.opportunity_id, models.Application.applied_at)
+    ):
         keep(oid, at, "applied")
-    for oid, at in session.execute(select(Rejection.opportunity_id, Rejection.rejected_at)):
+    for oid, at in session.execute(
+        sa.select(models.Rejection.opportunity_id, models.Rejection.rejected_at)
+    ):
         keep(oid, at, "rejected")
     for oid, at, kind in session.execute(
-        select(OpportunityNote.opportunity_id, OpportunityNote.created_at, OpportunityNote.kind)
-    ):
-        keep(oid, at, "note" if kind is NoteKind.NOTE else "ignored")
-    for oid, at, kind in session.execute(
-        select(CompanyEvent.opportunity_id, CompanyEvent.at, CompanyEvent.kind).where(
-            CompanyEvent.kind.not_in(FILL_EVENT_KINDS)
+        sa.select(
+            models.OpportunityNote.opportunity_id,
+            models.OpportunityNote.created_at,
+            models.OpportunityNote.kind,
         )
+    ):
+        keep(oid, at, "note" if kind is models.NoteKind.NOTE else "ignored")
+    for oid, at, kind in session.execute(
+        sa.select(
+            models.CompanyEvent.opportunity_id, models.CompanyEvent.at, models.CompanyEvent.kind
+        ).where(models.CompanyEvent.kind.not_in(models.FILL_EVENT_KINDS))
     ):
         keep(oid, at, kind.replace("_", " "))
     for oid, at in session.execute(
-        select(ClaudeMessage.opportunity_id, ClaudeMessage.created_at).where(
-            ClaudeMessage.role == "user"
+        sa.select(models.ClaudeMessage.opportunity_id, models.ClaudeMessage.created_at).where(
+            models.ClaudeMessage.role == "user"
         )
     ):
         keep(oid, at, "chat")
@@ -1450,6 +1552,6 @@ def _queue_order(row: dict) -> tuple:
     )
 
 
-def _manual_states() -> list[OpportunityState]:
-    automatic = (OpportunityState.NEW, OpportunityState.AUTO_IGNORE)
-    return [s for s in OpportunityState if s not in automatic]
+def _manual_states() -> list[models.OpportunityState]:
+    automatic = (models.OpportunityState.NEW, models.OpportunityState.AUTO_IGNORE)
+    return [s for s in models.OpportunityState if s not in automatic]

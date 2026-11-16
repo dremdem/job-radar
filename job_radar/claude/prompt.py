@@ -1,10 +1,20 @@
-"""What Claude is told about the user and the vacancy, and the answer's schema."""
+"""What Claude is told about the user and the vacancy, and the answer's schema.
 
-from typing import Any
+``facts`` collects what is stored about the vacancy and its company, ``system_prompt``
+and ``analysis_prompt`` build a deep analysis request with the JSON schema of the
+answer, and ``chat_system_prompt`` / ``quick_prompts`` serve the chat. Only stored data
+goes in, so Claude does not have to guess. See docs/claude.md.
 
-from ..stack import Profile
+Usage:
+    import job_radar.claude.prompt as claude_prompt
+"""
 
-PROMPT_VERSION = "4"  # 2: ignore_reason (#117); 3: memory (#215); 4: home from the profile
+import typing as t
+
+import job_radar.stack as stack
+
+# 2: ignore_reason (#117); 3: memory (#215); 4: home from the profile
+PROMPT_VERSION = "4"
 # Never inferred from the CV: Job Radar is for full remote work; where you live comes from
 # the profile (docs/claude.md#what-claude-gets), languages and the rest from your rules.
 FACTS = [
@@ -13,13 +23,13 @@ FACTS = [
 ]
 
 
-def facts(profile: Profile) -> list[str]:
+def facts(profile: stack.Profile) -> list[str]:
     if not profile.home:
         return FACTS
     return [FACTS[0], f"I live in {profile.home} and will not relocate.", *FACTS[1:]]
 
 
-def _from(profile: Profile | None) -> str:
+def _from(profile: stack.Profile | None) -> str:
     """ " from Thailand" or nothing, for sentences about remote work."""
     return f" from {profile.home}" if profile and profile.home else ""
 
@@ -29,7 +39,7 @@ _QUOTED = {
     "properties": {"point": {"type": "string"}, "quote": {"type": "string"}},
     "required": ["point", "quote"],
 }
-SCHEMA: dict[str, Any] = {
+SCHEMA: dict[str, t.Any] = {
     "type": "object",
     "properties": {
         "verdict": {"enum": ["apply", "maybe", "skip"]},
@@ -115,7 +125,7 @@ _HONEST = (
 )
 
 
-def quick_prompts(profile: Profile | None) -> list[tuple[str, str]]:
+def quick_prompts(profile: stack.Profile | None) -> list[tuple[str, str]]:
     remote_from = _from(profile)
     home_ru = f" (живу: {profile.home})" if profile and profile.home else ""
     return [
@@ -168,7 +178,8 @@ def quick_prompts(profile: Profile | None) -> list[tuple[str, str]]:
 
 
 def chat_system_prompt(language: str, *, web: bool = False) -> str:
-    if web:  # #213
+    # #213
+    if web:
         sources = (
             "based on the vacancy, the CV, what was said before and, when the question needs it, "
             "web search and pages you open (name the source of what you found there). Never open "
@@ -193,7 +204,7 @@ def _list(title: str, items: list[str]) -> str:
 def analysis_prompt(
     *,
     cv: str | None,
-    profile: Profile | None,
+    profile: stack.Profile | None,
     title: str,
     company: str,
     location: str | None,
@@ -201,7 +212,7 @@ def analysis_prompt(
     description: str,
     memory: str = "",
 ) -> str:
-    profile = profile or Profile()
+    profile = profile or stack.Profile()
     parts = [
         "# About me",
         _list("Facts", facts(profile)),
@@ -209,7 +220,8 @@ def analysis_prompt(
         _list("Technologies I know", profile.known),
         _list("Technologies I can pick up quickly (not a blocker)", profile.learnable),
         _list("Blockers if required at a professional level", profile.blockers),
-        *([memory] if memory else []),  # what earlier chats taught (#215)
+        # what earlier chats taught (#215)
+        *([memory] if memory else []),
         "# My CV",
         cv.strip() if cv else "(no CV given: judge from the lists above)",
         "# The vacancy",

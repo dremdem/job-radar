@@ -1,42 +1,55 @@
-"""One background LinkedIn description job at a time, for the Descriptions button and Sync.
-See docs/linkedin-public-search.md#the-descriptions-button-205."""
+"""One background description job at a time, for the Descriptions button and Sync.
 
+``DescriptionJob`` runs ``pipeline.description_job`` (LinkedIn's public pages, then FDE
+Times) in a thread, keeps its progress for the status poll and stops it on request. See
+docs/linkedin-public-search.md#the-descriptions-button-205.
+
+Usage:
+    import job_radar.web.description_job as web_description_job
+"""
+
+import collections.abc as cabc
+import dataclasses
+import datetime as dt
 import threading
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
 
 MAX_LINES = 50
 
 
-@dataclass
+@dataclasses.dataclass
 class DescriptionJob:
-    state: str = "idle"  # idle / running / done / failed
+    """The one background description job of the web UI and its progress."""
+
+    # idle / running / done / failed
+    state: str = "idle"
     total: int = 0
     requests: int = 0
     saved: int = 0
     errors: int = 0
-    sources: list[dict] = field(default_factory=list)  # per site, Chrome fill only (#272)
-    failed: list[dict] = field(default_factory=list)  # vacancies with a problem (#274)
-    next_at: datetime | None = None  # the next request, while pausing
+    # per site, Chrome fill only (#272)
+    sources: list[dict] = dataclasses.field(default_factory=list)
+    # vacancies with a problem (#274)
+    failed: list[dict] = dataclasses.field(default_factory=list)
+    # the next request, while pausing
+    next_at: dt.datetime | None = None
     blocked: bool = False
     reason: str | None = None
     stopped: bool = False
     limit_reached: bool = False
     error: str | None = None
-    lines: list[str] = field(default_factory=list)
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
+    lines: list[str] = dataclasses.field(default_factory=list)
+    started_at: dt.datetime | None = None
+    finished_at: dt.datetime | None = None
     blocked_note: str = "LinkedIn blocked ({reason}), stopped until tomorrow"
-    stop_event: threading.Event = field(default_factory=threading.Event, repr=False)
-    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    stop_event: threading.Event = dataclasses.field(default_factory=threading.Event, repr=False)
+    _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock, repr=False)
 
-    def start(self, runner: Callable[["DescriptionJob"], None]) -> bool:
+    def start(self, runner: cabc.Callable[["DescriptionJob"], None]) -> bool:
         """Start unless one is running. Returns whether a new one started."""
         with self._lock:
             if self.state == "running":
                 return False
-            fresh = DescriptionJob(state="running", started_at=datetime.now(UTC))
+            fresh = DescriptionJob(state="running", started_at=dt.datetime.now(dt.UTC))
             for name in ("state", "total", "requests", "saved", "errors", "sources", "failed",
                          "next_at", "blocked", "reason", "stopped", "limit_reached", "error",
                          "lines", "started_at", "finished_at"):  # fmt: skip
@@ -69,7 +82,7 @@ class DescriptionJob:
 
     def waiting(self, seconds: float) -> None:
         with self._lock:
-            self.next_at = datetime.now(UTC) + timedelta(seconds=seconds)
+            self.next_at = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=seconds)
 
     def finish(
         self,
@@ -92,7 +105,7 @@ class DescriptionJob:
     def next_in(self) -> int | None:
         if self.next_at is None:
             return None
-        return max(0, round((self.next_at - datetime.now(UTC)).total_seconds()))
+        return max(0, round((self.next_at - dt.datetime.now(dt.UTC)).total_seconds()))
 
     @property
     def outcome(self) -> str:
@@ -109,12 +122,13 @@ class DescriptionJob:
             return "daily limit reached"
         return "done"
 
-    def _run(self, runner: Callable[["DescriptionJob"], None]) -> None:
+    def _run(self, runner: cabc.Callable[["DescriptionJob"], None]) -> None:
         try:
             runner(self)
             state, error = "done", None
-        except Exception as e:  # shown in the status; the server keeps running
+        except Exception as e:
+            # shown in the status; the server keeps running
             state, error = "failed", str(e) or e.__class__.__name__
         with self._lock:
-            self.state, self.error, self.finished_at = state, error, datetime.now(UTC)
+            self.state, self.error, self.finished_at = state, error, dt.datetime.now(dt.UTC)
             self.next_at = None
