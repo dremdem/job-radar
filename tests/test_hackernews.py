@@ -5,20 +5,14 @@ posts (one with a reply) and a deleted comment.
 """
 
 import json
-from pathlib import Path
+import pathlib
 
-from sqlalchemy import select
+import sqlalchemy as sa
 
-from job_radar.hackernews import (
-    HackerNewsError,
-    import_hackernews,
-    latest_thread,
-    parse_post,
-    wants,
-)
-from job_radar.models import JobSnapshot, Opportunity, OpportunityState, SourceRecord, SourceType
+import job_radar.hackernews as hackernews
+import job_radar.models as models
 
-FIXTURE = Path(__file__).parent / "fixtures" / "hackernews" / "thread.json"
+FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "hackernews" / "thread.json"
 THREADS = {
     "hits": [
         {"objectID": "49922568", "title": "Ask HN: Who wants to be hired? (October 2026)",
@@ -36,11 +30,13 @@ def thread() -> dict:
 
 
 def post(company_start: str):
-    posts = [parse_post(c) for c in thread()["children"] if c["text"]]
+    posts = [hackernews.parse_post(c) for c in thread()["children"] if c["text"]]
     return next(p for p in posts if p.header.startswith(company_start))
 
 
 class FakeClient:
+    """Serves the thread list and one thread item, or raises."""
+
     def __init__(self, item: dict | Exception | None = None, threads: dict = THREADS):
         self._item = thread() if item is None else item
         self._threads = threads
@@ -57,8 +53,8 @@ class FakeClient:
 
 
 def test_reads_the_newest_who_is_hiring_thread_not_who_wants_to_be_hired():
-    assert latest_thread(THREADS)["objectID"] == "49922569"
-    assert latest_thread({"hits": THREADS["hits"][:1]}) is None
+    assert hackernews.latest_thread(THREADS)["objectID"] == "49922569"
+    assert hackernews.latest_thread({"hits": THREADS["hits"][:1]}) is None
 
 
 def test_header_gives_company_role_and_location():
@@ -96,7 +92,7 @@ def test_links_are_not_part_of_the_location_and_the_header_is_its_own_line():
         "created_at_i": 1790870400,
         "text": "3Gimbals | https://www.linkedin.com/jobs/view/1 (US/Remote)<p>Python and React.",
     }
-    p = parse_post(raw)
+    p = hackernews.parse_post(raw)
     assert p.location == "(US/Remote)"
     assert (
         p.description.splitlines()[0]
@@ -110,24 +106,34 @@ def test_a_header_without_a_role_points_to_the_post():
 
 
 def test_which_posts_are_kept():
-    kept = {p.company for c in thread()["children"] if c["text"] and wants(p := parse_post(c))}
+    kept = {
+        p.company
+        for c in thread()["children"]
+        if c["text"] and hackernews.wants(p := hackernews.parse_post(c))
+    }
     assert kept == {"Enveritas (YC S18, non-profit)", "Sidekick Labs", "Paramark", "Curai", "RINSE"}
-    assert not wants(post("Fastly"))  # on-site preferred
-    assert not wants(post("Open Education"))  # hybrid
-    assert not wants(post("PrairieLearn"))  # remote, but TypeScript, no Python
-    assert not wants(post("OpenSanctions"))  # remote Python, but "CLOSED NOW" in the header
+    # on-site preferred
+    assert not hackernews.wants(post("Fastly"))
+    # hybrid
+    assert not hackernews.wants(post("Open Education"))
+    # remote, but TypeScript, no Python
+    assert not hackernews.wants(post("PrairieLearn"))
+    # remote Python, but "CLOSED NOW" in the header
+    assert not hackernews.wants(post("OpenSanctions"))
 
 
 def test_sync_imports_kept_posts_once(session):
     client = FakeClient()
-    stats = import_hackernews(session, client)
+    stats = hackernews.import_hackernews(session, client)
     assert client.items == [49922569]
     assert stats.thread == "Ask HN: Who is hiring? (October 2026)"
     # Nine posts: the deleted comment and the reply under Enveritas are not posts.
     assert (stats.posts, stats.new, stats.known, stats.skipped) == (9, 5, 0, 4)
 
-    record = session.scalar(select(SourceRecord).where(SourceRecord.external_id == "49925489"))
-    assert record.source_type is SourceType.HACKERNEWS
+    record = session.scalar(
+        sa.select(models.SourceRecord).where(models.SourceRecord.external_id == "49925489")
+    )
+    assert record.source_type is models.SourceType.HACKERNEWS
     assert record.url == "https://news.ycombinator.com/item?id=49925489"
     o = record.opportunity
     assert (o.title, o.company.name, o.location) == (
@@ -136,46 +142,56 @@ def test_sync_imports_kept_posts_once(session):
         "Remote (Global)",
     )
     assert {"sign": "+", "text": "Worldwide / anywhere"} in o.score_reasons
-    snapshot = session.scalar(select(JobSnapshot).where(JobSnapshot.source_record_id == record.id))
+    snapshot = session.scalar(
+        sa.select(models.JobSnapshot).where(models.JobSnapshot.source_record_id == record.id)
+    )
     assert "smallholder coffee" in snapshot.raw_text
 
-    again = import_hackernews(session, FakeClient())
+    again = hackernews.import_hackernews(session, FakeClient())
     assert (again.new, again.known) == (0, 5)
-    assert session.query(Opportunity).count() == 5
+    assert session.query(models.Opportunity).count() == 5
 
 
 def test_auto_ignore_rules_run_on_new_posts(session):
-    from job_radar.auto_ignore import Rules, save_rules
+    import job_radar.auto_ignore as auto_ignore
 
-    save_rules(session, Rules(countries=("Global",)))
-    import_hackernews(session, FakeClient())
+    auto_ignore.save_rules(session, auto_ignore.Rules(countries=("Global",)))
+    hackernews.import_hackernews(session, FakeClient())
     o = session.scalar(
-        select(Opportunity).join(SourceRecord).where(SourceRecord.external_id == "49925489")
+        sa.select(models.Opportunity)
+        .join(models.SourceRecord)
+        .where(models.SourceRecord.external_id == "49925489")
     )
-    assert o.state is OpportunityState.AUTO_IGNORE
+    assert o.state is models.OpportunityState.AUTO_IGNORE
 
 
 def test_an_unreadable_api_is_reported_and_imports_nothing(session):
-    stats = import_hackernews(session, FakeClient(item=HackerNewsError("HTTP 503")))
+    stats = hackernews.import_hackernews(
+        session, FakeClient(item=hackernews.HackerNewsError("HTTP 503"))
+    )
     assert stats.error == "HTTP 503"
-    assert session.query(Opportunity).count() == 0
+    assert session.query(models.Opportunity).count() == 0
 
-    stats = import_hackernews(session, FakeClient(threads={"hits": []}))
+    stats = hackernews.import_hackernews(session, FakeClient(threads={"hits": []}))
     assert stats.error and "Who is hiring" in stats.error
 
 
 def test_sync_step_reports_counts_and_can_be_turned_off(session):
-    from job_radar.config import Settings
-    from job_radar.pipeline import import_hackernews as step
+    import job_radar.config as config
+    import job_radar.pipeline as pipeline
 
     lines: list[str] = []
-    step(session, Settings(hackernews=True), lines.append, client=FakeClient())
+    pipeline.import_hackernews(
+        session, config.Settings(hackernews=True), lines.append, client=FakeClient()
+    )
     assert lines == [
         "hackernews: Ask HN: Who is hiring? (October 2026): 9 posts, 5 new, "
         "0 already stored, 4 skipped (not remote Python)"
     ]
     lines.clear()
-    step(session, Settings(hackernews=False), lines.append, client=FakeClient())
+    pipeline.import_hackernews(
+        session, config.Settings(hackernews=False), lines.append, client=FakeClient()
+    )
     assert lines == ["hackernews: disabled (JOB_RADAR_HACKERNEWS=false)."]
 
 
@@ -184,22 +200,25 @@ def test_links_cut_short_by_hn_keep_the_full_address():
     text = post("Curai").description
     assert "5b45f477..." not in text
     assert "https://jobs.lever.co/curai/46e0dd2f-c1dd-4ca2-9095-5b45f477" in text
-    assert "https://curaihealth.com" in text  # a link shown whole stays as it is
+    # a link shown whole stays as it is
+    assert "https://curaihealth.com" in text
 
 
 def test_a_stored_post_gets_the_new_text(session):
-    import_hackernews(session, FakeClient())
-    record = session.scalar(select(SourceRecord).where(SourceRecord.external_id == "49925489"))
+    hackernews.import_hackernews(session, FakeClient())
+    record = session.scalar(
+        sa.select(models.SourceRecord).where(models.SourceRecord.external_id == "49925489")
+    )
     edited = thread()
     for c in edited["children"]:
         if c["id"] == 49925489:
             c["text"] += "<p>Apply: jobs@example.org"
-    stats = import_hackernews(session, FakeClient(edited))
+    stats = hackernews.import_hackernews(session, FakeClient(edited))
     assert (stats.new, stats.known) == (0, 5)
     session.refresh(record.opportunity)
-    from job_radar.description import latest_description
+    import job_radar.description as description
 
-    assert latest_description(record.opportunity).endswith("Apply: jobs@example.org")
+    assert description.latest_description(record.opportunity).endswith("Apply: jobs@example.org")
 
 
 # #256: the header and the text in one paragraph, no line break between them (MixRank,
@@ -217,14 +236,15 @@ MIXRANK = {
 
 
 def test_header_running_on_into_the_text_is_cut_off():
-    p = parse_post(MIXRANK)
+    p = hackernews.parse_post(MIXRANK)
     assert (p.company, p.title, p.location) == (
         "MixRank (YC S11)",
         "Software Engineers",
         "100% Remote (Global)",
     )
     assert "petabytes" not in p.header
-    assert wants(p)  # "closed" in the text is not a CLOSED header
+    # "closed" in the text is not a CLOSED header
+    assert hackernews.wants(p)
     assert "petabytes of data" in p.description and "Python, Rust" in p.description
 
 
@@ -232,10 +252,10 @@ def test_a_stored_post_gets_the_new_location(session):
     """A post read by the old parser gets its header fields on the next sync (#256)."""
     run_on = {**MIXRANK}
     item = {"children": [run_on]}
-    import_hackernews(session, FakeClient(item))
-    opportunity = session.scalar(select(Opportunity))
+    hackernews.import_hackernews(session, FakeClient(item))
+    opportunity = session.scalar(sa.select(models.Opportunity))
     opportunity.location = "100% Remote (Global) · Full-Time MixRank processes petabytes…"
     session.commit()
-    import_hackernews(session, FakeClient(item))
+    hackernews.import_hackernews(session, FakeClient(item))
     session.refresh(opportunity)
     assert opportunity.location == "100% Remote (Global)"

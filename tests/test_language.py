@@ -1,12 +1,10 @@
+"""Tests for job_radar.language: detecting a language other than English or Russian
+in titles and descriptions, and its risk (docs/applications.md#vacancy-language).
+"""
+
 import pytest
 
-from job_radar.language import (
-    detect_text_language,
-    detect_title_language,
-    language_risk,
-    required_language,
-    vacancy_language,
-)
+import job_radar.language as jr_language
 
 
 @pytest.mark.parametrize(
@@ -31,7 +29,7 @@ from job_radar.language import (
     ],
 )
 def test_detects_non_english_titles(title, language):
-    assert detect_title_language(title) == language
+    assert jr_language.detect_title_language(title) == language
 
 
 @pytest.mark.parametrize(
@@ -43,21 +41,23 @@ def test_detects_non_english_titles(title, language):
         "🚨Urgent Hiring | Senior Data Engineer - Data bricks / Pyspark | Immediate Joiners Only",
         "🟠Senior Python Developer🟠",
         "Senior Software Engineer – IT Banking & Payment Operations",
-        "Python-разработчик (Senior)",  # Russian is fine
+        # Russian is fine
+        "Python-разработчик (Senior)",
         "Senior Engineer, Remote (Brazil)",
-        "Café Platform Engineer",  # one accented letter is not a language
+        # one accented letter is not a language
+        "Café Platform Engineer",
     ],
 )
 def test_english_russian_and_noise_are_fine(title):
-    assert detect_title_language(title) is None
+    assert jr_language.detect_title_language(title) is None
 
 
 def test_language_risk():
-    points, reason = language_risk("Desarrollador Python Senior")
+    points, reason = jr_language.language_risk("Desarrollador Python Senior")
     assert points == -8.0
     assert reason.sign == "-"
     assert reason.text == "Title in Spanish: the job likely needs Spanish"
-    assert language_risk("Senior Python Developer") is None
+    assert jr_language.language_risk("Senior Python Developer") is None
 
 
 GERMAN = (
@@ -94,23 +94,23 @@ VIETNAMESE = (
     ],
 )
 def test_detect_text_language(text, language):
-    assert detect_text_language(text) == language
+    assert jr_language.detect_text_language(text) == language
 
 
 def test_description_language_risk():
-    points, reason = language_risk("Senior Python Developer", GERMAN)
+    points, reason = jr_language.language_risk("Senior Python Developer", GERMAN)
     assert points == -8.0
     assert reason.text == "Description in German: the job likely needs German"
     # Counted once when the title already says it.
-    _, reason = language_risk("Python Entwickler (m/w/d)", GERMAN)
+    _, reason = jr_language.language_risk("Python Entwickler (m/w/d)", GERMAN)
     assert reason.text.startswith("Title in German")
-    assert language_risk("Senior Python Developer", ENGLISH_WITH_GERMAN_WORDS) is None
+    assert jr_language.language_risk("Senior Python Developer", ENGLISH_WITH_GERMAN_WORDS) is None
 
 
 def test_language_of(session):
-    assert vacancy_language("Senior Python Developer", GERMAN) == "German"
-    assert vacancy_language("Desarrollador Python", None) == "Spanish"
-    assert vacancy_language("Senior Python Developer", None) is None
+    assert jr_language.vacancy_language("Senior Python Developer", GERMAN) == "German"
+    assert jr_language.vacancy_language("Desarrollador Python", None) == "Spanish"
+    assert jr_language.vacancy_language("Senior Python Developer", None) is None
 
 
 @pytest.mark.parametrize(
@@ -137,14 +137,17 @@ def test_language_of(session):
     ],
 )
 def test_required_language(text, language):
-    found = required_language(f"About us.\n{text}\nApply now.")
+    found = jr_language.required_language(f"About us.\n{text}\nApply now.")
     assert (found[0] if found else None) == language
 
 
 def test_required_language_risk_is_a_hard_blocker():
-    points, reason = language_risk(
+    points, reason = jr_language.language_risk(
         "Senior Python Developer", "Remote.\nFluent German is required.\n"
     )
     assert points == -8.0
     assert reason.text == "Requires German — “Fluent German is required.”"
-    assert vacancy_language("Senior Python Developer", "Fluent German is required.") == "German"
+    assert (
+        jr_language.vacancy_language("Senior Python Developer", "Fluent German is required.")
+        == "German"
+    )

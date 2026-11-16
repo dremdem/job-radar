@@ -1,7 +1,11 @@
-import subprocess
-from pathlib import Path
+"""Tests for the ``jr`` helper script: valid bash, its commands and the service unit
+it writes (docs/usage.md).
+"""
 
-JR = Path(__file__).parent.parent / "jr"
+import pathlib
+import subprocess
+
+JR = pathlib.Path(__file__).parent.parent / "jr"
 
 
 def test_jr_is_valid_bash_and_executable():

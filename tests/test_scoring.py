@@ -1,9 +1,13 @@
+"""Tests for job_radar.scoring: title and location rules and the home from the profile
+(docs/linkedin-alerts.md).
+"""
+
 import pytest
 
-from job_radar.home import Home
-from job_radar.scoring import score_job
+import job_radar.home as home
+import job_radar.scoring as scoring
 
-THAILAND = Home("Thailand", ("Asia", "APAC"))
+THAILAND = home.Home("Thailand", ("Asia", "APAC"))
 
 
 def signs(result) -> dict[str, str]:
@@ -11,7 +15,7 @@ def signs(result) -> dict[str, str]:
 
 
 def test_strong_match_scores_high():
-    result = score_job("Senior Python Backend Engineer (FastAPI)", "Worldwide (Remote)")
+    result = scoring.score_job("Senior Python Backend Engineer (FastAPI)", "Worldwide (Remote)")
     assert result.value >= 9
     reasons = signs(result)
     assert reasons["Senior level"] == "+"
@@ -21,9 +25,9 @@ def test_strong_match_scores_high():
 
 
 def test_country_limited_remote_is_a_risk():
-    result = score_job("Sr Python Developer", "Spain (Remote)", home=THAILAND)
+    result = scoring.score_job("Sr Python Developer", "Spain (Remote)", home=THAILAND)
     assert signs(result)["Remote listed for Spain: check if Thailand is allowed"] == "-"
-    result = score_job("Sr Python Developer", "Spain (Remote)", home=Home())
+    result = scoring.score_job("Sr Python Developer", "Spain (Remote)", home=home.Home())
     assert signs(result)["Remote listed for Spain: check if your country is allowed"] == "-"
 
 
@@ -32,16 +36,18 @@ def test_home_and_its_regions_in_the_location_are_a_plus():
         ("Bangkok, Thailand", "Thailand listed"),
         ("APAC (Remote)", "APAC listed"),
     ]:
-        assert signs(score_job("Python Developer", location, home=THAILAND))[reason] == "+"
-    assert "Thailand listed" not in signs(score_job("Python Developer", "Thailand", home=Home()))
+        assert signs(scoring.score_job("Python Developer", location, home=THAILAND))[reason] == "+"
+    assert "Thailand listed" not in signs(
+        scoring.score_job("Python Developer", "Thailand", home=home.Home())
+    )
 
 
 def test_home_comes_from_the_profile(thailand):
-    assert signs(score_job("Python Developer", "Thailand"))["Thailand listed"] == "+"
+    assert signs(scoring.score_job("Python Developer", "Thailand"))["Thailand listed"] == "+"
 
 
 def test_other_stack_without_python_is_a_risk():
-    result = score_job("Senior Java Software Engineer", "Poland (Remote)")
+    result = scoring.score_job("Senior Java Software Engineer", "Poland (Remote)")
     assert signs(result)["Java, no Python in title"] == "-"
     assert "Python" not in signs(result)
 
@@ -56,16 +62,18 @@ def test_other_stack_without_python_is_a_risk():
     ],
 )
 def test_risks(title, location, reason):
-    assert signs(score_job(title, location))[reason] == "-"
+    assert signs(scoring.score_job(title, location))[reason] == "-"
 
 
 def test_score_is_clamped():
-    assert score_job("Junior Frontend Java Intern", "London (On-site)").value == 0
+    assert scoring.score_job("Junior Frontend Java Intern", "London (On-site)").value == 0
     assert (
-        0 <= score_job("Staff Senior Lead Python Backend Django Platform", "Anywhere").value <= 10
+        0
+        <= scoring.score_job("Staff Senior Lead Python Backend Django Platform", "Anywhere").value
+        <= 10
     )
 
 
 def test_unknown_location_is_neutral():
-    result = score_job("Python Developer", None)
+    result = scoring.score_job("Python Developer", None)
     assert all("location" not in r.text.lower() for r in result.reasons)

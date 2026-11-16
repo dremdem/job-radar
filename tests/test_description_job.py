@@ -1,26 +1,20 @@
 """Background LinkedIn description job, random pause, request log (#205)."""
 
+import datetime as dt
 import threading
 import time
-from datetime import UTC, datetime
 
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-from test_public_descriptions import POSTING, FakeHttp, vacancy
+import fastapi.testclient as fastapi_testclient
+import sqlalchemy as sa
+import test_public_descriptions
 
-from job_radar import pipeline
-from job_radar.config import Settings
-from job_radar.linkedin.public import (
-    PauseSettings,
-    PublicSearchClient,
-    import_public_descriptions,
-    load_pause,
-    save_pause,
-)
-from job_radar.models import LinkedInFetch
-from job_radar.web.app import create_app
+import job_radar.config as config
+import job_radar.linkedin.public as linkedin_public
+import job_radar.models as models
+import job_radar.pipeline as pipeline
+import job_radar.web.app as web_app
 
-NOW = datetime(2026, 10, 17, 3, 0, tzinfo=UTC)
+NOW = dt.datetime(2026, 10, 17, 3, 0, tzinfo=dt.UTC)
 
 
 def no_sleep(_):
@@ -37,35 +31,46 @@ def wait_until(check, timeout=5.0):
 
 
 def test_pause_defaults_and_is_saved(session):
-    assert load_pause(session) == PauseSettings(10, 40)
-    save_pause(session, PauseSettings(5, 25))
-    assert load_pause(session) == PauseSettings(5, 25)
+    assert linkedin_public.load_pause(session) == linkedin_public.PauseSettings(10, 40)
+    linkedin_public.save_pause(session, linkedin_public.PauseSettings(5, 25))
+    assert linkedin_public.load_pause(session) == linkedin_public.PauseSettings(5, 25)
 
 
 def test_log_keeps_the_vacancy_the_time_and_the_reason(session):
-    ok = vacancy(session, "1", score=9.0)
-    empty = vacancy(session, "2", score=8.0)
-    blocked = vacancy(session, "3", score=7.0)
-    responses = iter([(200, "u", POSTING), (200, "u", "<html>moved</html>"), (429, "u", "")])
-    client = PublicSearchClient(http_get=lambda url: next(responses), sleep=no_sleep)
-    stats = import_public_descriptions(session, client, max_per_day=10)
+    ok = test_public_descriptions.vacancy(session, "1", score=9.0)
+    empty = test_public_descriptions.vacancy(session, "2", score=8.0)
+    blocked = test_public_descriptions.vacancy(session, "3", score=7.0)
+    responses = iter(
+        [
+            (200, "u", test_public_descriptions.POSTING),
+            (200, "u", "<html>moved</html>"),
+            (429, "u", ""),
+        ]
+    )
+    client = linkedin_public.PublicSearchClient(
+        http_get=lambda url: next(responses), sleep=no_sleep
+    )
+    stats = linkedin_public.import_public_descriptions(session, client, max_per_day=10)
     assert (stats.total, stats.requests, stats.saved, stats.errors) == (3, 3, 1, 1)
     assert stats.blocked and stats.reason == "HTTP 429"
-    rows = session.scalars(select(LinkedInFetch).order_by(LinkedInFetch.id)).all()
+    rows = session.scalars(sa.select(models.LinkedInFetch).order_by(models.LinkedInFetch.id)).all()
     assert [(r.opportunity_id, r.status, r.detail) for r in rows] == [
         (ok.id, "ok", None),
         (empty.id, "error", "no description on page"),
         (blocked.id, "blocked", "HTTP 429"),
     ]
-    assert rows[0].at <= rows[2].at  # each request has its own time
+    # each request has its own time
+    assert rows[0].at <= rows[2].at
 
 
 def test_progress_is_reported_after_each_request(session):
     for n in range(3):
-        vacancy(session, str(n), score=float(n))
+        test_public_descriptions.vacancy(session, str(n), score=float(n))
     seen = []
-    client = PublicSearchClient(http_get=FakeHttp(), sleep=no_sleep)
-    import_public_descriptions(
+    client = linkedin_public.PublicSearchClient(
+        http_get=test_public_descriptions.FakeHttp(), sleep=no_sleep
+    )
+    linkedin_public.import_public_descriptions(
         session, client, now=NOW, max_per_day=10, on_progress=lambda s: seen.append(s.requests)
     )
     assert seen[0] == 0 and seen[-1] == 3
@@ -73,46 +78,58 @@ def test_progress_is_reported_after_each_request(session):
 
 def test_stop_ends_the_job_without_a_request_and_logs_it(session):
     for n in range(3):
-        vacancy(session, str(n), score=float(n))
+        test_public_descriptions.vacancy(session, str(n), score=float(n))
     stop = threading.Event()
-    http = FakeHttp()
+    http = test_public_descriptions.FakeHttp()
 
     def get(url):
-        stop.set()  # the user presses Stop during the first request
+        # the user presses Stop during the first request
+        stop.set()
         return http(url)
 
-    client = PublicSearchClient(http_get=get, stop=stop)
-    stats = import_public_descriptions(session, client, now=NOW, max_per_day=10)
+    client = linkedin_public.PublicSearchClient(http_get=get, stop=stop)
+    stats = linkedin_public.import_public_descriptions(session, client, now=NOW, max_per_day=10)
     assert stats.stopped and (stats.requests, stats.saved) == (1, 1)
     assert len(http.urls) == 1
-    last = session.scalars(select(LinkedInFetch).order_by(LinkedInFetch.id.desc())).first()
+    last = session.scalars(
+        sa.select(models.LinkedInFetch).order_by(models.LinkedInFetch.id.desc())
+    ).first()
     assert (last.status, last.detail) == ("stopped", "stopped by you")
     # A stop is not a block and does not use the daily budget.
-    again = import_public_descriptions(
-        session, PublicSearchClient(http_get=FakeHttp(), sleep=no_sleep), now=NOW, max_per_day=3
+    again = linkedin_public.import_public_descriptions(
+        session,
+        linkedin_public.PublicSearchClient(
+            http_get=test_public_descriptions.FakeHttp(), sleep=no_sleep
+        ),
+        now=NOW,
+        max_per_day=3,
     )
     assert not again.blocked and again.requests == 2
 
 
 def test_the_wait_is_announced_before_it_starts(session):
-    vacancy(session, "1", score=2.0)
-    vacancy(session, "2", score=1.0)
+    test_public_descriptions.vacancy(session, "1", score=2.0)
+    test_public_descriptions.vacancy(session, "2", score=1.0)
     waits = []
-    client = PublicSearchClient(
-        http_get=FakeHttp(), sleep=no_sleep, pause=(10, 40), rand=lambda a, b: 12.0,
+    client = linkedin_public.PublicSearchClient(
+        http_get=test_public_descriptions.FakeHttp(),
+        sleep=no_sleep,
+        pause=(10, 40),
+        rand=lambda a, b: 12.0,
         on_wait=waits.append,
-    )  # fmt: skip
-    import_public_descriptions(session, client, now=NOW, max_per_day=10)
+    )
+    linkedin_public.import_public_descriptions(session, client, now=NOW, max_per_day=10)
     assert waits == [12.0]
 
 
 def test_sync_starts_the_background_job_instead_of_fetching(tmp_path, engine, database_url):
     started = []
-    settings = Settings(
+    settings = config.Settings(
         database_url=database_url,
         gmail_token=tmp_path / "missing.json",
         himalayas=False,
-        fdetimes=False,  # no network in tests
+        # no network in tests
+        fdetimes=False,
         ai_analysis=False,
         linkedin_public_search=True,
     )
@@ -126,8 +143,10 @@ def test_sync_starts_the_background_job_instead_of_fetching(tmp_path, engine, da
 
 def web(database_url, tmp_path, runner, **extra):
     options = {"linkedin_public_search": True} | extra
-    settings = Settings(database_url=database_url, profile=tmp_path / "p.yaml", **options)
-    return TestClient(create_app(settings, start_worker=False, description_runner=runner))
+    settings = config.Settings(database_url=database_url, profile=tmp_path / "p.yaml", **options)
+    return fastapi_testclient.TestClient(
+        web_app.create_app(settings, start_worker=False, description_runner=runner)
+    )
 
 
 def test_button_starts_the_job_and_shows_progress(engine, database_url, tmp_path):
@@ -198,13 +217,13 @@ def test_button_runs_with_fdetimes_alone(engine, database_url, tmp_path):
 
 
 def test_log_page_lists_requests_with_reasons(engine, database_url, tmp_path, session):
-    o = vacancy(session, "77", score=5.0, title="Python Backend Engineer")
-    now = datetime.now(UTC)
+    o = test_public_descriptions.vacancy(session, "77", score=5.0, title="Python Backend Engineer")
+    now = dt.datetime.now(dt.UTC)
     session.add_all(
         [
-            LinkedInFetch(at=now, kind="description", job_id="77", start=0, status="ok",
+            models.LinkedInFetch(at=now, kind="description", job_id="77", start=0, status="ok",
                           jobs=1, opportunity_id=o.id),
-            LinkedInFetch(at=now, kind="description", job_id="78", start=0, status="blocked",
+            models.LinkedInFetch(at=now, kind="description", job_id="78", start=0, status="blocked",
                           http_status=429, detail="HTTP 429"),
         ]
     )  # fmt: skip
@@ -215,8 +234,8 @@ def test_log_page_lists_requests_with_reasons(engine, database_url, tmp_path, se
     assert "HTTP 429" in text and "blocked" in text
     assert "2 requests" in text and "1 saved" in text
     # Rows logged before #205 have only the job id; the vacancy is found by it.
-    old = vacancy(session, "79", score=5.0, title="Django Developer")
-    session.add(LinkedInFetch(at=now, kind="description", job_id="79", start=0, status="ok"))
+    old = test_public_descriptions.vacancy(session, "79", score=5.0, title="Django Developer")
+    session.add(models.LinkedInFetch(at=now, kind="description", job_id="79", start=0, status="ok"))
     session.commit()
     with web(database_url, tmp_path, lambda job: None) as client:
         assert f'href="/opportunities/{old.id}"' in client.get("/linkedin/log").text
@@ -227,6 +246,6 @@ def test_settings_save_the_pause(engine, database_url, tmp_path, session):
         page = client.get("/settings").text
         assert 'name="pause_from"' in page and 'value="10' in page and "/linkedin/log" in page
         client.post("/settings/linkedin", data={"pause_from": "5", "pause_to": "25"})
-        assert load_pause(session) == PauseSettings(5, 25)
+        assert linkedin_public.load_pause(session) == linkedin_public.PauseSettings(5, 25)
         bad = client.post("/settings/linkedin", data={"pause_from": "30", "pause_to": "20"})
         assert bad.status_code == 422

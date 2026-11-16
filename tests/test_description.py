@@ -1,10 +1,16 @@
-import json
-from pathlib import Path
+"""Tests for job_radar.description: Python mentions in a description, their quote,
+score effect and highlighting (docs/queue.md#description-checks).
+"""
 
-from job_radar.description import check_python, python_risk
+import json
+import pathlib
+
+import job_radar.description as description
 
 EMPAT = json.loads(
-    (Path(__file__).parent / "fixtures" / "linkedin_capture" / "semantic_search.json").read_text()
+    (
+        pathlib.Path(__file__).parent / "fixtures" / "linkedin_capture" / "semantic_search.json"
+    ).read_text()
 )["detail"]["description"]
 ECARSTRADE = (
     "Strong Python 3.10+ with production experience in async programming (asyncio) and FastAPI "
@@ -13,59 +19,67 @@ ECARSTRADE = (
 
 
 def test_real_description_mentions_python():
-    check = check_python(EMPAT)
+    check = description.check_python(EMPAT)
     assert check.mentions >= 1
     assert "python" in check.quote.lower()
 
 
 def test_counts_python_forms_and_related_tools():
-    check = check_python(ECARSTRADE + " We like python-based tools and Python3 scripts.")
+    check = description.check_python(
+        ECARSTRADE + " We like python-based tools and Python3 scripts."
+    )
     assert check.mentions == 3
     assert check.related == ["asyncio", "FastAPI"]
     assert check.quote.startswith("Strong Python 3.10+")
 
 
 def test_no_python():
-    check = check_python("We build services in Go and Rust on Kubernetes.")
+    check = description.check_python("We build services in Go and Rust on Kubernetes.")
     assert (check.mentions, check.related, check.quote) == (0, [], "")
 
 
 def test_quote_is_short_and_around_the_mention():
     text = "x " * 400 + "Experience with Python is required." + " y" * 400
-    quote = check_python(text).quote
+    quote = description.check_python(text).quote
     assert "Python is required" in quote and len(quote) <= 220
 
 
 def test_python_risk():
-    points, reason = python_risk("Backend Engineer", ECARSTRADE)
+    points, reason = description.python_risk("Backend Engineer", ECARSTRADE)
     assert points > 0 and reason.sign == "+"
     assert reason.text == "Python in description (x1; also asyncio, FastAPI)"
-    points, reason = python_risk("Backend Engineer", "Go and Rust only.")
+    points, reason = description.python_risk("Backend Engineer", "Go and Rust only.")
     assert (points, reason.sign, reason.text) == (-3.0, "-", "No Python in description")
 
 
 def test_python_risk_needs_a_description_and_respects_the_title():
-    assert python_risk("Backend Engineer", None) is None
-    assert python_risk("Senior Python Developer", "Go and Rust only.") is None
+    assert description.python_risk("Backend Engineer", None) is None
+    assert description.python_risk("Senior Python Developer", "Go and Rust only.") is None
 
 
 def test_latest_snapshot_mixes_stored_and_new_snapshots(session):
     """A snapshot from SQLite is naive, one just added is aware: comparing them used to fail."""
 
-    from job_radar.dedup import add_snapshot, get_or_create_company, upsert_source_record
-    from job_radar.description import latest_description
-    from job_radar.models import Opportunity, SourceType
+    import job_radar.dedup as dedup
+    import job_radar.models as models
 
-    o = Opportunity(title="Python Developer", company=get_or_create_company(session, "Acme"))
+    o = models.Opportunity(
+        title="Python Developer", company=dedup.get_or_create_company(session, "Acme")
+    )
     session.add(o)
     session.flush()
-    record = upsert_source_record(
-        session, source_type=SourceType.LINKEDIN_CAPTURE, external_id="1", url=None, opportunity=o
+    record = dedup.upsert_source_record(
+        session,
+        source_type=models.SourceType.LINKEDIN_CAPTURE,
+        external_id="1",
+        url=None,
+        opportunity=o,
     )
-    add_snapshot(session, record, "old text")
+    dedup.add_snapshot(session, record, "old text")
     session.commit()
-    session.expire_all()  # the old snapshot now comes back from SQLite, without tzinfo
+    # the old snapshot now comes back from SQLite, without tzinfo
+    session.expire_all()
     record = o.source_records[0]
-    _, created = add_snapshot(session, record, "new text")
+    _, created = dedup.add_snapshot(session, record, "new text")
     assert created and record.snapshots[-1].retrieved_at.tzinfo is not None
-    assert latest_description(o) == "new text"
+    assert description.latest_description(o) == "new text"

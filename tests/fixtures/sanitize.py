@@ -7,7 +7,7 @@ Always check the result by eye and run the fixture privacy tests before committi
 
 import re
 
-from bs4 import BeautifulSoup, Comment
+import bs4
 
 NAMES = r"Vladimir|Владимир|Yakovenko|Яковенко|Игоревич|Iakovenko|IAKOVENKO"
 
@@ -19,10 +19,10 @@ def _common(text: str) -> str:
 
 
 def sanitize_html(html: str) -> str:
-    soup = BeautifulSoup(html, "html.parser")
+    soup = bs4.BeautifulSoup(html, "html.parser")
     for tag in soup(["style", "script", "head"]):
         tag.decompose()
-    for comment in soup.find_all(string=lambda x: isinstance(x, Comment)):
+    for comment in soup.find_all(string=lambda x: isinstance(x, bs4.Comment)):
         comment.extract()
     for tag in soup.find_all(True):
         for attr in list(tag.attrs):

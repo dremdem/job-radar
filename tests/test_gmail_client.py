@@ -1,16 +1,22 @@
+"""Tests for job_radar.gmail.client: request pacing, rate-limit retries and reading
+message bodies, with fake requests and a fake clock (docs/gmail.md).
+"""
+
+import googleapiclient.errors as googleapiclient_errors
 import httplib2
 import pytest
-from googleapiclient.errors import HttpError
 
-from job_radar.gmail.client import RateLimitedExecutor
+import job_radar.gmail.client as gmail_client
 
 
-def http_error(status: int, reason: str = "") -> HttpError:
+def http_error(status: int, reason: str = "") -> googleapiclient_errors.HttpError:
     content = f'{{"error": {{"errors": [{{"reason": "{reason}"}}]}}}}'.encode()
-    return HttpError(httplib2.Response({"status": status}), content)
+    return googleapiclient_errors.HttpError(httplib2.Response({"status": status}), content)
 
 
 class FakeRequest:
+    """A Gmail API request that returns or raises the given outcomes in order."""
+
     def __init__(self, *outcomes):
         self.outcomes = list(outcomes)
         self.calls = 0
@@ -24,6 +30,8 @@ class FakeRequest:
 
 
 class FakeClock:
+    """A clock that only moves when the code sleeps."""
+
     def __init__(self):
         self.now = 0.0
         self.sleeps: list[float] = []
@@ -36,8 +44,8 @@ class FakeClock:
         self.now += seconds
 
 
-def executor(clock: FakeClock, **kwargs) -> RateLimitedExecutor:
-    return RateLimitedExecutor(
+def executor(clock: FakeClock, **kwargs) -> gmail_client.RateLimitedExecutor:
+    return gmail_client.RateLimitedExecutor(
         min_interval=0.5, rate_limit_wait=60, clock=clock.monotonic, sleep=clock.sleep, **kwargs
     )
 
@@ -62,7 +70,7 @@ def test_waits_out_rate_limit_then_succeeds(error):
 def test_gives_up_after_max_retries():
     clock = FakeClock()
     request = FakeRequest(*[http_error(429)] * 3)
-    with pytest.raises(HttpError):
+    with pytest.raises(googleapiclient_errors.HttpError):
         executor(clock, max_rate_limit_retries=2)(request)
     assert request.calls == 3
 
@@ -70,43 +78,41 @@ def test_gives_up_after_max_retries():
 def test_other_errors_are_not_retried():
     clock = FakeClock()
     request = FakeRequest(http_error(404))
-    with pytest.raises(HttpError):
+    with pytest.raises(googleapiclient_errors.HttpError):
         executor(clock)(request)
     assert request.calls == 1
 
 
 def test_body_fetcher_returns_html_and_text():
-    from datetime import UTC, datetime
+    import datetime as dt
 
-    from gmail_fakes import message
-
-    from job_radar.gmail.client import body_fetcher
+    import gmail_fakes
 
     class Client:
         def get_message(self, gmail_message_id):
-            return message(gmail_message_id, "t", sent_at=datetime(2026, 1, 1, tzinfo=UTC))
+            return gmail_fakes.message(
+                gmail_message_id, "t", sent_at=dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+            )
 
-    assert body_fetcher(Client())("m1") == ("<p>Hello <b>there</b></p>", "Hello there")
+    assert gmail_client.body_fetcher(Client())("m1") == ("<p>Hello <b>there</b></p>", "Hello there")
 
 
 def test_body_fetcher_turns_404_into_message_gone():
-    from job_radar.gmail.client import body_fetcher
-    from job_radar.linkedin.rejections import MessageGone
+    import job_radar.linkedin.rejections as linkedin_rejections
 
     class Client:
         def get_message(self, gmail_message_id):
             raise http_error(404, "notFound")
 
-    with pytest.raises(MessageGone):
-        body_fetcher(Client())("m1")
+    with pytest.raises(linkedin_rejections.MessageGone):
+        gmail_client.body_fetcher(Client())("m1")
 
 
 def test_body_fetcher_lets_other_errors_through():
-    from job_radar.gmail.client import body_fetcher
 
     class Client:
         def get_message(self, gmail_message_id):
             raise http_error(401, "authError")
 
-    with pytest.raises(HttpError):
-        body_fetcher(Client())("m1")
+    with pytest.raises(googleapiclient_errors.HttpError):
+        gmail_client.body_fetcher(Client())("m1")
