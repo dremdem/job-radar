@@ -1,7 +1,14 @@
-"""Read a vacancy out of a Telegram post (one post = one vacancy). See docs/telegram.md."""
+"""Read a vacancy out of a Telegram post (one post is one vacancy).
 
+``clean`` reduces markdown to plain text and ``parse_post`` finds the title, company,
+location and links of the vacancy. See docs/telegram.md.
+
+Usage:
+    import job_radar.telegram.posts as telegram_posts
+"""
+
+import dataclasses
 import re
-from dataclasses import dataclass
 
 _LINK = re.compile(r"\[([^\]]*)\]\((https?://[^)\s]+)\)")
 _BARE_URL = re.compile(r"https?://[^\s)\]]+")
@@ -25,8 +32,10 @@ _COMPANY_AND_PLACE = re.compile(
 )
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class PostJob:
+    """The vacancy found in one post: title, company, location and links."""
+
     title: str
     company: str | None
     location: str | None

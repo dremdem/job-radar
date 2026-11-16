@@ -1,17 +1,29 @@
+"""Turn a Gmail API message into plain fields.
+
+``parse_message`` takes a message from ``users.messages`` or ``threads.get`` in the full
+format and returns a ``ParsedMessage``: ids, labels, direction (received or sent),
+date, addresses, subject, snippet and the HTML and text bodies. See docs/gmail.md.
+
+Usage:
+    import job_radar.gmail.parse as gmail_parse
+"""
+
 import base64
-from dataclasses import dataclass
-from datetime import UTC, datetime
+import dataclasses
+import datetime as dt
 
-from ..models import EmailDirection
+import job_radar.models as models
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class ParsedMessage:
+    """The fields of one Gmail message that the app stores."""
+
     gmail_message_id: str
     gmail_thread_id: str
     label_ids: list[str]
-    direction: EmailDirection
-    sent_at: datetime
+    direction: models.EmailDirection
+    sent_at: dt.datetime
     from_addr: str
     to_addr: str
     subject: str
@@ -46,8 +58,8 @@ def parse_message(raw: dict) -> ParsedMessage:
         gmail_message_id=raw["id"],
         gmail_thread_id=raw["threadId"],
         label_ids=labels,
-        direction=EmailDirection.OUT if "SENT" in labels else EmailDirection.IN,
-        sent_at=datetime.fromtimestamp(int(raw["internalDate"]) / 1000, UTC),
+        direction=models.EmailDirection.OUT if "SENT" in labels else models.EmailDirection.IN,
+        sent_at=dt.datetime.fromtimestamp(int(raw["internalDate"]) / 1000, dt.UTC),
         from_addr=headers.get("from", ""),
         to_addr=headers.get("to", ""),
         subject=headers.get("subject", ""),

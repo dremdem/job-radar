@@ -1,25 +1,33 @@
-"""Digital nomads digests: categories on graph.org, vacancies on telegra.ph. See
-docs/telegram.md#digests-digital-nomads."""
+"""Digital nomads digests: categories on graph.org, vacancies on telegra.ph.
 
+``digest_links`` picks the chosen categories of a digest post, ``parse_category`` reads
+the vacancy list of a category page and ``parse_vacancy`` one vacancy page.
+``TelegraphClient`` reads the public Telegraph API with pauses and no login;
+``import_digest`` creates vacancies from it. See docs/telegram.md#digests-digital-nomads.
+
+Usage:
+    import job_radar.telegram.digest as telegram_digest
+"""
+
+import collections.abc as cabc
+import dataclasses
+import datetime as dt
 import json
 import re
 import time
+import typing as t
 import urllib.error
 import urllib.request
-from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..dedup import add_snapshot, get_or_create_company
-from ..linkedin.alerts import LINKEDIN_SOURCES, canonical_job_url
-from ..models import Opportunity, SourceRecord, SourceType, TelegramPost
-from ..scoring import score_job
-from .sources import Source
-from .sync import _as_utc, chat_key
+import job_radar.dedup as dedup
+import job_radar.linkedin.alerts as linkedin_alerts
+import job_radar.models as models
+import job_radar.scoring as scoring
+import job_radar.telegram.sources as telegram_sources
+import job_radar.telegram.sync as telegram_sync
 
 TELEGRAPH_API = "https://api.telegra.ph/getPage/{path}?return_content=true"
 MAX_VACANCY_PAGES = 300
@@ -41,32 +49,36 @@ def digest_links(text: str, categories: list[str]) -> list[tuple[str, str]]:
     ]
 
 
-def _text(node: Any) -> str:
+def _text(node: t.Any) -> str:
     if isinstance(node, str):
         return node
     return "".join(_text(child) for child in node.get("children", []))
 
 
-def _links(node: Any) -> list[str]:
+def _links(node: t.Any) -> list[str]:
     if not isinstance(node, dict):
         return []
     own = [node.get("attrs", {}).get("href")] if node.get("tag") == "a" else []
     return [h for h in own if h] + [h for child in node.get("children", []) for h in _links(child)]
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class DigestItem:
-    group: str  # where the channel found it: HeadHunter, LinkedIn, ...
+    """One vacancy listed on a digest category page."""
+
+    # where the channel found it: HeadHunter, LinkedIn, ...
+    group: str
     title: str
     company: str
-    path: str  # telegra.ph page of the vacancy
+    # telegra.ph page of the vacancy
+    path: str
 
     @property
     def url(self) -> str:
         return f"https://telegra.ph/{self.path}"
 
 
-def parse_category(page: dict[str, Any]) -> list[DigestItem]:
+def parse_category(page: dict[str, t.Any]) -> list[DigestItem]:
     items, group = [], ""
     for node in page.get("content", []):
         if not isinstance(node, dict):
@@ -88,13 +100,15 @@ def parse_category(page: dict[str, Any]) -> list[DigestItem]:
     return items
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class VacancyPage:
+    """A vacancy page on telegra.ph: its description and the original link."""
+
     description: str
     original_url: str | None
 
 
-def parse_vacancy(page: dict[str, Any]) -> VacancyPage:
+def parse_vacancy(page: dict[str, t.Any]) -> VacancyPage:
     parts = [
         _text(n).strip()
         for n in page.get("content", [])
@@ -107,10 +121,10 @@ def parse_vacancy(page: dict[str, Any]) -> VacancyPage:
 class TelegraphClient:
     """Public Telegraph API, paced; no login."""
 
-    def __init__(self, delay: float = 0.3, sleep: Callable[[float], None] = time.sleep):
+    def __init__(self, delay: float = 0.3, sleep: cabc.Callable[[float], None] = time.sleep):
         self._delay, self._sleep, self._called = delay, sleep, False
 
-    def get_page(self, path: str) -> dict[str, Any] | None:
+    def get_page(self, path: str) -> dict[str, t.Any] | None:
         if self._called:
             self._sleep(self._delay)
         self._called = True
@@ -122,96 +136,108 @@ class TelegraphClient:
         return data.get("result") if data.get("ok") else None
 
 
-@dataclass
+@dataclasses.dataclass
 class DigestStats:
+    """Counters of one digest import, for the sync status line."""
+
     posts: int = 0
     vacancies: int = 0
-    linked: int = 0  # matched a vacancy already known from LinkedIn
+    # matched a vacancy already known from LinkedIn
+    linked: int = 0
     errors: int = 0
 
 
-def _record(session: Session, types, external_id: str) -> SourceRecord | None:
+def _record(session: sa_orm.Session, types, external_id: str) -> models.SourceRecord | None:
     return session.scalar(
-        select(SourceRecord).where(
-            SourceRecord.source_type.in_(types), SourceRecord.external_id == external_id
+        sa.select(models.SourceRecord).where(
+            models.SourceRecord.source_type.in_(types),
+            models.SourceRecord.external_id == external_id,
         )
     )
 
 
 def _add_vacancy(
-    session: Session, source: Source, item: DigestItem, page: VacancyPage, stats: DigestStats
+    session: sa_orm.Session,
+    source: telegram_sources.Source,
+    item: DigestItem,
+    page: VacancyPage,
+    stats: DigestStats,
 ) -> None:
-    from ..auto_ignore import apply_rules
+    import job_radar.auto_ignore as auto_ignore
 
     key = f"telegraph:{item.path}"
-    if _record(session, [SourceType.TELEGRAM], key):
+    if _record(session, [models.SourceType.TELEGRAM], key):
         return
     match = _LINKEDIN_JOB.search(page.original_url or "")
     job_id = match.group(1) if match else None
-    known = _record(session, LINKEDIN_SOURCES, job_id) if job_id else None
+    known = _record(session, linkedin_alerts.LINKEDIN_SOURCES, job_id) if job_id else None
     if known is not None:
         # Same job as one from LinkedIn: give it the description, don't create a twin.
-        record = SourceRecord(
-            source_type=SourceType.TELEGRAM,
+        record = models.SourceRecord(
+            source_type=models.SourceType.TELEGRAM,
             external_id=key,
             url=item.url,
             opportunity=known.opportunity,
         )
         session.add(record)
         session.flush()
-        add_snapshot(session, record, page.description)
+        dedup.add_snapshot(session, record, page.description)
         session.refresh(known.opportunity)
-        apply_rules(session, known.opportunity)
+        auto_ignore.apply_rules(session, known.opportunity)
         stats.linked += 1
         return
     text = f"{item.title}\n{page.description}"
     if not (source.wants_title(item.title) and source.keywords.search(text)):
         return
-    score = score_job(item.title, "Remote")
-    opportunity = Opportunity(
+    score = scoring.score_job(item.title, "Remote")
+    opportunity = models.Opportunity(
         title=item.title[:255],
-        company=get_or_create_company(
+        company=dedup.get_or_create_company(
             session, item.company or f"Unknown ({source.name} {item.path})"
         ),
         location="Remote",
         score=score.value,
         score_reasons=[r.as_dict() for r in score.reasons],
     )
-    record = SourceRecord(
-        source_type=SourceType.TELEGRAM, external_id=key, url=item.url, opportunity=opportunity
+    record = models.SourceRecord(
+        source_type=models.SourceType.TELEGRAM,
+        external_id=key,
+        url=item.url,
+        opportunity=opportunity,
     )
     session.add(record)
     if job_id:
         session.add(
-            SourceRecord(
-                source_type=SourceType.LINKEDIN_LINK,
+            models.SourceRecord(
+                source_type=models.SourceType.LINKEDIN_LINK,
                 external_id=job_id,
-                url=canonical_job_url(page.original_url),
+                url=linkedin_alerts.canonical_job_url(page.original_url),
                 opportunity=opportunity,
             )
         )
     session.flush()
-    add_snapshot(session, record, page.description)
+    dedup.add_snapshot(session, record, page.description)
     session.refresh(opportunity)
-    apply_rules(session, opportunity)
+    auto_ignore.apply_rules(session, opportunity)
     stats.vacancies += 1
 
 
 def import_digest(
-    session: Session,
-    source: Source,
-    messages: list[dict[str, Any]],
+    session: sa_orm.Session,
+    source: telegram_sources.Source,
+    messages: list[dict[str, t.Any]],
     client: TelegraphClient,
     *,
-    now: datetime | None = None,
+    now: dt.datetime | None = None,
 ) -> DigestStats:
     stats = DigestStats()
-    chat = chat_key(source.chat)
+    chat = telegram_sync.chat_key(source.chat)
     budget = MAX_VACANCY_PAGES
     for message in sorted(messages, key=lambda m: int(m["id"])):
         if session.scalar(
-            select(TelegramPost.id).where(
-                TelegramPost.chat == chat, TelegramPost.message_id == int(message["id"])
+            sa.select(models.TelegramPost.id).where(
+                models.TelegramPost.chat == chat,
+                models.TelegramPost.message_id == int(message["id"]),
             )
         ):
             continue
@@ -221,7 +247,9 @@ def import_digest(
                 stats.errors += 1
                 continue
             for item in parse_category(category):
-                if budget <= 0 or _record(session, [SourceType.TELEGRAM], f"telegraph:{item.path}"):
+                if budget <= 0 or _record(
+                    session, [models.SourceType.TELEGRAM], f"telegraph:{item.path}"
+                ):
                     continue
                 budget -= 1
                 page = client.get_page(item.path)
@@ -230,12 +258,14 @@ def import_digest(
                     continue
                 _add_vacancy(session, source, item, parse_vacancy(page), stats)
         session.add(
-            TelegramPost(
+            models.TelegramPost(
                 source=source.name,
                 chat=chat,
                 topic_id=None,
                 message_id=int(message["id"]),
-                posted_at=_as_utc(message.get("date") or now or datetime.now(UTC)),
+                posted_at=telegram_sync._as_utc(
+                    message.get("date") or now or dt.datetime.now(dt.UTC)
+                ),
                 text=message.get("text") or "",
                 status="digest",
             )

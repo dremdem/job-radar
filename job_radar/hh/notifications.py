@@ -1,31 +1,26 @@
-"""Rejections, applications and employer messages from hh.ru mail. See docs/hh.md.
+"""Rejections, applications and employer messages from hh.ru mail.
 
-Bodies are fetched from Gmail and dropped: only what is found is stored.
+``parse_notice`` recognizes the kind of an hh.ru email and the vacancy it is about;
+``import_hh_notifications`` records rejections and applications on the company and
+stores employer messages in its history. Bodies are fetched from Gmail and dropped: only
+what is found is stored. ``merge_hh_duplicates`` joins vacancies made from notices with
+the same vacancy from another source (#172). See docs/hh.md.
+
+Usage:
+    import job_radar.hh.notifications as hh_notifications
 """
 
+import dataclasses
 import re
-from dataclasses import dataclass
 
-from bs4 import BeautifulSoup
-from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+import bs4
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..dedup import get_or_create_company, merge_opportunities
-from ..linkedin.rejections import _REJECTION, GONE_EVENT, FetchBody, MessageGone
-from ..models import (
-    Application,
-    ApplicationReview,
-    ApplicationSource,
-    EmailDirection,
-    EmailMessage,
-    Opportunity,
-    OpportunityState,
-    Rejection,
-    RejectionSource,
-    SourceRecord,
-    SourceType,
-)
-from ..rejections import mark_rejected
+import job_radar.dedup as dedup
+import job_radar.linkedin.rejections as linkedin_rejections
+import job_radar.models as models
+import job_radar.rejections as rejections
 
 SENDER = "noreply@hh.ru"
 VACANCY_URL = "https://hh.ru/vacancy/{id}"
@@ -47,22 +42,27 @@ DIGEST_EVENT = "hh_digest"
 OUTREACH_EVENT = "recruiter_outreach"
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Notice:
-    kind: str  # rejection / closed / message
+    """What one hh.ru email says: its kind, the vacancy and the employer's text."""
+
+    # rejection / closed / message
+    kind: str
     title: str
     company: str
     vacancy_id: str | None
-    text: str  # the visible text, to check a message for rejection wording
+    # the visible text, to check a message for rejection wording
+    text: str
 
 
 def _text(html: str) -> str:
-    text = BeautifulSoup(html, "html.parser").get_text(" ")
+    text = bs4.BeautifulSoup(html, "html.parser").get_text(" ")
     return " ".join(_INVISIBLE.sub(" ", text).split())
 
 
 def _kind(subject: str) -> str | None:
-    subject = " ".join(_INVISIBLE.sub(" ", subject).split())  # subjects use no-break spaces
+    # subjects use no-break spaces
+    subject = " ".join(_INVISIBLE.sub(" ", subject).split())
     return next((k for k, pattern in _KINDS if pattern.search(subject)), None)
 
 
@@ -84,25 +84,29 @@ def parse_notice(subject: str, html: str | None) -> Notice | None:
     )
 
 
-@dataclass
+@dataclasses.dataclass
 class HhStats:
+    """Counters of one hh.ru mail import, for the sync status line."""
+
     emails: int = 0
     notices: int = 0
     rejections: int = 0
     messages: int = 0
     vacancies: int = 0
     fetched: int = 0
-    pending: int = 0  # wait for a run with Gmail access
-    gone: int = 0  # deleted from Gmail before the body was read
+    # wait for a run with Gmail access
+    pending: int = 0
+    # deleted from Gmail before the body was read
+    gone: int = 0
 
 
-def _vacancy(session: Session, notice: Notice, company_id: int) -> Opportunity | None:
+def _vacancy(session: sa_orm.Session, notice: Notice, company_id: int) -> models.Opportunity | None:
     if notice.vacancy_id is None:
         return None
     record = session.scalar(
-        select(SourceRecord).where(
-            SourceRecord.source_type == SourceType.HH,
-            SourceRecord.external_id == notice.vacancy_id,
+        sa.select(models.SourceRecord).where(
+            models.SourceRecord.source_type == models.SourceType.HH,
+            models.SourceRecord.external_id == notice.vacancy_id,
         )
     )
     if record is not None:
@@ -112,14 +116,14 @@ def _vacancy(session: Session, notice: Notice, company_id: int) -> Opportunity |
     if opportunity is not None:
         _mark_applied(opportunity)
     else:
-        opportunity = Opportunity(
-            title=notice.title[:255], company_id=company_id, state=OpportunityState.APPLIED
+        opportunity = models.Opportunity(
+            title=notice.title[:255], company_id=company_id, state=models.OpportunityState.APPLIED
         )
         session.add(opportunity)
         session.flush()
     session.add(
-        SourceRecord(
-            source_type=SourceType.HH,
+        models.SourceRecord(
+            source_type=models.SourceType.HH,
             external_id=notice.vacancy_id,
             url=VACANCY_URL.format(id=notice.vacancy_id),
             opportunity=opportunity,
@@ -133,37 +137,39 @@ def _same_title(title: str) -> str:
     return " ".join(title.casefold().split())
 
 
-def _has_hh(opportunity: Opportunity) -> bool:
-    return any(r.source_type is SourceType.HH for r in opportunity.source_records)
+def _has_hh(opportunity: models.Opportunity) -> bool:
+    return any(r.source_type is models.SourceType.HH for r in opportunity.source_records)
 
 
-def same_vacancy(session: Session, company_id: int, title: str) -> Opportunity | None:
+def same_vacancy(session: sa_orm.Session, company_id: int, title: str) -> models.Opportunity | None:
     """The one vacancy of the company with this title and no hh.ru source; None if 0 or 2+."""
     found = [
         o
-        for o in session.scalars(select(Opportunity).where(Opportunity.company_id == company_id))
+        for o in session.scalars(
+            sa.select(models.Opportunity).where(models.Opportunity.company_id == company_id)
+        )
         if _same_title(o.title) == _same_title(title) and not _has_hh(o)
     ]
     return found[0] if len(found) == 1 else None
 
 
-def _mark_applied(opportunity: Opportunity) -> None:
+def _mark_applied(opportunity: models.Opportunity) -> None:
     # An hh.ru notice about a vacancy means you applied to it.
-    if opportunity.state is not OpportunityState.APPLIED:
-        opportunity.state = OpportunityState.APPLIED
+    if opportunity.state is not models.OpportunityState.APPLIED:
+        opportunity.state = models.OpportunityState.APPLIED
         opportunity.auto_ignore_reason = None
 
 
-def merge_hh_duplicates(session: Session, *, apply: bool) -> list[tuple[int, int]]:
+def merge_hh_duplicates(session: sa_orm.Session, *, apply: bool) -> list[tuple[int, int]]:
     """Merge vacancies made from hh.ru notices into the same vacancy from another source.
 
     Returns (kept, merged) pairs; with apply=False nothing changes (a dry run).
     """
     pairs = []
     hh_vacancies = session.scalars(
-        select(Opportunity)
-        .join(SourceRecord)
-        .where(SourceRecord.source_type == SourceType.HH)
+        sa.select(models.Opportunity)
+        .join(models.SourceRecord)
+        .where(models.SourceRecord.source_type == models.SourceType.HH)
         .distinct()
     ).all()
     for dup in hh_vacancies:
@@ -178,8 +184,8 @@ def merge_hh_duplicates(session: Session, *, apply: bool) -> list[tuple[int, int
             continue
         pairs.append((keep.id, dup.id))
         if apply:
-            was_applied = dup.state is OpportunityState.APPLIED
-            merge_opportunities(session, keep, dup)
+            was_applied = dup.state is models.OpportunityState.APPLIED
+            dedup.merge_opportunities(session, keep, dup)
             if was_applied:
                 _mark_applied(keep)
     if apply:
@@ -187,43 +193,50 @@ def merge_hh_duplicates(session: Session, *, apply: bool) -> list[tuple[int, int
     return pairs
 
 
-def _application(session: Session, email: EmailMessage, notice: Notice, company_id: int, o):
+def _application(
+    session: sa_orm.Session, email: models.EmailMessage, notice: Notice, company_id: int, o
+):
     existing = session.scalar(
-        select(Application).where(
-            Application.company_id == company_id,
-            Application.source == ApplicationSource.HH,
-            Application.role == notice.title,
+        sa.select(models.Application).where(
+            models.Application.company_id == company_id,
+            models.Application.source == models.ApplicationSource.HH,
+            models.Application.role == notice.title,
         )
     )
     if existing is not None:
         existing.opportunity_id = existing.opportunity_id or (o.id if o else None)
         return
     session.add(
-        Application(
+        models.Application(
             company_id=company_id,
             opportunity_id=o.id if o else None,
             applied_at=email.sent_at,
             role=notice.title,
-            source=ApplicationSource.HH,
-            review=ApplicationReview.CONFIRMED,
+            source=models.ApplicationSource.HH,
+            review=models.ApplicationReview.CONFIRMED,
             email_message_id=email.id,
             notes="Applied on hh.ru; date unknown, set to the first hh.ru notice about it.",
         )
     )
 
 
-def import_hh_notifications(session: Session, fetch_body: FetchBody | None) -> HhStats:
+def import_hh_notifications(
+    session: sa_orm.Session, fetch_body: linkedin_rejections.FetchBody | None
+) -> HhStats:
     """hh.ru mail not handled yet (or only marked as a rejection without a company)."""
     stats = HhStats()
     emails = session.scalars(
-        select(EmailMessage)
+        sa.select(models.EmailMessage)
         .where(
-            EmailMessage.direction == EmailDirection.IN,
-            EmailMessage.from_addr.like(f"%{SENDER}%"),
-            EmailMessage.company_id.is_(None),
-            or_(EmailMessage.detected_event.is_(None), EmailMessage.detected_event == "rejection"),
+            models.EmailMessage.direction == models.EmailDirection.IN,
+            models.EmailMessage.from_addr.like(f"%{SENDER}%"),
+            models.EmailMessage.company_id.is_(None),
+            sa.or_(
+                models.EmailMessage.detected_event.is_(None),
+                models.EmailMessage.detected_event == "rejection",
+            ),
         )
-        .order_by(EmailMessage.sent_at)
+        .order_by(models.EmailMessage.sent_at)
     ).all()
     for email in emails:
         stats.emails += 1
@@ -237,8 +250,8 @@ def import_hh_notifications(session: Session, fetch_body: FetchBody | None) -> H
             continue
         try:
             html, _ = fetch_body(email.gmail_message_id)
-        except MessageGone:
-            email.detected_event = GONE_EVENT
+        except linkedin_rejections.MessageGone:
+            email.detected_event = linkedin_rejections.GONE_EVENT
             stats.gone += 1
             session.commit()
             continue
@@ -247,30 +260,34 @@ def import_hh_notifications(session: Session, fetch_body: FetchBody | None) -> H
         if notice is None:
             continue
         stats.notices += 1
-        company = get_or_create_company(session, notice.company)
+        company = dedup.get_or_create_company(session, notice.company)
         session.flush()
         email.company_id, email.company_match = company.id, "exact"
-        rejected = notice.kind in ("rejection", "closed") or bool(_REJECTION.search(notice.text))
+        rejected = notice.kind in ("rejection", "closed") or bool(
+            linkedin_rejections._REJECTION.search(notice.text)
+        )
         if not rejected:
             email.detected_event = OUTREACH_EVENT
             stats.messages += 1
             session.commit()
             continue
         known = notice.vacancy_id and session.scalar(
-            select(SourceRecord.id).where(
-                SourceRecord.source_type == SourceType.HH,
-                SourceRecord.external_id == notice.vacancy_id,
+            sa.select(models.SourceRecord.id).where(
+                models.SourceRecord.source_type == models.SourceType.HH,
+                models.SourceRecord.external_id == notice.vacancy_id,
             )
         )
         o = _vacancy(session, notice, company.id)
         stats.vacancies += int(o is not None and not known)
         _application(session, email, notice, company.id, o)
-        if not session.scalar(select(Rejection.id).where(Rejection.email_message_id == email.id)):
-            mark_rejected(
+        if not session.scalar(
+            sa.select(models.Rejection.id).where(models.Rejection.email_message_id == email.id)
+        ):
+            rejections.mark_rejected(
                 session,
                 company_id=company.id,
                 opportunity_id=o.id if o else None,
-                source=RejectionSource.GMAIL,
+                source=models.RejectionSource.GMAIL,
                 role=notice.title,
                 rejected_at=email.sent_at,
                 email_message_id=email.id,

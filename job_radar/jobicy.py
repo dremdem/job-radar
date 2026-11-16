@@ -1,45 +1,59 @@
-"""Fresh Python jobs from the Jobicy public API. See docs/jobicy.md."""
+"""Fresh Python jobs from the Jobicy public API.
 
+``JobicyClient`` reads the API page by page, ``parse_job`` turns an item into a
+``JobicyJob``, ``wants`` keeps developer roles that mention Python, and
+``import_jobicy`` stores the new ones and counts the rest as noise. See docs/jobicy.md.
+
+Usage:
+    import job_radar.jobicy as jobicy
+"""
+
+import dataclasses
+import datetime as dt
 import html
 import json
 import re
 import time
+import typing as t
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .dedup import add_snapshot, get_or_create_company
-from .himalayas import EXCLUDE_TITLE, USER_AGENT, _text
-from .models import Opportunity, SourceRecord, SourceType, SyncCursor
-from .scoring import score_job
-from .telegram.sources import DEFAULT_KEYWORDS, DEFAULT_TITLE
+import job_radar.dedup as dedup
+import job_radar.himalayas as himalayas
+import job_radar.models as models
+import job_radar.scoring as scoring
+import job_radar.telegram.sources as telegram_sources
 
 API_URL = "https://jobicy.com/api/v2/remote-jobs?count=50&tag=python"
 CURSOR = "jobicy"
 MAX_PAGES = 4
 DELAY_SECONDS = 2.0
-FIRST_RUN = timedelta(days=1)
-MARGIN = timedelta(days=1)
+FIRST_RUN = dt.timedelta(days=1)
+MARGIN = dt.timedelta(days=1)
 
 
 class JobicyError(Exception):
+    """The Jobicy API could not be read."""
+
     pass
 
 
-class Client(Protocol):
-    def page(self, cursor: str | None) -> dict[str, Any]: ...
+class Client(t.Protocol):
+    """What the import needs from the Jobicy API: one page of jobs. Tests pass a fake."""
+
+    def page(self, cursor: str | None) -> dict[str, t.Any]: ...
 
 
 class JobicyClient:
-    def page(self, cursor: str | None) -> dict[str, Any]:
+    """The real client over the public Jobicy API."""
+
+    def page(self, cursor: str | None) -> dict[str, t.Any]:
         url = API_URL + (f"&cursor={urllib.parse.quote(cursor)}" if cursor else "")
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        request = urllib.request.Request(url, headers={"User-Agent": himalayas.USER_AGENT})
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 return json.loads(response.read())
@@ -49,15 +63,17 @@ class JobicyClient:
             raise JobicyError(str(e)) from e
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class JobicyJob:
+    """One job from the Jobicy API, in the shape the import stores."""
+
     id: str
     url: str
     title: str
     company: str
     location: str
     description: str
-    published_at: datetime
+    published_at: dt.datetime
 
 
 def _location(geo: str) -> str:
@@ -67,29 +83,35 @@ def _location(geo: str) -> str:
     return ", ".join(["Remote", *regions])
 
 
-def parse_job(raw: dict[str, Any]) -> JobicyJob:
+def parse_job(raw: dict[str, t.Any]) -> JobicyJob:
     return JobicyJob(
         id=str(raw["id"]),
         url=str(raw.get("url") or f"https://jobicy.com/jobs/{raw['id']}"),
         title=" ".join(html.unescape(str(raw.get("jobTitle") or "")).split()),
         company=" ".join(html.unescape(str(raw.get("companyName") or "")).split()),
         location=_location(html.unescape(str(raw.get("jobGeo") or ""))),
-        description=_text(str(raw.get("jobDescription") or raw.get("jobExcerpt") or "")),
-        published_at=datetime.fromisoformat(str(raw["pubDate"])).astimezone(UTC),
+        description=himalayas._text(str(raw.get("jobDescription") or raw.get("jobExcerpt") or "")),
+        published_at=dt.datetime.fromisoformat(str(raw["pubDate"])).astimezone(dt.UTC),
     )
 
 
 def wants(job: JobicyJob) -> bool:
     """A developer role (title filter) that mentions Python somewhere."""
-    if not re.search(DEFAULT_TITLE, job.title, re.IGNORECASE):
+    if not re.search(telegram_sources.DEFAULT_TITLE, job.title, re.IGNORECASE):
         return False
-    if re.search(EXCLUDE_TITLE, job.title, re.IGNORECASE):
+    if re.search(himalayas.EXCLUDE_TITLE, job.title, re.IGNORECASE):
         return False
-    return bool(re.search(DEFAULT_KEYWORDS, f"{job.title}\n{job.description}", re.IGNORECASE))
+    return bool(
+        re.search(
+            telegram_sources.DEFAULT_KEYWORDS, f"{job.title}\n{job.description}", re.IGNORECASE
+        )
+    )
 
 
-@dataclass
+@dataclasses.dataclass
 class JobicyStats:
+    """Counters of one import, for the sync status line."""
+
     pages: int = 0
     jobs: int = 0
     new: int = 0
@@ -98,40 +120,43 @@ class JobicyStats:
     error: str | None = None
 
 
-def _add(session: Session, job: JobicyJob) -> None:
-    from .auto_ignore import apply_rules
+def _add(session: sa_orm.Session, job: JobicyJob) -> None:
+    import job_radar.auto_ignore as auto_ignore
 
-    score = score_job(job.title, job.location)
-    opportunity = Opportunity(
+    score = scoring.score_job(job.title, job.location)
+    opportunity = models.Opportunity(
         title=job.title[:255],
-        company=get_or_create_company(session, job.company or f"Unknown (Jobicy {job.id})"),
+        company=dedup.get_or_create_company(session, job.company or f"Unknown (Jobicy {job.id})"),
         location=job.location,
         score=score.value,
         score_reasons=[r.as_dict() for r in score.reasons],
     )
-    record = SourceRecord(
-        source_type=SourceType.JOBICY, external_id=job.id, url=job.url, opportunity=opportunity
+    record = models.SourceRecord(
+        source_type=models.SourceType.JOBICY,
+        external_id=job.id,
+        url=job.url,
+        opportunity=opportunity,
     )
     session.add(record)
     session.flush()
     if job.description:
-        add_snapshot(session, record, job.description)
+        dedup.add_snapshot(session, record, job.description)
     session.refresh(opportunity)
-    apply_rules(session, opportunity)
+    auto_ignore.apply_rules(session, opportunity)
 
 
 def import_jobicy(
-    session: Session,
+    session: sa_orm.Session,
     client: Client,
     *,
-    now: datetime | None = None,
+    now: dt.datetime | None = None,
     max_pages: int = MAX_PAGES,
     delay: float = DELAY_SECONDS,
 ) -> JobicyStats:
-    now = now or datetime.now(UTC)
-    state = session.get(SyncCursor, CURSOR)
+    now = now or dt.datetime.now(dt.UTC)
+    state = session.get(models.SyncCursor, CURSOR)
     if state and state.last_run_at:
-        since = state.last_run_at.replace(tzinfo=state.last_run_at.tzinfo or UTC) - MARGIN
+        since = state.last_run_at.replace(tzinfo=state.last_run_at.tzinfo or dt.UTC) - MARGIN
     else:
         since = now - FIRST_RUN
     stats = JobicyStats()
@@ -153,9 +178,9 @@ def import_jobicy(
             if not wants(job):
                 stats.skipped += 1
             elif session.scalar(
-                select(SourceRecord.id).where(
-                    SourceRecord.source_type == SourceType.JOBICY,
-                    SourceRecord.external_id == job.id,
+                sa.select(models.SourceRecord.id).where(
+                    models.SourceRecord.source_type == models.SourceType.JOBICY,
+                    models.SourceRecord.external_id == job.id,
                 )
             ):
                 stats.known += 1
@@ -169,7 +194,7 @@ def import_jobicy(
         if not jobs or not cursor or not more or any(j.published_at < since for j in jobs):
             break
     if not stats.error:
-        state = state or SyncCursor(name=CURSOR)
+        state = state or models.SyncCursor(name=CURSOR)
         state.last_run_at = now
         session.add(state)
         session.commit()

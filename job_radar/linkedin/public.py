@@ -1,39 +1,38 @@
-"""Opt-in: first page of LinkedIn's public (guest) job search for each new alert search.
+"""Opt-in: LinkedIn's public (guest) job search and job pages, without login.
 
-Plain HTTP without login, cookies or a browser. Stops for the day on the first sign of
-blocking. See docs/linkedin-public-search.md and the LinkedIn rule in CLAUDE.md.
+``import_public_search`` reads the first page of the search behind each new alert email;
+``import_public_descriptions`` reads the public page of To review vacancies without a
+description. Plain HTTP without login, cookies or a browser, with random pauses between
+requests; the run stops for the day on the first sign of blocking, and every request is
+logged in ``LinkedInFetch``. See docs/linkedin-public-search.md and the LinkedIn rule in
+CLAUDE.md.
+
+Usage:
+    import job_radar.linkedin.public as linkedin_public
 """
 
+import collections.abc as cabc
+import dataclasses
+import datetime as dt
 import random
 import re
 import threading
 import time
 import urllib.error
+import urllib.parse as urllib_parse
 import urllib.request
-from collections.abc import Callable
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime, timedelta
-from urllib.parse import parse_qs, urlencode, urlparse
 
-from bs4 import BeautifulSoup
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+import bs4
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..models import (
-    AppSetting,
-    EmailMessage,
-    LinkedInFetch,
-    Opportunity,
-    OpportunityState,
-    SourceRecord,
-    SourceType,
-)
-from .alerts import ALERT_SENDER, AlertJob, add_linkedin_job
+import job_radar.linkedin.alerts as linkedin_alerts
+import job_radar.models as models
 
 GUEST_SEARCH = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 GUEST_POSTING = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
 PAGE_SIZE = 10
-ALERT_MAX_AGE = timedelta(days=3)
+ALERT_MAX_AGE = dt.timedelta(days=3)
 MIN_RANGE, MAX_RANGE = 3600, 7 * 24 * 3600
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -44,12 +43,12 @@ _CHALLENGE = re.compile(r"challenge|captcha", re.IGNORECASE)
 _JOB_URN = re.compile(r"jobPosting:(\d+)")
 
 # (status, final url after redirects, body)
-HttpGet = Callable[[str], tuple[int, str, str]]
+HttpGet = cabc.Callable[[str], tuple[int, str, str]]
 PAUSE_KEY = "linkedin"
 STOPPED_BY_YOU = "stopped by you"
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class PauseSettings:
     """Random pause between guest requests, seconds; edited on Settings (#205)."""
 
@@ -57,41 +56,44 @@ class PauseSettings:
     pause_to: float = 40.0
 
 
-def load_pause(session: Session) -> PauseSettings:
-    row = session.get(AppSetting, PAUSE_KEY)
+def load_pause(session: sa_orm.Session) -> PauseSettings:
+    row = session.get(models.AppSetting, PAUSE_KEY)
     if row is None or not isinstance(row.value, dict):
         return PauseSettings()
     known = {k: v for k, v in row.value.items() if k in PauseSettings.__dataclass_fields__}
     return PauseSettings(**known)
 
 
-def save_pause(session: Session, value: PauseSettings) -> None:
-    row = session.get(AppSetting, PAUSE_KEY) or AppSetting(key=PAUSE_KEY)
-    row.value = asdict(value)
+def save_pause(session: sa_orm.Session, value: PauseSettings) -> None:
+    row = session.get(models.AppSetting, PAUSE_KEY) or models.AppSetting(key=PAUSE_KEY)
+    row.value = dataclasses.asdict(value)
     session.add(row)
     session.commit()
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Search:
+    """The search behind an alert: keywords, geo id and time range."""
+
     keywords: str
     geo_id: str | None
-    time_range: str  # guest f_TPR, e.g. "r86400"
+    # guest f_TPR, e.g. "r86400"
+    time_range: str
 
     def url(self, start: int) -> str:
         params = {"keywords": self.keywords, "f_TPR": self.time_range, "start": start}
         if self.geo_id:
             params["geoId"] = self.geo_id
-        return f"{GUEST_SEARCH}?{urlencode(params)}"
+        return f"{GUEST_SEARCH}?{urllib_parse.urlencode(params)}"
 
 
-def search_from_alert(html: str, *, now: datetime) -> Search | None:
+def search_from_alert(html: str, *, now: dt.datetime) -> Search | None:
     """The search behind an alert email; only keywords, geoId and period are kept."""
-    for a in BeautifulSoup(html, "html.parser").find_all("a", href=True):
-        url = urlparse(a["href"])
+    for a in bs4.BeautifulSoup(html, "html.parser").find_all("a", href=True):
+        url = urllib_parse.urlparse(a["href"])
         if "/jobs/search" not in url.path:
             continue
-        query = parse_qs(url.query)
+        query = urllib_parse.parse_qs(url.query)
         if not query.get("keywords"):
             continue
         period = (query.get("f_TPR") or [""])[0]
@@ -111,16 +113,16 @@ def _text(card, selector: str) -> str | None:
     return node.get_text(" ", strip=True) if node else None
 
 
-def parse_search_page(html: str) -> list[AlertJob]:
+def parse_search_page(html: str) -> list[linkedin_alerts.AlertJob]:
     jobs = []
-    for card in BeautifulSoup(html, "html.parser").select("[data-entity-urn]"):
+    for card in bs4.BeautifulSoup(html, "html.parser").select("[data-entity-urn]"):
         match = _JOB_URN.search(card["data-entity-urn"])
         title = _text(card, ".base-search-card__title")
         company = _text(card, ".base-search-card__subtitle")
         if not (match and title and company):
             continue
         jobs.append(
-            AlertJob(
+            linkedin_alerts.AlertJob(
                 job_id=match.group(1),
                 title=title,
                 company=company,
@@ -133,6 +135,8 @@ def parse_search_page(html: str) -> list[AlertJob]:
 
 
 class Blocked(Exception):
+    """LinkedIn showed a sign of blocking (authwall, 429, 999); stop for the day."""
+
     def __init__(self, http_status: int | None, reason: str):
         super().__init__(reason)
         self.http_status = http_status
@@ -143,6 +147,8 @@ class Stopped(Exception):
 
 
 class FetchError(Exception):
+    """One request failed for another reason; the run goes on."""
+
     def __init__(self, http_status: int | None):
         super().__init__(f"HTTP {http_status}")
         self.http_status = http_status
@@ -161,14 +167,16 @@ def urllib_get(url: str) -> tuple[int, str, str]:
 
 
 class PublicSearchClient:
+    """Plain HTTPS client for the guest search and job pages, with pauses."""
+
     def __init__(
         self,
         http_get: HttpGet = urllib_get,
-        sleep: Callable[[float], object] | None = None,
+        sleep: cabc.Callable[[float], object] | None = None,
         pause: tuple[float, float] = (PauseSettings.pause_from, PauseSettings.pause_to),
-        rand: Callable[[float, float], float] = random.uniform,
+        rand: cabc.Callable[[float, float], float] = random.uniform,
         stop: threading.Event | None = None,
-        on_wait: Callable[[float], None] | None = None,
+        on_wait: cabc.Callable[[float], None] | None = None,
     ):
         """``stop``: Stop pressed in the web UI; it also cuts the pause short.
         ``on_wait`` hears each pause before it starts, for the progress line."""
@@ -187,7 +195,7 @@ class PublicSearchClient:
         else:
             time.sleep(seconds)
 
-    def _request(self, url: str, has_content: Callable[[str], bool]) -> tuple[int, str]:
+    def _request(self, url: str, has_content: cabc.Callable[[str], bool]) -> tuple[int, str]:
         """(http status, body); raises Blocked on any sign of blocking, Stopped on Stop."""
         if self._stop is not None and self._stop.is_set():
             raise Stopped
@@ -199,7 +207,9 @@ class PublicSearchClient:
         status, final_url, body = self._get(url)
         if status in (429, 999):
             raise Blocked(status, f"HTTP {status}")
-        if _BLOCK_URL.search(urlparse(final_url).path or "") or _BLOCK_URL.search(final_url):
+        if _BLOCK_URL.search(urllib_parse.urlparse(final_url).path or "") or _BLOCK_URL.search(
+            final_url
+        ):
             raise Blocked(status, "redirected to login")
         if status != 200:
             raise FetchError(status)
@@ -215,8 +225,10 @@ class PublicSearchClient:
         return self._request(url, lambda body: parse_job_posting(body) is not None)
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class JobPosting:
+    """A vacancy's public page: title, company, location and description."""
+
     title: str
     company: str
     location: str | None
@@ -225,7 +237,7 @@ class JobPosting:
 
 def parse_job_posting(html: str) -> JobPosting | None:
     """A vacancy's public page: title, company, location and the full description."""
-    soup = BeautifulSoup(html, "html.parser")
+    soup = bs4.BeautifulSoup(html, "html.parser")
     markup = soup.select_one(".show-more-less-html__markup")
     if markup is None:
         return None
@@ -240,8 +252,10 @@ def parse_job_posting(html: str) -> JobPosting | None:
     )
 
 
-@dataclass
+@dataclasses.dataclass
 class PublicSearchStats:
+    """Counters of one guest search run."""
+
     searches: int = 0
     requests: int = 0
     jobs: int = 0
@@ -250,47 +264,49 @@ class PublicSearchStats:
     errors: int = 0
 
 
-def _day_start(now: datetime) -> datetime:
-    return now.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+def _day_start(now: dt.datetime) -> dt.datetime:
+    return now.astimezone(dt.UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def import_public_search(
-    session: Session,
+    session: sa_orm.Session,
     client: PublicSearchClient,
     *,
-    now: datetime | None = None,
+    now: dt.datetime | None = None,
     max_searches: int = 5,
     max_jobs: int = 25,
 ) -> PublicSearchStats:
-    now = now or datetime.now(UTC)
+    now = now or dt.datetime.now(dt.UTC)
     stats = PublicSearchStats()
     today = _day_start(now)
-    fetches_today = select(LinkedInFetch).where(LinkedInFetch.at >= today)
-    if session.scalar(fetches_today.where(LinkedInFetch.status == "blocked").limit(1)):
+    fetches_today = sa.select(models.LinkedInFetch).where(models.LinkedInFetch.at >= today)
+    if session.scalar(fetches_today.where(models.LinkedInFetch.status == "blocked").limit(1)):
         stats.blocked = True
         return stats
     done_today = session.scalar(
-        select(func.count())
-        .select_from(LinkedInFetch)
+        sa.select(sa.func.count())
+        .select_from(models.LinkedInFetch)
         .where(
-            LinkedInFetch.kind == "search",
-            LinkedInFetch.at >= today,
-            LinkedInFetch.start == 0,
-            LinkedInFetch.status == "ok",
+            models.LinkedInFetch.kind == "search",
+            models.LinkedInFetch.at >= today,
+            models.LinkedInFetch.start == 0,
+            models.LinkedInFetch.status == "ok",
         )
     )
-    searched = select(LinkedInFetch.email_message_id).where(
-        LinkedInFetch.kind == "search", LinkedInFetch.start == 0, LinkedInFetch.status == "ok"
+    searched = sa.select(models.LinkedInFetch.email_message_id).where(
+        models.LinkedInFetch.kind == "search",
+        models.LinkedInFetch.start == 0,
+        models.LinkedInFetch.status == "ok",
     )
     alerts = session.scalars(
-        select(EmailMessage)
+        sa.select(models.EmailMessage)
         .where(
-            EmailMessage.from_addr.contains(ALERT_SENDER),
-            EmailMessage.body_html.is_not(None),
-            EmailMessage.sent_at >= now - ALERT_MAX_AGE,
-            EmailMessage.id.not_in(searched),
+            models.EmailMessage.from_addr.contains(linkedin_alerts.ALERT_SENDER),
+            models.EmailMessage.body_html.is_not(None),
+            models.EmailMessage.sent_at >= now - ALERT_MAX_AGE,
+            models.EmailMessage.id.not_in(searched),
         )
-        .order_by(EmailMessage.sent_at.desc())
+        .order_by(models.EmailMessage.sent_at.desc())
     ).all()
 
     for alert in alerts:
@@ -303,7 +319,7 @@ def import_public_search(
         taken = 0
         start = 0
         while taken < max_jobs:
-            log = LinkedInFetch(
+            log = models.LinkedInFetch(
                 at=now,
                 email_message_id=alert.id,
                 keywords=search.keywords,
@@ -328,7 +344,9 @@ def import_public_search(
             for job in page[: max_jobs - taken]:
                 taken += 1
                 stats.jobs += 1
-                if add_linkedin_job(session, job, SourceType.LINKEDIN_SEARCH, remote_known=False):
+                if linkedin_alerts.add_linkedin_job(
+                    session, job, models.SourceType.LINKEDIN_SEARCH, remote_known=False
+                ):
                     stats.new += 1
             session.commit()
             if len(page) < PAGE_SIZE:
@@ -338,51 +356,60 @@ def import_public_search(
     return stats
 
 
-@dataclass
+@dataclasses.dataclass
 class DescriptionStats:
-    total: int = 0  # vacancies this run will try, within the daily limit
+    """Counters and the stop reason of one public description run."""
+
+    # vacancies this run will try, within the daily limit
+    total: int = 0
     requests: int = 0
     saved: int = 0
     errors: int = 0
     blocked: bool = False
-    reason: str | None = None  # why LinkedIn blocked, e.g. "HTTP 429"
-    stopped: bool = False  # by the user
+    # why LinkedIn blocked, e.g. "HTTP 429"
+    reason: str | None = None
+    # by the user
+    stopped: bool = False
     limit_reached: bool = False
 
 
-def _without_description(session: Session) -> list[tuple[Opportunity, SourceRecord]]:
+def _without_description(
+    session: sa_orm.Session,
+) -> list[tuple[models.Opportunity, models.SourceRecord]]:
     """To review vacancies seen on LinkedIn that have no description yet, best score first."""
-    from .alerts import LINKEDIN_SOURCES
+    import job_radar.linkedin.alerts as linkedin_alerts
 
     rows = session.scalars(
-        select(Opportunity).where(Opportunity.state == OpportunityState.NEW)
+        sa.select(models.Opportunity).where(models.Opportunity.state == models.OpportunityState.NEW)
     ).all()
     out = []
     for o in rows:
         if any(r.snapshots for r in o.source_records):
             continue
-        record = next((r for r in o.source_records if r.source_type in LINKEDIN_SOURCES), None)
+        record = next(
+            (r for r in o.source_records if r.source_type in linkedin_alerts.LINKEDIN_SOURCES), None
+        )
         if record is not None and record.external_id.isdigit():
             out.append((o, record))
     return sorted(out, key=lambda pair: -(pair[0].score if pair[0].score is not None else -1))
 
 
 def import_public_descriptions(
-    session: Session,
+    session: sa_orm.Session,
     client: PublicSearchClient,
     *,
-    now: datetime | None = None,
+    now: dt.datetime | None = None,
     max_per_day: int = 100,
-    on_progress: Callable[[DescriptionStats], None] | None = None,
+    on_progress: cabc.Callable[[DescriptionStats], None] | None = None,
 ) -> DescriptionStats:
     """Description from the public job page for To review vacancies without one. Opt-in; see
     docs/linkedin-public-search.md#descriptions-public-job-page. Every request is logged with
     its vacancy, time and, when not ok, the reason (#205)."""
-    from ..auto_ignore import apply_rules
-    from ..dedup import add_snapshot
+    import job_radar.auto_ignore as auto_ignore
+    import job_radar.dedup as dedup
 
-    def stamp() -> datetime:
-        return now or datetime.now(UTC)
+    def stamp() -> dt.datetime:
+        return now or dt.datetime.now(dt.UTC)
 
     def progress() -> None:
         if on_progress:
@@ -391,20 +418,20 @@ def import_public_descriptions(
     stats = DescriptionStats()
     today = _day_start(stamp())
     block = session.scalar(
-        select(LinkedInFetch)
-        .where(LinkedInFetch.at >= today, LinkedInFetch.status == "blocked")
+        sa.select(models.LinkedInFetch)
+        .where(models.LinkedInFetch.at >= today, models.LinkedInFetch.status == "blocked")
         .limit(1)
     )
     if block is not None:
         stats.blocked, stats.reason = True, block.detail or _status_text(block.http_status)
         return stats
     done = session.scalar(
-        select(func.count())
-        .select_from(LinkedInFetch)
+        sa.select(sa.func.count())
+        .select_from(models.LinkedInFetch)
         .where(
-            LinkedInFetch.kind == "description",
-            LinkedInFetch.at >= today,
-            LinkedInFetch.status != "stopped",
+            models.LinkedInFetch.kind == "description",
+            models.LinkedInFetch.at >= today,
+            models.LinkedInFetch.status != "stopped",
         )
     )
     waiting = _without_description(session)
@@ -412,7 +439,7 @@ def import_public_descriptions(
     stats.total, stats.limit_reached = len(todo), len(todo) < len(waiting)
     progress()
     for opportunity, record in todo:
-        log = LinkedInFetch(
+        log = models.LinkedInFetch(
             kind="description", job_id=record.external_id, start=0, opportunity_id=opportunity.id
         )
         try:
@@ -436,10 +463,10 @@ def import_public_descriptions(
                 stats.errors += 1
             else:
                 log.status, log.jobs = "ok", 1
-                add_snapshot(session, record, posting.description)
+                dedup.add_snapshot(session, record, posting.description)
                 stats.saved += 1
                 session.refresh(opportunity)
-                apply_rules(session, opportunity)
+                auto_ignore.apply_rules(session, opportunity)
         log.at = stamp()
         session.add(log)
         stats.requests += 1

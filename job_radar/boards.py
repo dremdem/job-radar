@@ -1,33 +1,40 @@
 """Small remote job boards with a public feed: Remotive, Working Nomads, We Work Remotely.
 
-Each brings a few Python jobs a month, so they share one sync step. See docs/boards.md.
+Each board brings a few Python jobs a month, so they share one sync step. A ``Board``
+describes one feed (its URLs and parser); ``parse_remotive``, ``parse_workingnomads`` and
+``parse_weworkremotely`` turn a feed into ``BoardJob`` items, ``wants`` keeps developer
+roles that mention Python, and ``import_boards`` stores new ones, each board on its own so
+a failed board does not stop the others. See docs/boards.md.
+
+Usage:
+    import job_radar.boards as boards
 """
 
+import collections.abc as cabc
+import dataclasses
+import datetime as dt
+import email.utils as email_utils
 import json
 import re
+import typing as t
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
-from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from email.utils import parsedate_to_datetime
-from typing import Protocol
 
-from defusedxml import DefusedXmlException
-from defusedxml import ElementTree as DET
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import defusedxml
+import defusedxml.ElementTree as defusedxml_ElementTree
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .dedup import add_snapshot, get_or_create_company
-from .himalayas import EXCLUDE_TITLE, USER_AGENT, _text
-from .models import Opportunity, SourceRecord, SourceType, SyncCursor
-from .scoring import score_job
-from .telegram.sources import DEFAULT_KEYWORDS, DEFAULT_TITLE
+import job_radar.dedup as dedup
+import job_radar.himalayas as himalayas
+import job_radar.models as models
+import job_radar.scoring as scoring
+import job_radar.telegram.sources as telegram_sources
 
-MAX_AGE = timedelta(days=30)
+MAX_AGE = dt.timedelta(days=30)
 # The feeds change a few times a day; Remotive asks for at most 4 requests a day.
-MIN_INTERVAL = timedelta(hours=6)
+MIN_INTERVAL = dt.timedelta(hours=6)
 # Lemon.io and the like list Python in every post's boilerplate: a title that names
 # another stack and no Python is not a Python job.
 OTHER_STACK_TITLE = re.compile(
@@ -40,16 +47,22 @@ _WORLDWIDE = re.compile(r"^(worldwide|anywhere( in the world)?|global)$", re.IGN
 
 
 class BoardError(Exception):
+    """A board's feed could not be read or parsed."""
+
     pass
 
 
-class Client(Protocol):
+class Client(t.Protocol):
+    """What the import needs from HTTP: the bytes at a URL. Tests pass a fake."""
+
     def get(self, url: str) -> bytes: ...
 
 
 class HttpClient:
+    """The real client: plain HTTPS GET with a timeout."""
+
     def get(self, url: str) -> bytes:
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        request = urllib.request.Request(url, headers={"User-Agent": himalayas.USER_AGENT})
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 return response.read()
@@ -59,8 +72,10 @@ class HttpClient:
             raise BoardError(str(e)) from e
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class BoardJob:
+    """One job from a board feed, in the shape the import stores."""
+
     id: str
     url: str
     title: str
@@ -69,7 +84,7 @@ class BoardJob:
     salary: str | None
     description: str
     tags: str
-    published_at: datetime
+    published_at: dt.datetime
 
 
 def location(place: str) -> str:
@@ -79,8 +94,8 @@ def location(place: str) -> str:
     return f"Remote, {place}"
 
 
-def _utc(value: datetime) -> datetime:
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+def _utc(value: dt.datetime) -> dt.datetime:
+    return value.replace(tzinfo=dt.UTC) if value.tzinfo is None else value.astimezone(dt.UTC)
 
 
 def parse_remotive(data: bytes) -> list[BoardJob]:
@@ -96,10 +111,10 @@ def parse_remotive(data: bytes) -> list[BoardJob]:
             company=" ".join(str(raw.get("company_name") or "").split()),
             location=location(str(raw.get("candidate_required_location") or "")),
             salary=str(raw.get("salary") or "").strip() or None,
-            description=_text(str(raw.get("description") or "")),
-            tags=" ".join(str(t) for t in raw.get("tags") or []),
+            description=himalayas._text(str(raw.get("description") or "")),
+            tags=" ".join(str(tag) for tag in raw.get("tags") or []),
             # Remotive gives UTC without an offset.
-            published_at=_utc(datetime.fromisoformat(str(raw["publication_date"]))),
+            published_at=_utc(dt.datetime.fromisoformat(str(raw["publication_date"]))),
         )
         for raw in jobs
     ]
@@ -123,9 +138,9 @@ def parse_workingnomads(data: bytes) -> list[BoardJob]:
                 company=" ".join(str(raw.get("company_name") or "").split()),
                 location=location(str(raw.get("location") or "")),
                 salary=None,
-                description=_text(str(raw.get("description") or "")),
+                description=himalayas._text(str(raw.get("description") or "")),
                 tags=f"{raw.get('tags') or ''} {raw.get('category_name') or ''}",
-                published_at=_utc(datetime.fromisoformat(str(raw["pub_date"]))),
+                published_at=_utc(dt.datetime.fromisoformat(str(raw["pub_date"]))),
             )
         )
     return out
@@ -133,8 +148,8 @@ def parse_workingnomads(data: bytes) -> list[BoardJob]:
 
 def parse_weworkremotely(data: bytes) -> list[BoardJob]:
     try:
-        root = DET.fromstring(data)
-    except (ET.ParseError, DefusedXmlException) as e:
+        root = defusedxml_ElementTree.fromstring(data)
+    except (ET.ParseError, defusedxml.DefusedXmlException) as e:
         raise BoardError(f"unexpected We Work Remotely feed: {e}") from e
     out = []
     for item in root.iter("item"):
@@ -153,42 +168,44 @@ def parse_weworkremotely(data: bytes) -> list[BoardJob]:
                 company=" ".join(company.split()),
                 location=location(place),
                 salary=None,
-                description=_text(text.get("description", "")),
+                description=himalayas._text(text.get("description", "")),
                 tags=f"{text.get('skills', '')} {text.get('category', '')}",
-                published_at=_utc(parsedate_to_datetime(text["pubDate"])),
+                published_at=_utc(email_utils.parsedate_to_datetime(text["pubDate"])),
             )
         )
     return out
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Board:
+    """One board: its key, label, source type, feed URLs and parser."""
+
     key: str
     label: str
-    source_type: SourceType
+    source_type: models.SourceType
     urls: tuple[str, ...]
-    parse: Callable[[bytes], list[BoardJob]]
+    parse: cabc.Callable[[bytes], list[BoardJob]]
 
 
 BOARDS = (
     Board(
         "remotive",
         "Remotive",
-        SourceType.REMOTIVE,
+        models.SourceType.REMOTIVE,
         ("https://remotive.com/api/remote-jobs?category=software-dev",),
         parse_remotive,
     ),
     Board(
         "workingnomads",
         "Working Nomads",
-        SourceType.WORKINGNOMADS,
+        models.SourceType.WORKINGNOMADS,
         ("https://www.workingnomads.com/api/exposed_jobs/",),
         parse_workingnomads,
     ),
     Board(
         "weworkremotely",
         "We Work Remotely",
-        SourceType.WEWORKREMOTELY,
+        models.SourceType.WEWORKREMOTELY,
         (
             "https://weworkremotely.com/categories/remote-back-end-programming-jobs.rss",
             "https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss",
@@ -200,59 +217,64 @@ BOARDS = (
 
 def wants(job: BoardJob) -> bool:
     """A developer role (title filter) that mentions Python somewhere."""
-    if not re.search(DEFAULT_TITLE, job.title, re.IGNORECASE):
+    if not re.search(telegram_sources.DEFAULT_TITLE, job.title, re.IGNORECASE):
         return False
-    if re.search(EXCLUDE_TITLE, job.title, re.IGNORECASE):
+    if re.search(himalayas.EXCLUDE_TITLE, job.title, re.IGNORECASE):
         return False
     if OTHER_STACK_TITLE.search(job.title) and not re.search(
-        DEFAULT_KEYWORDS, job.title, re.IGNORECASE
+        telegram_sources.DEFAULT_KEYWORDS, job.title, re.IGNORECASE
     ):
         return False
     text = "\n".join([job.title, job.tags, job.description])
-    return bool(re.search(DEFAULT_KEYWORDS, text, re.IGNORECASE))
+    return bool(re.search(telegram_sources.DEFAULT_KEYWORDS, text, re.IGNORECASE))
 
 
-@dataclass
+@dataclasses.dataclass
 class BoardStats:
+    """Counters of one board's import, for the sync status line."""
+
     label: str
     jobs: int = 0
     old: int = 0
     new: int = 0
     known: int = 0
     skipped: int = 0
-    waited: bool = False  # read less than MIN_INTERVAL ago
+    # read less than MIN_INTERVAL ago
+    waited: bool = False
     error: str | None = None
 
 
-def _add(session: Session, board: Board, job: BoardJob) -> None:
-    from .auto_ignore import apply_rules
+def _add(session: sa_orm.Session, board: Board, job: BoardJob) -> None:
+    import job_radar.auto_ignore as auto_ignore
 
-    score = score_job(job.title, job.location)
-    opportunity = Opportunity(
+    score = scoring.score_job(job.title, job.location)
+    opportunity = models.Opportunity(
         title=job.title[:255],
-        company=get_or_create_company(session, job.company or f"Unknown ({board.label} {job.id})"),
+        company=dedup.get_or_create_company(
+            session, job.company or f"Unknown ({board.label} {job.id})"
+        ),
         location=job.location,
         salary=job.salary,
         score=score.value,
         score_reasons=[r.as_dict() for r in score.reasons],
     )
-    record = SourceRecord(
+    record = models.SourceRecord(
         source_type=board.source_type, external_id=job.id, url=job.url, opportunity=opportunity
     )
     session.add(record)
     session.flush()
     if job.description:
-        add_snapshot(session, record, job.description)
+        dedup.add_snapshot(session, record, job.description)
     session.refresh(opportunity)
-    apply_rules(session, opportunity)
+    auto_ignore.apply_rules(session, opportunity)
 
 
 def import_board(
-    session: Session, board: Board, client: Client, *, now: datetime | None = None
+    session: sa_orm.Session, board: Board, client: Client, *, now: dt.datetime | None = None
 ) -> BoardStats:
-    now = now or datetime.now(UTC)
+    now = now or dt.datetime.now(dt.UTC)
     stats = BoardStats(board.label)
-    state = session.get(SyncCursor, f"board:{board.key}")
+    state = session.get(models.SyncCursor, f"board:{board.key}")
     if state and state.last_run_at and now - _utc(state.last_run_at) < MIN_INTERVAL:
         stats.waited = True
         return stats
@@ -265,7 +287,8 @@ def import_board(
         return stats
     seen: set[str] = set()
     for job in jobs:
-        if job.id in seen:  # the same job in two categories
+        # the same job in two categories
+        if job.id in seen:
             continue
         seen.add(job.id)
         stats.jobs += 1
@@ -274,16 +297,16 @@ def import_board(
         elif not wants(job):
             stats.skipped += 1
         elif session.scalar(
-            select(SourceRecord.id).where(
-                SourceRecord.source_type == board.source_type,
-                SourceRecord.external_id == job.id,
+            sa.select(models.SourceRecord.id).where(
+                models.SourceRecord.source_type == board.source_type,
+                models.SourceRecord.external_id == job.id,
             )
         ):
             stats.known += 1
         else:
             _add(session, board, job)
             stats.new += 1
-    state = state or SyncCursor(name=f"board:{board.key}")
+    state = state or models.SyncCursor(name=f"board:{board.key}")
     state.last_run_at = now
     session.add(state)
     session.commit()
@@ -291,7 +314,7 @@ def import_board(
 
 
 def import_boards(
-    session: Session, client: Client, *, now: datetime | None = None
+    session: sa_orm.Session, client: Client, *, now: dt.datetime | None = None
 ) -> list[BoardStats]:
     """Every board on its own: a failed board does not stop the others."""
     return [import_board(session, board, client, now=now) for board in BOARDS]
