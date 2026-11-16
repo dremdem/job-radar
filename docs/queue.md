@@ -11,7 +11,7 @@ The main page (`/`) lists opportunities in tabs:
 | **Auto-ignored** | `auto_ignore`: set by the rules in [settings.md](settings.md), with the reason | `/?tab=auto` |
 | **All** | everything | `/?tab=all` |
 
-**Layout (#158): an inbox.**
+**Layout: an inbox.**
 
 - **Header:** the tabs (each with its count), a search box, **Analyze…**, **Sync**, **Descriptions** and the Claude status.
 - **Left: the list.** One compact item per vacancy: the score, colour-coded (green from 8, amber from 6, red below), the title, company · location, and one line that says the most useful thing. That is Claude's verdict ("Claude: apply · 82%"), a suggested reason to ignore ("ignore? only India"), "no description" or "not analyzed".
@@ -25,11 +25,11 @@ The main page (`/`) lists opportunities in tabs:
 
 **The country** is the last part of the location ("Lucknow, Uttar Pradesh, India" → India, "Germany (Remote)" → Germany).
 
-**Analyze…** opens a dialog with **Score from**, a list from 1.0 to 10.0 in steps of 0.5 (6.5 by default; the value you set is remembered in this browser). It shows how many vacancies of the list qualify — a description, that score or more, no Claude analysis yet — and lists them, or, when none does, why: how many lack a description, score lower or are already analysed. A **Skipped** line always counts what stays out: already analysed (every vacancy with a Claude chat has an analysis, so it is never re-run; use **Analyze again** in its panel for that), without a description, below the score (#190). **Start** queues them, and a notice lists what went to the Claude queue; it hides by itself after 10 seconds or with **Close** (#174).
+**Analyze…** opens a dialog with **Score from**, a list from 1.0 to 10.0 in steps of 0.5 (6.5 by default; the value you set is remembered in this browser). It shows how many vacancies of the list qualify — a description, that score or more, no Claude analysis yet — and lists them, or, when none does, why: how many lack a description, score lower or are already analysed. A **Skipped** line always counts what stays out: already analysed (every vacancy with a Claude chat has an analysis, so it is never re-run; use **Analyze again** in its panel for that), without a description, below the score. **Start** queues them, and a notice lists what went to the Claude queue; it hides by itself after 10 seconds or with **Close**.
 
 ## Triage and keyboard
 
-Pick a vacancy in the list, read the panel, decide. After **interested**, **ignore**, **applied** or an ignore reason, the list and the counts update. When the vacancy leaves the tab, the panel opens the **next** one, so you can go through the tab one by one. After the last one the panel and the list are empty: "Nothing left in this tab" (#166). The vacancy in the panel is always the current one, even if its list item was redrawn meanwhile.
+Pick a vacancy in the list, read the panel, decide. After **interested**, **ignore**, **applied** or an ignore reason, the list and the counts update. When the vacancy leaves the tab, the panel opens the **next** one, so you can go through the tab one by one. After the last one the panel and the list are empty: "Nothing left in this tab". The vacancy in the panel is always the current one, even if its list item was redrawn meanwhile.
 
 | Key | Action |
 |---|---|
@@ -41,7 +41,7 @@ Pick a vacancy in the list, read the panel, decide. After **interested**, **igno
 
 Keys are ignored while you type in a field.
 
-**Links.** Under the title the panel has a row of big buttons: **Open on linkedin.com ↗** (one per site the vacancy came from, in a new tab) and **Full page →** (#164).
+**Links.** Under the title the panel has a row of big buttons: **Open on linkedin.com ↗** (one per site the vacancy came from, in a new tab) and **Full page →**.
 
 ## Filters
 
@@ -49,19 +49,19 @@ The search box matches the title, the company and the location, ignoring case an
 
 Filters are kept in the URL (`/?tab=review&title=python`), survive switching tabs, and the tab counts show how many vacancies match.
 
-**Description (#176).** Above the list: **All · No description · With description**. A two-step routine: first **No description**, open each vacancy you do not ignore outright and click the bookmarklet (the item leaves this view once its description is saved); then **With description** and **Analyze…** for the rest. The switch is kept with the tab, the search and your decisions. The tab counts ignore it, so To review never looks empty just because every vacancy there has a description; the switch shows its own counts for the current tab: **All (12) · No description (0) · With description (12)** (#186).
+**Description.** Above the list: **All · No description · With description**. A two-step routine: first **No description**, open each vacancy you do not ignore outright and click the bookmarklet (the item leaves this view once its description is saved); then **With description** and **Analyze…** for the rest. The switch is kept with the tab, the search and your decisions. The tab counts ignore it, so To review never looks empty just because every vacancy there has a description; the switch shows its own counts for the current tab: **All (12) · No description (0) · With description (12)**.
 
-**Pages (#180).** The list shows 50 vacancies at a time; at its bottom are **‹ Prev**, "51–100 of 726", **Next ›** and a choice of 25 / 50 / 100 / 200 per page (kept with the tab, the search and the description switch; a new tab or search starts at page 1). The whole tab is sorted first, by the score alone, and only the shown page gets the full details (company history, Claude, hints), so long tabs such as All or Ignored load in about a second. **J / K** and **Analyze…** work on the page you see.
+**Pages.** The list shows 50 vacancies at a time; at its bottom are **‹ Prev**, "51–100 of 726", **Next ›** and a choice of 25 / 50 / 100 / 200 per page (kept with the tab, the search and the description switch; a new tab or search starts at page 1). The whole tab is sorted first, by the score alone, and only the shown page gets the full details (company history, Claude, hints), so long tabs such as All or Ignored load in about a second. **J / K** and **Analyze…** work on the page you see.
 
-**Sort (#199, #207).** The list head has **Sort: Score · Claude % · Last action**. *Score* is the default. *Claude %* puts the highest match from Claude's latest finished analysis first (90% above 30%); vacancies Claude has not analysed go to the bottom, and equal ones keep the score order. A re-analysis waiting in the queue keeps the old %. *Last action* puts first the vacancy you did something with most recently: the latest of your state change (interested, ignore, applied), an application, a rejection, a note or ignore reason, an event you added, or your message in its Claude chat. Vacancies you have not touched come after them, newest first. In this mode each item says what and when, e.g. "12.10 · applied". The choice is kept with the tab, the search, the description switch and the pages.
+**Sort.** The list head has **Sort: Score · Claude % · Last action**. *Score* is the default. *Claude %* puts the highest match from Claude's latest finished analysis first (90% above 30%); vacancies Claude has not analysed go to the bottom, and equal ones keep the score order. A re-analysis waiting in the queue keeps the old %. *Last action* puts first the vacancy you did something with most recently: the latest of your state change (interested, ignore, applied), an application, a rejection, a note or ignore reason, an event you added, or your message in its Claude chat. Vacancies you have not touched come after them, newest first. In this mode each item says what and when, e.g. "12.10 · applied". The choice is kept with the tab, the search, the description switch and the pages.
 
 ## Current item
 
 The vacancy you open stays selected and is remembered in this browser (localStorage). After a reload, or coming back from the vacancy page, it is opened again and scrolled into view.
 
-**Back from a vacancy page.** **← Queue** on the vacancy page returns to the queue you came from, with the same tab and filters (remembered for this browser tab), and selects the vacancy you opened (#150).
+**Back from a vacancy page.** **← Queue** on the vacancy page returns to the queue you came from, with the same tab and filters (remembered for this browser tab), and selects the vacancy you opened.
 
-**After the bookmarklet (#162).** When the [bookmarklet](linkedin-capture.md) saves a description, the open queue tab redraws that vacancy. If the vacancy left the tab, for example the auto-ignore rules moved it to **Auto-ignored**, a notice appears at the top of the page: title, company, the tab it moved to, the reason, and a link to the vacancy. It stays until you press **Close**. The panel keeps showing that vacancy, and **J / K** continue from its old place in the list.
+**After the bookmarklet.** When the [bookmarklet](linkedin-capture.md) saves a description, the open queue tab redraws that vacancy. If the vacancy left the tab, for example the auto-ignore rules moved it to **Auto-ignored**, a notice appears at the top of the page: title, company, the tab it moved to, the reason, and a link to the vacancy. It stays until you press **Close**. The panel keeps showing that vacancy, and **J / K** continue from its old place in the list.
 
 ## Description checks
 
@@ -71,11 +71,11 @@ When a vacancy has its description (sent by the [bookmarklet](linkedin-capture.m
 - `− No Python in description` and **−3** to the score when the word never appears — unless the title already says Python;
 - nothing without a description (the row keeps *verify manually*).
 
-The full text is in the panel and on the vacancy page, every *Python* highlighted; its `http(s)://` links are clickable and open in a new tab (#243). The quote shows the context: Python in "nice to have" counts the same as in the requirements, so read it. Also available as an auto-ignore rule in [settings.md](settings.md).
+The full text is in the panel and on the vacancy page, every *Python* highlighted; its `http(s)://` links are clickable and open in a new tab. The quote shows the context: Python in "nice to have" counts the same as in the requirements, so read it. Also available as an auto-ignore rule in [settings.md](settings.md).
 
 ## Buttons
 
-- `interested` / `ignore` / `applied`, *ignore with reason* and `rejected` act at once. Only the list items they change are redrawn: that vacancy and the same company's other vacancies (#138). A vacancy that no longer belongs to the tab leaves the list, and the panel moves to the next one. In **All** it stays, with its new state.
+- `interested` / `ignore` / `applied`, *ignore with reason* and `rejected` act at once. Only the list items they change are redrawn: that vacancy and the same company's other vacancies. A vacancy that no longer belongs to the tab leaves the list, and the panel moves to the next one. In **All** it stays, with its new state.
 - There is no "back to new": find the vacancy in **Ignored** or **All** and pick another state.
 
 Company history, reasons and notes: [applications.md](applications.md).
@@ -109,7 +109,7 @@ Each line shows the state:
 - `off` disabled in the settings, or not set up: Gmail is off until its OAuth client file or token exists ([gmail.md](gmail.md));
 - `✗` failed, with the reason.
 
-The full log is under **details**, and a **reload** link appears at the end. When a Sync, a Descriptions run or a Chrome fill that the open page was watching ends (and, for the last two, saved something), the list, the tab counts and the description switch redraw themselves, like after a search; the open vacancy stays (#263). When the sync is over, the status folds into one line ("Sync done 14:57 · details"); open **details** for the steps and the log. **✕** hides it until the next sync, and the browser remembers that, so it stays hidden after a reload (#147).
+The full log is under **details**, and a **reload** link appears at the end. When a Sync, a Descriptions run or a Chrome fill that the open page was watching ends (and, for the last two, saved something), the list, the tab counts and the description switch redraw themselves, like after a search; the open vacancy stays. When the sync is over, the status folds into one line ("Sync done 14:57 · details"); open **details** for the steps and the log. **✕** hides it until the next sync, and the browser remembers that, so it stays hidden after a reload.
 
 **Steps are independent.** When one fails, the others still run. Without Gmail access the mail-based steps work on the mail already stored and do not fetch message bodies. A fresh clone has no Gmail set up, so its Gmail line is `off — not set up (docs/gmail.md)` and the job boards still sync (#8). Once the OAuth client file is in place, a missing or expired token is a failure, and the line says what to do: *Gmail access expired or revoked: run `./jr auth`*.
 
@@ -121,17 +121,17 @@ At phone width the list fills the screen, and tapping a vacancy opens its page. 
 
 ## Look
 
-Since #158 the UI is dark: ground #101318, accent #3D7BFF, IBM Plex Sans with Plex Mono for scores. It is built on Bootstrap 5 from the jsDelivr CDN (#119). Buttons are coloured by meaning:
+The UI is dark: ground #101318, accent #3D7BFF, IBM Plex Sans with Plex Mono for scores. It is built on Bootstrap 5 from the jsDelivr CDN. Buttons are coloured by meaning:
 - interested is green;
 - ignore and reasons to ignore are red;
 - applied is blue;
 - the main actions are filled.
 
-The other pages (Applications, Skills, Settings, Profile, Capture) use the same parts since #168: a page header with a short explanation, content in dark cards, tables with small uppercase headers and Plex Mono for dates and numbers, and status pills (applied blue, rejected red, interview or offer green). On a phone, table rows become cards.
+The other pages (Applications, Skills, Settings, Profile, Capture) use the same parts: a page header with a short explanation, content in dark cards, tables with small uppercase headers and Plex Mono for dates and numbers, and status pills (applied blue, rejected red, interview or offer green). On a phone, table rows become cards.
 
 ## Add by hand
 
-Some things never reach the mail or the sources Job Radar reads (#182).
+Some things never reach the mail or the sources Job Radar reads.
 
 **An event.** Under **Company history** (in the panel and on the vacancy page): the kind, the date (today by default) and a short comment, then **Add event**. Kinds: recruiter outreach, call, interview, test task, offer, applied, rejection, other.
 - **Applied** records an application (source `manual`) and moves the vacancy to Applied.
@@ -145,7 +145,7 @@ Some things never reach the mail or the sources Job Radar reads (#182).
 `uv run job-radar demo` fills an empty queue with five made-up vacancies so you can look around before importing anything. Every company ends in `(demo)` and every link points to `example.com`.
 
 - Each vacancy has a location, a salary or none, a description and a score whose reasons come from the same rules as real imports.
-- Every demo vacancy in To review carries a finished Claude analysis: one `apply`, two `maybe` (one with a blocker gap and a red flag). The quotes are checked against the description the same way a real answer is. They are written by hand, not real Claude answers. Because every one is already analyzed, the background analysis (#264) has nothing to send, so `demo` and `serve` make no Claude call; only **↻ again** or the chat would.
+- Every demo vacancy in To review carries a finished Claude analysis: one `apply`, two `maybe` (one with a blocker gap and a red flag). The quotes are checked against the description the same way a real answer is. They are written by hand, not real Claude answers. Because every one is already analyzed, the background analysis has nothing to send, so `demo` and `serve` make no Claude call; only **↻ again** or the chat would.
 - One has a local AI finding ("only for EU" with its quote), as the Ollama step would store it.
 - Running `demo` again adds only what is missing.
 

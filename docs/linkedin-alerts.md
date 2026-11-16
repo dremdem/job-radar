@@ -1,10 +1,10 @@
 # LinkedIn job alerts
 
-LinkedIn job alert emails become opportunities in the review queue (#13). Nothing ever talks to linkedin.com; see the LinkedIn rule in [CLAUDE.md](../CLAUDE.md).
+LinkedIn job alert emails become opportunities in the review queue. Nothing ever talks to linkedin.com; see the LinkedIn rule in [CLAUDE.md](../CLAUDE.md).
 
 ## Input
 
-Alert emails from `jobalerts-noreply@linkedin.com`, stored with their HTML by `job-radar sync gmail` (query `linkedin_alerts`, see [gmail.md](gmail.md)). Other `jobs-noreply@` mail (application confirmations) is ignored here; it feeds application history (#15).
+Alert emails from `jobalerts-noreply@linkedin.com`, stored with their HTML by `job-radar sync gmail` (query `linkedin_alerts`, see [gmail.md](gmail.md)). Other `jobs-noreply@` mail (application confirmations) is ignored here; it feeds application history.
 
 Tip: alerts are usually deleted after review. Run `job-radar sync gmail` first, or add a Gmail filter that labels them.
 
@@ -43,7 +43,7 @@ Rule-based, from title and location only (`job_radar/scoring.py`). Starts at 5, 
 
 Only the ~6 jobs in the email are seen; the rest of the search's first page can be read with the opt-in [public search](linkedin-public-search.md).
 
-An alert has no full description, so every such opportunity is marked **verify manually** until a full description is found (#22, #23).
+An alert has no full description, so every such opportunity is marked **verify manually** until a full description is found.
 
 ## Commands
 

@@ -1,6 +1,6 @@
 # Remote OK
 
-Job Radar reads fresh Python vacancies from [Remote OK](https://remoteok.com), a board of remote-only jobs (issue #233).
+Job Radar reads fresh Python vacancies from [Remote OK](https://remoteok.com), a board of remote-only jobs.
 
 It uses Remote OK's public JSON feed (no key, no login, no page scraping), **one request per sync**:
 

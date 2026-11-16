@@ -1,6 +1,6 @@
 # Other boards: Remotive, Working Nomads, We Work Remotely
 
-Three remote job boards with a free public feed (issue #233). Each brings only a few Python jobs a month (measured on 2026-10-28), so they share one **Other boards** step:
+Three remote job boards with a free public feed. Each brings only a few Python jobs a month (measured on 2026-10-28), so they share one **Other boards** step:
 
 | Board | Feed | What it holds |
 |---|---|---|

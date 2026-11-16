@@ -1,6 +1,6 @@
 # Gmail
 
-Read-only import of job-related mail into `EmailMessage` (#12). Nothing is ever sent, deleted or modified.
+Read-only import of job-related mail into `EmailMessage`. Nothing is ever sent, deleted or modified.
 
 ## Setup (once)
 
@@ -19,7 +19,7 @@ Read-only import of job-related mail into `EmailMessage` (#12). Nothing is ever 
 
 Scope: `https://www.googleapis.com/auth/gmail.readonly` only.
 
-## Publishing the app (#193)
+## Publishing the app
 
 In *Testing* mode Google refresh tokens die after 7 days and sync stops with `invalid_grant: Token has been expired or revoked`. A published app keeps its token until you revoke it, change the password, or leave it unused for six months. Publishing a personal app needs no verification; you only see an "unverified app" warning at consent.
 
@@ -55,7 +55,7 @@ Queries (`job_radar/gmail/queries.py`):
 
 ## How it works
 
-- **Threads, not messages.** Each query is run with `threads.list`, and every message of a matching thread is stored. This is how replies you sent inside a job thread (`direction = out`) are picked up without scanning all of `in:sent`. A wider `in:sent` search for applications outside the label belongs to history backfill (#15).
+- **Threads, not messages.** Each query is run with `threads.list`, and every message of a matching thread is stored. This is how replies you sent inside a job thread (`direction = out`) are picked up without scanning all of `in:sent`. A wider `in:sent` search for applications outside the label belongs to history backfill.
 - **Idempotent.** `EmailMessage.gmail_message_id` is unique; an already stored message only gets the query name added to `categories`.
 - **Incremental.** `SyncCursor` keeps, per query, the date of the newest message seen. The next run adds `after:<cursor - 1 day>` to the query; the overlap is harmless because of the unique message id. `--since` overrides the cursor for one run.
 - **Quota.** Gmail limits query cost per user per minute (6000 units for a new project). Requests are paced (0.5 s apart); on `429` / `rateLimitExceeded` the client waits 60 s for the next window and retries, up to 5 times. First import of ~1700 threads takes about 15–20 minutes and prints progress every 50 threads.
@@ -109,5 +109,5 @@ confirmation that is gone keeps the application found from its headers, with the
 ## Privacy decisions
 
 - Headers (date, from, to, subject), labels and Gmail's `snippet` are stored for every message.
-- **Full bodies are stored only for LinkedIn alerts**: they are generated mailings, and the parser (#13) needs their HTML. Private correspondence (`job_proposal`) keeps headers + snippet; if a feature needs a body later, it fetches it by message id and extracts facts without persisting the raw text.
+- **Full bodies are stored only for LinkedIn alerts**: they are generated mailings, and the parser needs their HTML. Private correspondence (`job_proposal`) keeps headers + snippet; if a feature needs a body later, it fetches it by message id and extracts facts without persisting the raw text.
 - Mail content is never sent to external AI APIs.

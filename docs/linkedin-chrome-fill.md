@@ -1,4 +1,4 @@
-# Chrome fill: LinkedIn and hh.ru descriptions from your own Chrome (#247, #260)
+# Chrome fill: LinkedIn and hh.ru descriptions from your own Chrome
 
 Vacancies from alert emails and from search lists reach To review without a description.
 The **Fill from Chrome** button (in the header) opens them in your Chrome one at a time,
@@ -23,7 +23,7 @@ this is allowed and where the line is: [ADR 0001](adr/0001-chrome-description-fi
 Optional: `JOB_RADAR_LINKEDIN_CHROME_MAX_PER_RUN` (default 50), and
 `JOB_RADAR_LINKEDIN_CHROME_COMMAND` (default `npx -y @playwright/mcp@0.0.84 --extension`,
 pinned to the version that was measured). The run adds `--snapshot-mode none
---timeout-settle 100` unless the command sets them itself (#254): without them every page
+--timeout-settle 100` unless the command sets them itself: without them every page
 open sends back a full snapshot of LinkedIn's big page, which the fill never reads, and
 every step waits 1–6 s for LinkedIn's background requests to finish. Together that made
 a vacancy take 11–20 s instead of a few.
@@ -31,14 +31,14 @@ a vacancy take 11–20 s instead of a few.
 ## What a run does
 
 1. It takes the To review vacancies from LinkedIn and hh.ru that have no description, best
-   score first (both sites together), up to 50. hh.ru: since #260,
+   score first (both sites together), up to 50. hh.ru:
    [ADR 0002](adr/0002-chrome-fill-hh.md); the page is `https://hh.ru/vacancy/<id>`.
-2. It works in **a tab of its own** and never touches your tabs. With the token, the extension connects its own connect page (`chrome-extension://…/connect.html`), and the run uses that page (#250). If the extension was given one of your tabs instead (the connect dialog), the run opens a new tab and leaves yours alone.
+2. It works in **a tab of its own** and never touches your tabs. With the token, the extension connects its own connect page (`chrome-extension://…/connect.html`), and the run uses that page. If the extension was given one of your tabs instead (the connect dialog), the run opens a new tab and leaves yours alone.
 3. For each vacancy it:
    - waits for the page to load and for the description to appear on it (checked every
-     0.4–0.8 s, at most 10 s; #254);
+     0.4–0.8 s, at most 10 s);
    - checks the page: an hh.ru page saying "Вам недоступна эта вакансия" or a 404/410 on the
-     vacancy is **marked and skipped**, and the run goes on (#272, see [Problems](#problems-with-one-vacancy));
+     vacancy is **marked and skipped**, and the run goes on (see [Problems](#problems-with-one-vacancy));
    - on an authwall, login, checkpoint, captcha ("не робот") or verification page, or on any
      other HTTP 403 / 429 / 999, it stops at once and leaves the tab open for you to see;
    - checks that the tab shows **this** vacancy. If it shows anything else (you clicked
@@ -49,7 +49,7 @@ a vacancy take 11–20 s instead of a few.
    - reads the page with the bookmarklet's own reader (`web/capture_read.js`) and saves it
      as the bookmarklet would, but only the vacancy itself: the "similar jobs" on its page
      are not added to To review;
-   - waits its own random pause, **Settings → Fill from Chrome** (2–4 s by default, #252; the guest pause of the Descriptions button stays 10–40 s), then goes on
+   - waits its own random pause, **Settings → Fill from Chrome** (2–4 s by default; the guest pause of the Descriptions button stays 10–40 s), then goes on
      to the next vacancy in the same tab. Before leaving the page, it checks again that the
      tab is still its own.
 4. At the end it closes its tab, so nothing is left open.
@@ -60,21 +60,21 @@ the layout has changed and the bookmarklet needs the same fix.
 ## Problems with one vacancy
 
 Each vacancy has its own limit (60 s from opening it to saving it) and its own error handler,
-so a page that hangs or breaks costs that vacancy only (#272). What went wrong is in the
+so a page that hangs or breaks costs that vacancy only. What went wrong is in the
 LinkedIn log, and on the vacancy:
 
 | Kind | When | On the vacancy | Next run |
 | --- | --- | --- | --- |
-| unavailable | hh.ru says the vacancy is not available to you, or a 404/410 | red **unavailable** badge instead of *verify manually* (#276); it goes to **Auto-ignored** unless that rule is off in [Settings](settings.md) | skipped, until you press × on the badge |
+| unavailable | hh.ru says the vacancy is not available to you, or a 404/410 | red **unavailable** badge instead of *verify manually*; it goes to **Auto-ignored** unless that rule is off in [Settings](settings.md) | skipped, until you press × on the badge |
 | `fill_problem` | timeout, browser error, no description, or the page that stopped the run | a mark in the **Company history**, once per distinct problem; not a contact, so it does not count in the "contacted" badge or as your last action | tried again |
 
-The status line lists the vacancies of this run that had a problem (#274): the title opens it
+The status line lists the vacancies of this run that had a problem: the title opens it
 in Job Radar, the site name opens the posting, and the reason follows. The list lasts until the
 next run or a server restart; the marks stay.
 
 A LinkedIn page that says **Not currently accepting applications** or **No longer accepting
 applications** is not a problem: the description is saved as usual, and the vacancy gets a red
-**not accepting** badge and goes to **Auto-ignored** under the same rule (#278). Only that line
+**not accepting** badge and goes to **Auto-ignored** under the same rule. Only that line
 on the vacancy itself counts, in English, exactly as written; a sentence in the description or
 another vacancy's card does not. Vacancies read earlier stay as they are until they are read
 again. × on the badge clears it.
@@ -86,14 +86,14 @@ the vacancy returns to To review if this rule had moved it, and the next run ope
 
 Under the header: `Chrome fill: 7 of 30 opened · 6 saved · 23 left · next in 18 s`, the
 last vacancy it handled, **Stop**, a progress bar, and the counts per site (`LinkedIn: 5 of
-24 · 4 saved · 1 with a problem`, `hh.ru: 2 of 6 · 2 saved`; #272). Stop takes effect during the pause, at the latest
+24 · 4 saved · 1 with a problem`, `hh.ru: 2 of 6 · 2 saved`). Stop takes effect during the pause, at the latest
 after the current page. The finished line says why it ended (`done`, `stopped by you`,
 `stopped: HTTP 429`, `stopped: another page in the tab: stopped`), and links to the
 **LinkedIn log**, where every page is listed with kind `chrome`. A saved page shows how
 long each step took (`ok · open 0.3 s · load 0.9 s · expand 0.8 s · read 0.2 s`): opening it, waiting
 for the description, unfolding it and reading it. The "more" click comes 0.3 s after the
 step that finds the button has answered: LinkedIn sends requests on that click, and
-Playwright MCP would otherwise wait up to 5 s for them (#258).
+Playwright MCP would otherwise wait up to 5 s for them.
 
 A vacancy that already has a description is never opened again, so a rerun continues where
 the last one stopped, and nothing is duplicated or overwritten. Only one LinkedIn

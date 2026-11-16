@@ -1,6 +1,6 @@
 # Telegram channels
 
-Job Radar reads vacancies from Telegram channels chosen in the audit (#84). It does **not** have its own Telegram client: it asks the existing [telegram-mcp](https://github.com/jgalea/telegram-mcp) server, which owns the login session (one shared daemon), and calls **only `read_messages`**. Nothing is ever sent, marked read, joined or changed.
+Job Radar reads vacancies from Telegram channels chosen in the audit. It does **not** have its own Telegram client: it asks the existing [telegram-mcp](https://github.com/jgalea/telegram-mcp) server, which owns the login session (one shared daemon), and calls **only `read_messages`**. Nothing is ever sent, marked read, joined or changed.
 
 ## Setup
 
