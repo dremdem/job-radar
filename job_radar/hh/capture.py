@@ -40,7 +40,7 @@ def _city(address: str) -> str:
 
 
 def import_hh_capture(session: sa_orm.Session, payload: dict[str, t.Any], stats) -> None:
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
     detail = payload.get("detail") or {}
     vacancy_id = str(detail.get("job_id") or "").strip()
@@ -95,7 +95,7 @@ def import_hh_capture(session: sa_orm.Session, payload: dict[str, t.Any], stats)
         outcome.append("description saved" if saved else "description already saved")
     session.flush()
     session.refresh(record.opportunity)
-    auto_ignore.apply_rules(session, record.opportunity)
+    review_auto_ignore.apply_rules(session, record.opportunity)
     o = record.opportunity
     stats.touch(o.id)
     stats.vacancy = f"{o.company.name} — {o.title}: {', '.join(outcome)}"

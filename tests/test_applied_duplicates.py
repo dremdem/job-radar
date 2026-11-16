@@ -69,9 +69,9 @@ def test_seen_again_later_with_a_description_still_joins(session):
     session.add(record)
     session.flush()
     dedup.add_snapshot(session, record, "Python, remote.")
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
-    assert auto_ignore.apply_rules(session, o) is True
+    assert review_auto_ignore.apply_rules(session, o) is True
     session.commit()
     # callers that hold the record see the original
     assert record.opportunity.id == original.id
@@ -100,7 +100,7 @@ def test_not_applied_original_is_not_a_reason(session):
 
 
 def test_merge_command_lists_then_merges_existing_copies(session):
-    import job_radar.applied_duplicates as applied_duplicates
+    import job_radar.review.applied_duplicates as review_applied_duplicates
 
     original = applied(session)
     copies = [applied(session, title="Senior  Python Engineer", state=st)
@@ -113,28 +113,28 @@ def test_merge_command_lists_then_merges_existing_copies(session):
     beta_copy = applied(session, title="backend dev", company="Beta", state=S.IGNORE)
     session.commit()
 
-    plan = applied_duplicates.merge_applied_duplicates(session, apply=False)
+    plan = review_applied_duplicates.merge_applied_duplicates(session, apply=False)
     assert plan == [(original.id, sorted(c.id for c in copies))]
     # a dry run changes nothing
     assert session.scalar(sa.select(sa.func.count(models.Opportunity.id))) == 8
 
-    assert applied_duplicates.merge_applied_duplicates(session, apply=True) == plan
+    assert review_applied_duplicates.merge_applied_duplicates(session, apply=True) == plan
     session.expire_all()
     ids = set(session.scalars(sa.select(models.Opportunity.id)))
     assert ids == {original.id, kept.id, *(a.id for a in ambiguous), beta_copy.id}
     assert len(session.get(models.Opportunity, original.id).source_records) == 4
     assert session.scalar(sa.select(models.OpportunityNote.opportunity_id)) == original.id
-    assert applied_duplicates.merge_applied_duplicates(session, apply=False) == []
+    assert review_applied_duplicates.merge_applied_duplicates(session, apply=False) == []
 
 
 def test_skipped_groups_stay_apart(session):
-    import job_radar.applied_duplicates as applied_duplicates
+    import job_radar.review.applied_duplicates as review_applied_duplicates
 
     a = applied(session)
     a_copy = applied(session, state=S.AUTO_IGNORE)
     b = applied(session, title="Software Engineer")
     b_copy = applied(session, title="software engineer", state=S.AUTO_IGNORE)
-    assert applied_duplicates.merge_applied_duplicates(
+    assert review_applied_duplicates.merge_applied_duplicates(
         session, apply=True, skip=frozenset({b.id})
     ) == [(a.id, [a_copy.id])]
     session.expire_all()

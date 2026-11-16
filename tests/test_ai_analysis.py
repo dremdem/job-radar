@@ -7,9 +7,9 @@ import typing as t
 import pytest
 
 import job_radar.ai.analysis as ai_analysis
-import job_radar.auto_ignore as auto_ignore
 import job_radar.dedup as dedup
 import job_radar.models as models
+import job_radar.review.auto_ignore as review_auto_ignore
 import job_radar.scoring.findings as scoring_findings
 
 UK_ONLY = (
@@ -172,7 +172,7 @@ def test_analyze_pending_limit_and_errors(session):
 
 
 def test_ai_rule_auto_ignores(session):
-    auto_ignore.save_rules(session, auto_ignore.Rules(ai_location=True))
+    review_auto_ignore.save_rules(session, review_auto_ignore.Rules(ai_location=True))
     o = add_vacancy(session)
     ai_analysis.analyze_pending(session, FakeModel([UK_ANSWER]))
     session.refresh(o)
@@ -200,7 +200,7 @@ def test_settings_offer_the_ai_rule(client, session):
     assert 'name="ai_location"' in client.get("/settings").text
     client.post("/settings", data={"ai_location": "on", "days": "90"})
 
-    assert auto_ignore.load_rules(session).ai_location is True
+    assert review_auto_ignore.load_rules(session).ai_location is True
 
 
 def test_pipeline_skips_without_ollama(session):

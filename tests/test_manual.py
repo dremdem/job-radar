@@ -7,8 +7,8 @@ import datetime as dt
 import pytest
 import sqlalchemy as sa
 
-import job_radar.contacts as contacts
 import job_radar.dedup as dedup
+import job_radar.history.contacts as history_contacts
 import job_radar.manual as manual
 import job_radar.models as models
 
@@ -54,7 +54,7 @@ def test_events_show_in_history_and_applied_rejection_use_their_models(session):
     app = session.scalars(sa.select(models.Application)).one()
     assert app.source is models.ApplicationSource.MANUAL and app.role == o.title
     assert session.scalars(sa.select(models.Rejection)).one().opportunity_id == o.id
-    history = contacts.company_history(session, o.company_id)
+    history = history_contacts.company_history(session, o.company_id)
     assert [e.kind for e in history] == ["rejection", "interview", "applied"]
     assert history[1].text == "intro call with HR" and history[1].event_id is not None
     with pytest.raises(ValueError):

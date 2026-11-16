@@ -125,7 +125,7 @@ def _as_utc(value: dt.datetime) -> dt.datetime:
 
 
 def _add(session: sa_orm.Session, item: DigestItem) -> None:
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
     location = f"Remote ({item.city})" if item.city else "Remote"
     score = scoring_rules.score_job(item.title, location)
@@ -149,7 +149,7 @@ def _add(session: sa_orm.Session, item: DigestItem) -> None:
     )
     session.flush()
     session.refresh(opportunity)
-    auto_ignore.apply_rules(session, opportunity)
+    review_auto_ignore.apply_rules(session, opportunity)
 
 
 def import_hh_digests(

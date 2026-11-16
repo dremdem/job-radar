@@ -164,9 +164,9 @@ def import_capture(session: sa_orm.Session, payload: dict[str, t.Any]) -> Captur
             outcome.append("new")
         # before the rules below
         if record is not None and detail.get("not_accepting"):
-            import job_radar.auto_ignore as auto_ignore
+            import job_radar.review.auto_ignore as review_auto_ignore
 
-            auto_ignore.mark_not_accepting(session, record.opportunity)
+            review_auto_ignore.mark_not_accepting(session, record.opportunity)
             outcome.append("not accepting applications")
         if record is None:
             outcome.append("not recognised (no title or company on the page)")
@@ -177,10 +177,10 @@ def import_capture(session: sa_orm.Session, payload: dict[str, t.Any]) -> Captur
             stats.descriptions += int(saved)
             outcome.append("description saved" if saved else "description already saved")
             if saved:
-                import job_radar.auto_ignore as auto_ignore
+                import job_radar.review.auto_ignore as review_auto_ignore
 
                 session.refresh(record.opportunity)
-                auto_ignore.apply_rules(session, record.opportunity)
+                review_auto_ignore.apply_rules(session, record.opportunity)
         if record is not None:
             o = record.opportunity
             title, company = o.title, o.company.name

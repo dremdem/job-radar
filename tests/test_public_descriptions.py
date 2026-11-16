@@ -8,10 +8,10 @@ import re
 
 import sqlalchemy as sa
 
-import job_radar.auto_ignore as auto_ignore
 import job_radar.dedup as dedup
 import job_radar.linkedin.public as linkedin_public
 import job_radar.models as models
+import job_radar.review.auto_ignore as review_auto_ignore
 
 POSTING = (
     pathlib.Path(__file__).parent / "fixtures" / "linkedin_public" / "job_posting.html"
@@ -150,7 +150,7 @@ def test_description_fetches_do_not_use_the_search_budget(session):
 
 
 def test_no_python_rule_applies_to_fetched_descriptions(session):
-    auto_ignore.save_rules(session, auto_ignore.Rules(no_python=True))
+    review_auto_ignore.save_rules(session, review_auto_ignore.Rules(no_python=True))
     o = vacancy(session, "1", score=5.0)
     # ScorePlay: no Python
     linkedin_public.import_public_descriptions(session, client()[0], now=NOW, max_per_day=5)

@@ -7,8 +7,8 @@ import datetime as dt
 import sqlalchemy as sa
 
 import job_radar.dedup as dedup
+import job_radar.history.rejections as history_rejections
 import job_radar.models as models
-import job_radar.rejections as rejections
 
 T0 = dt.datetime(2026, 9, 1, tzinfo=dt.UTC)
 
@@ -47,7 +47,7 @@ def test_empty_page(client):
 def test_lists_suggestions_and_history_with_status(client, session):
     add_app(session, "Lingaro", models.ApplicationReview.SUGGESTED)
     app = add_app(session, "Capitole", models.ApplicationReview.CONFIRMED, thread="thr-9")
-    rejections.mark_rejected(
+    history_rejections.mark_rejected(
         session, company_id=app.company_id, rejected_at=T0 + dt.timedelta(days=3)
     )
     session.commit()

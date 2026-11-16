@@ -163,7 +163,7 @@ def _add_vacancy(
     page: VacancyPage,
     stats: DigestStats,
 ) -> None:
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
     key = f"telegraph:{item.path}"
     if _record(session, [models.SourceType.TELEGRAM], key):
@@ -183,7 +183,7 @@ def _add_vacancy(
         session.flush()
         dedup.add_snapshot(session, record, page.description)
         session.refresh(known.opportunity)
-        auto_ignore.apply_rules(session, known.opportunity)
+        review_auto_ignore.apply_rules(session, known.opportunity)
         stats.linked += 1
         return
     text = f"{item.title}\n{page.description}"
@@ -218,7 +218,7 @@ def _add_vacancy(
     session.flush()
     dedup.add_snapshot(session, record, page.description)
     session.refresh(opportunity)
-    auto_ignore.apply_rules(session, opportunity)
+    review_auto_ignore.apply_rules(session, opportunity)
     stats.vacancies += 1
 
 

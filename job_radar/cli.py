@@ -66,7 +66,7 @@ def db_merge_applied_duplicates(
     ] = "",
 ) -> None:
     """Merge copies of a vacancy you applied to into the applied one (#269)."""
-    import job_radar.applied_duplicates as applied_duplicates
+    import job_radar.review.applied_duplicates as review_applied_duplicates
 
     settings = config.Settings()
     db.upgrade_database(settings.database_url)
@@ -74,7 +74,9 @@ def db_merge_applied_duplicates(
     try:
         with db.make_session_factory(engine)() as session:
             left = frozenset(int(i) for i in skip.replace(" ", "").split(",") if i)
-            plan = applied_duplicates.merge_applied_duplicates(session, apply=False, skip=left)
+            plan = review_applied_duplicates.merge_applied_duplicates(
+                session, apply=False, skip=left
+            )
             for keep, copies in plan:
                 o = session.get(models.Opportunity, keep)
                 typer.echo(f"#{keep} {o.title} · {o.company.name}")
@@ -82,7 +84,7 @@ def db_merge_applied_duplicates(
                     d = session.get(models.Opportunity, dup)
                     typer.echo(f"    <- #{dup} {d.state.value} · {d.title}")
             if apply:
-                applied_duplicates.merge_applied_duplicates(session, apply=True, skip=left)
+                review_applied_duplicates.merge_applied_duplicates(session, apply=True, skip=left)
     finally:
         engine.dispose()
     copies = sum(len(c) for _, c in plan)

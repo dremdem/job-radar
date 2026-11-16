@@ -7,7 +7,7 @@ reason ("only India") also lowers the score of the company's other vacancies thr
 docs/applications.md#reasons-and-notes.
 
 Usage:
-    import job_radar.notes as notes
+    import job_radar.review.notes as review_notes
 """
 
 import datetime as dt

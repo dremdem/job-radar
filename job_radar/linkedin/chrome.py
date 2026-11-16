@@ -30,10 +30,10 @@ import urllib.parse as urllib_parse
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
-import job_radar.auto_ignore as auto_ignore
 import job_radar.linkedin.capture as linkedin_capture
 import job_radar.linkedin.public as linkedin_public
 import job_radar.models as models
+import job_radar.review.auto_ignore as review_auto_ignore
 
 READER = (pathlib.Path(__file__).parent.parent / "web" / "capture_read.js").read_text().strip()
 JOB_URL = "https://www.linkedin.com/jobs/view/{job_id}/"
@@ -499,7 +499,7 @@ def _mark(
     """Flag an unavailable vacancy (#276); write any other problem into its event log, once
     per distinct problem (#272)."""
     if status == "unavailable":
-        auto_ignore.mark_unavailable(session, opportunity)
+        review_auto_ignore.mark_unavailable(session, opportunity)
         return
     comment = f"{opportunity.title}: {reason}"
     known = session.scalar(

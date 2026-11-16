@@ -10,7 +10,7 @@ says whether an application was rejected later, and ``confirm`` / ``dismiss`` /
 ``confirm_all`` resolve suggestions. See docs/applications.md.
 
 Usage:
-    import job_radar.applications as applications
+    import job_radar.history.applications as history_applications
 """
 
 import dataclasses
@@ -23,9 +23,9 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
+import job_radar.history.rejections as history_rejections
 import job_radar.mail as mail
 import job_radar.models as models
-import job_radar.rejections as rejections
 
 CONFIRMATION_EVENT = "application_confirmation"
 # One application usually produces a LinkedIn and an ATS email a day or two apart.
@@ -222,7 +222,7 @@ def detect_application(
     if (
         _STATUS_UPDATE.search(subject)
         or not _CONFIRMATION.search(probe)
-        or rejections.WORDING.search(probe)
+        or history_rejections.WORDING.search(probe)
     ):
         return None
     company = _ats_company(display, domain, subject)
@@ -282,8 +282,8 @@ def _fdetimes_vacancy(session: sa_orm.Session, company_id: int, role: str) -> mo
     """The vacancy an FDE Times confirmation is about: the FDE Times one of the company with
     this title, else another one with this title, else a new one. Marked Applied; other
     copies with the title join it (#269)."""
-    import job_radar.applied_duplicates as applied_duplicates
     import job_radar.dedup as dedup
+    import job_radar.review.applied_duplicates as review_applied_duplicates
 
     same = [
         o
@@ -292,7 +292,8 @@ def _fdetimes_vacancy(session: sa_orm.Session, company_id: int, role: str) -> mo
             .where(models.Opportunity.company_id == company_id)
             .order_by(models.Opportunity.id.desc())
         )
-        if applied_duplicates.same_title(o.title) == applied_duplicates.same_title(role)
+        if review_applied_duplicates.same_title(o.title)
+        == review_applied_duplicates.same_title(role)
     ]
     ranked = sorted(
         same,
@@ -313,8 +314,8 @@ def _fdetimes_vacancy(session: sa_orm.Session, company_id: int, role: str) -> mo
     now = dt.datetime.now(dt.UTC)
     for dup in ranked[1:]:
         # "interested" or applied: your own call, kept apart
-        if dup.state in applied_duplicates.MERGEABLE:
-            applied_duplicates._seen_again(session, keep, dup, now)
+        if dup.state in review_applied_duplicates.MERGEABLE:
+            review_applied_duplicates._seen_again(session, keep, dup, now)
             dedup.merge_opportunities(session, keep, dup)
     return keep
 

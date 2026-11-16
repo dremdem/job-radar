@@ -405,8 +405,8 @@ def import_public_descriptions(
     """Description from the public job page for To review vacancies without one. Opt-in; see
     docs/linkedin-public-search.md#descriptions-public-job-page. Every request is logged with
     its vacancy, time and, when not ok, the reason (#205)."""
-    import job_radar.auto_ignore as auto_ignore
     import job_radar.dedup as dedup
+    import job_radar.review.auto_ignore as review_auto_ignore
 
     def stamp() -> dt.datetime:
         return now or dt.datetime.now(dt.UTC)
@@ -466,7 +466,7 @@ def import_public_descriptions(
                 dedup.add_snapshot(session, record, posting.description)
                 stats.saved += 1
                 session.refresh(opportunity)
-                auto_ignore.apply_rules(session, opportunity)
+                review_auto_ignore.apply_rules(session, opportunity)
         log.at = stamp()
         session.add(log)
         stats.requests += 1

@@ -9,11 +9,11 @@ import re
 import pytest
 import sqlalchemy as sa
 
+import job_radar.history.rejections as history_rejections
 import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.linkedin.rejections as linkedin_rejections
 import job_radar.mail as mail
 import job_radar.models as models
-import job_radar.rejections as rejections
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "rejections"
 
@@ -107,7 +107,7 @@ def test_import_records_rejection_and_links_company(session):
     assert email.detected_event == "rejection"
     assert email.company_id == rejection.company_id
     # The company is flagged for the queue.
-    assert rejection.company_id in rejections.latest_rejections(session)
+    assert rejection.company_id in history_rejections.latest_rejections(session)
 
 
 def test_import_rejections_is_idempotent(session):

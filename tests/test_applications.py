@@ -1,4 +1,4 @@
-"""Tests for job_radar.applications: detecting LinkedIn and ATS confirmations in mail,
+"""Tests for job_radar.history.applications: detecting LinkedIn and ATS confirmations in mail,
 importing them as applications and resolving suggestions (docs/applications.md).
 """
 
@@ -9,10 +9,10 @@ import re
 import pytest
 import sqlalchemy as sa
 
-import job_radar.applications as applications
 import job_radar.dedup as dedup
+import job_radar.history.applications as history_applications
+import job_radar.history.rejections as history_rejections
 import job_radar.models as models
-import job_radar.rejections as rejections
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "applications"
 LINKEDIN = "LinkedIn <jobs-noreply@linkedin.com>"
@@ -30,7 +30,7 @@ def test_fixtures_contain_no_personal_data():
 
 
 def test_detect_linkedin_confirmation_with_body():
-    found = applications.detect_application(
+    found = history_applications.detect_application(
         LINKEDIN, SENT_SUBJECT, "", fixture("linkedin_sent.html"), fixture("linkedin_sent.txt")
     )
     assert found.source is models.ApplicationSource.LINKEDIN
@@ -43,7 +43,7 @@ def test_detect_linkedin_confirmation_with_body():
 
 
 def test_detect_linkedin_confirmation_without_body_asks_for_it():
-    found = applications.detect_application(LINKEDIN, SENT_SUBJECT, "", None, None)
+    found = history_applications.detect_application(LINKEDIN, SENT_SUBJECT, "", None, None)
     assert (found.company, found.role, found.needs_body) == ("VySystems", None, True)
 
 
@@ -104,7 +104,7 @@ def test_detect_linkedin_confirmation_without_body_asks_for_it():
     ],
 )
 def test_detect_ats_confirmation(from_addr, subject, snippet, company, role):
-    found = applications.detect_application(from_addr, subject, snippet, None, None)
+    found = history_applications.detect_application(from_addr, subject, snippet, None, None)
     assert found is not None
     assert found.source is models.ApplicationSource.ATS
     assert (found.company, found.role) == (company, role)
@@ -123,7 +123,7 @@ def test_detect_ats_confirmation(from_addr, subject, snippet, company, role):
     ],
 )
 def test_not_an_application_confirmation(from_addr, subject, snippet):
-    assert applications.detect_application(from_addr, subject, snippet, None, None) is None
+    assert history_applications.detect_application(from_addr, subject, snippet, None, None) is None
 
 
 def add_email(session, msg_id, *, from_addr, subject, snippet="", html=None, text=None, at=T0):
@@ -162,9 +162,9 @@ def count(session) -> int:
 
 def test_import_is_idempotent_and_marks_emails(session):
     email = add_linkedin(session)
-    stats = applications.import_applications(session)
+    stats = history_applications.import_applications(session)
     assert (stats.detected, stats.new) == (1, 1)
-    assert applications.import_applications(session).new == 0
+    assert history_applications.import_applications(session).new == 0
     app = session.scalar(sa.select(models.Application))
     assert app.company.name == "VySystems"
     assert app.role == "Python Developer"
@@ -182,7 +182,7 @@ def test_ats_confirmation_is_a_suggestion(session):
         from_addr="Lingaro <no-reply@hire.lever.co>",
         subject="Lingaro - ALEX, we received your application!",
     )
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     assert (
         session.scalar(sa.select(models.Application)).review is models.ApplicationReview.SUGGESTED
     )
@@ -197,14 +197,14 @@ def test_linkedin_and_ats_mail_for_one_application_make_one_record(session):
         subject="Thanks for applying to VySystems",
         at=T0 + dt.timedelta(days=1),
     )
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     assert count(session) == 1
 
 
 def test_applications_far_apart_are_separate(session):
     add_linkedin(session, "li1", at=T0)
     add_linkedin(session, "li2", at=T0 + dt.timedelta(days=60))
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     assert count(session) == 2
 
 
@@ -215,9 +215,9 @@ def test_dismissed_suggestion_is_not_recreated(session):
         from_addr="Lingaro <no-reply@hire.lever.co>",
         subject="Lingaro - ALEX, we received your application!",
     )
-    applications.import_applications(session)
-    applications.dismiss(session, session.scalar(sa.select(models.Application)).id)
-    applications.import_applications(session)
+    history_applications.import_applications(session)
+    history_applications.dismiss(session, session.scalar(sa.select(models.Application)).id)
+    history_applications.import_applications(session)
     assert count(session) == 1
     assert (
         session.scalar(sa.select(models.Application)).review is models.ApplicationReview.DISMISSED
@@ -232,8 +232,8 @@ def test_confirm_all(session):
             from_addr=f"{company} <no-reply@hire.lever.co>",
             subject=f"{company} - ALEX, we received your application!",
         )
-    applications.import_applications(session)
-    assert applications.confirm_all(session) == 2
+    history_applications.import_applications(session)
+    assert history_applications.confirm_all(session) == 2
     reviews = {a.review for a in session.scalars(sa.select(models.Application))}
     assert reviews == {models.ApplicationReview.CONFIRMED}
 
@@ -252,7 +252,7 @@ def test_linkedin_job_id_links_known_opportunity(session):
     )
     session.commit()
     add_linkedin(session)
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     app = session.scalar(sa.select(models.Application))
     assert app.opportunity_id == opportunity.id
     assert app.linkedin_job_id == "4470446635"
@@ -272,18 +272,18 @@ class FakeFetch:
 def test_bodyless_linkedin_confirmation_fetches_role_once(session):
     email = add_email(session, "old1", from_addr=LINKEDIN, subject=SENT_SUBJECT)
     fetch = FakeFetch({"old1": (fixture("linkedin_sent.html"), fixture("linkedin_sent.txt"))})
-    stats = applications.import_applications(session, fetch_body=fetch)
+    stats = history_applications.import_applications(session, fetch_body=fetch)
     assert (stats.fetched, stats.new) == (1, 1)
     assert session.scalar(sa.select(models.Application)).role == "Python Developer"
     session.refresh(email)
     assert email.body_html is None and email.body_text is None
-    applications.import_applications(session, fetch_body=fetch)
+    history_applications.import_applications(session, fetch_body=fetch)
     assert fetch.calls == ["old1"]
 
 
 def test_bodyless_linkedin_confirmation_without_gmail_still_records_company(session):
     add_email(session, "old1", from_addr=LINKEDIN, subject=SENT_SUBJECT)
-    stats = applications.import_applications(session)
+    stats = history_applications.import_applications(session)
     assert (stats.new, stats.pending) == (1, 1)
     app = session.scalar(sa.select(models.Application))
     assert (app.company.name, app.role) == ("VySystems", None)
@@ -291,17 +291,17 @@ def test_bodyless_linkedin_confirmation_without_gmail_still_records_company(sess
 
 def test_status_rejected_only_by_later_rejection(session):
     add_linkedin(session)
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     app = session.scalar(sa.select(models.Application))
-    assert applications.application_status(session, app) == "applied"
-    rejections.mark_rejected(
+    assert history_applications.application_status(session, app) == "applied"
+    history_rejections.mark_rejected(
         session, company_id=app.company_id, rejected_at=T0 - dt.timedelta(days=90)
     )
-    assert applications.application_status(session, app) == "applied"
-    rejections.mark_rejected(
+    assert history_applications.application_status(session, app) == "applied"
+    history_rejections.mark_rejected(
         session, company_id=app.company_id, rejected_at=T0 + dt.timedelta(days=5)
     )
-    assert applications.application_status(session, app) == "rejected"
+    assert history_applications.application_status(session, app) == "rejected"
 
 
 def test_linkedin_fact_confirms_an_earlier_ats_suggestion(session):
@@ -312,9 +312,9 @@ def test_linkedin_fact_confirms_an_earlier_ats_suggestion(session):
         subject="Thanks for applying to VySystems",
         at=T0 - dt.timedelta(hours=2),
     )
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     add_linkedin(session)
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     app = session.scalar(sa.select(models.Application))
     assert count(session) == 1
     assert app.review is models.ApplicationReview.CONFIRMED
@@ -328,10 +328,10 @@ def test_linkedin_does_not_override_a_dismissal(session):
         from_addr="VySystems <noreply@candidates.workablemail.com>",
         subject="Thanks for applying to VySystems",
     )
-    applications.import_applications(session)
-    applications.dismiss(session, session.scalar(sa.select(models.Application)).id)
+    history_applications.import_applications(session)
+    history_applications.dismiss(session, session.scalar(sa.select(models.Application)).id)
     add_linkedin(session)
-    applications.import_applications(session)
+    history_applications.import_applications(session)
     assert (
         session.scalar(sa.select(models.Application)).review is models.ApplicationReview.DISMISSED
     )
@@ -396,7 +396,7 @@ def test_linkedin_does_not_override_a_dismissal(session):
     ],
 )
 def test_detect_ats_names_are_cleaned(from_addr, subject, snippet, company, role):
-    found = applications.detect_application(from_addr, subject, snippet, None, None)
+    found = history_applications.detect_application(from_addr, subject, snippet, None, None)
     assert (found.company, found.role) == (company, role)
 
 
@@ -412,7 +412,9 @@ def test_detect_ats_names_are_cleaned(from_addr, subject, snippet, company, role
 def test_status_updates_are_not_new_applications(subject):
     snippet = "Thank you for applying. After careful review of your background"
     assert (
-        applications.detect_application("Acme <no-reply@ashbyhq.com>", subject, snippet, None, None)
+        history_applications.detect_application(
+            "Acme <no-reply@ashbyhq.com>", subject, snippet, None, None
+        )
         is None
     )
 
@@ -430,7 +432,10 @@ def test_status_updates_are_not_new_applications(subject):
     ],
 )
 def test_ats_name_wrappers_are_removed(from_addr, subject, company):
-    assert applications.detect_application(from_addr, subject, "", None, None).company == company
+    assert (
+        history_applications.detect_application(from_addr, subject, "", None, None).company
+        == company
+    )
 
 
 def test_linkedin_confirmation_deleted_from_gmail_keeps_company_and_is_not_refetched(session):
@@ -443,12 +448,12 @@ def test_linkedin_confirmation_deleted_from_gmail_keeps_company_and_is_not_refet
         calls.append(gmail_message_id)
         raise mail.MessageGone(gmail_message_id)
 
-    stats = applications.import_applications(session, fetch_body=fetch)
+    stats = history_applications.import_applications(session, fetch_body=fetch)
     assert (stats.new, stats.gone, stats.pending) == (1, 1, 0)
     app = session.scalar(sa.select(models.Application))
     assert (app.company.name, app.role) == ("VySystems", None)
     session.refresh(email)
     assert email.detected_event == "gone"
 
-    applications.import_applications(session, fetch_body=fetch)
+    history_applications.import_applications(session, fetch_body=fetch)
     assert calls == ["gone1"] and count(session) == 1

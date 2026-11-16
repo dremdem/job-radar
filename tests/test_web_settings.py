@@ -6,9 +6,9 @@ import datetime as dt
 
 import sqlalchemy as sa
 
-import job_radar.auto_ignore as auto_ignore
 import job_radar.dedup as dedup
 import job_radar.models as models
+import job_radar.review.auto_ignore as review_auto_ignore
 
 
 def add(session, title, location, state=models.OpportunityState.NEW, reason=None):
@@ -29,7 +29,7 @@ def test_settings_page_and_save(client, session):
     assert 'name="hybrid"' in text and 'name="days" value="90"' in text
     response = client.post("/settings", data={"hybrid": "on", "applied": "on", "days": "60"})
     assert response.status_code == 200
-    rules = auto_ignore.load_rules(session)
+    rules = review_auto_ignore.load_rules(session)
     assert (rules.hybrid, rules.applied, rules.ignored, rules.rejected, rules.days) == (
         True,
         True,
@@ -76,10 +76,10 @@ def test_countries_are_edited_on_settings(client, session):
     text = client.get("/settings").text
     assert 'name="countries"' in text and "India, Pakistan" in text
     client.post("/settings", data={"countries": " india ,Pakistan,\nVietnam, ", "days": "90"})
-    assert auto_ignore.load_rules(session).countries == ("India", "Pakistan", "Vietnam")
+    assert review_auto_ignore.load_rules(session).countries == ("India", "Pakistan", "Vietnam")
     assert "India, Pakistan, Vietnam" in client.get("/settings").text
     client.post("/settings", data={"countries": "", "days": "90"})
-    assert auto_ignore.load_rules(session).countries == ()
+    assert review_auto_ignore.load_rules(session).countries == ()
 
 
 def test_claude_skip_reasons_are_chosen_on_settings(client, session):
@@ -89,34 +89,36 @@ def test_claude_skip_reasons_are_chosen_on_settings(client, session):
         "/settings",
         data={"claude_kinds": ["location", "work_format"], "days": "90", "countries": "India"},
     )
-    rules = auto_ignore.load_rules(session)
+    rules = review_auto_ignore.load_rules(session)
     assert (rules.claude_any, rules.claude_kinds) == (False, ("location", "work_format"))
     text = client.get("/settings").text
     assert 'value="location" checked' in text and 'value="stack" checked' not in text
     client.post("/settings", data={"claude_any": "on", "claude_kinds": ["bogus"], "days": "90"})
-    rules = auto_ignore.load_rules(session)
+    rules = review_auto_ignore.load_rules(session)
     assert (rules.claude_any, rules.claude_kinds) == (True, ())
 
 
 def test_unavailable_rule_is_on_by_default_and_can_be_switched_off(client, session):
-    assert auto_ignore.load_rules(session).unavailable
+    assert review_auto_ignore.load_rules(session).unavailable
     text = client.get("/settings").text
     assert 'name="unavailable" checked' in text
     client.post("/settings", data={"days": "90"})
-    assert not auto_ignore.load_rules(session).unavailable
+    assert not review_auto_ignore.load_rules(session).unavailable
     assert 'name="unavailable" checked' not in client.get("/settings").text
 
 
 def test_rule_moves_an_unavailable_vacancy(session):
     o = add(session, "Gone", "Remote")
-    assert auto_ignore.reason_for(session, o, auto_ignore.Rules(countries=())) is None
+    assert review_auto_ignore.reason_for(session, o, review_auto_ignore.Rules(countries=())) is None
     o.unavailable_at = dt.datetime.now(dt.UTC)
     assert (
-        auto_ignore.reason_for(session, o, auto_ignore.Rules(countries=()))
-        == auto_ignore.UNAVAILABLE_REASON
+        review_auto_ignore.reason_for(session, o, review_auto_ignore.Rules(countries=()))
+        == review_auto_ignore.UNAVAILABLE_REASON
     )
     assert (
-        auto_ignore.reason_for(session, o, auto_ignore.Rules(countries=(), unavailable=False))
+        review_auto_ignore.reason_for(
+            session, o, review_auto_ignore.Rules(countries=(), unavailable=False)
+        )
         is None
     )
 
@@ -140,7 +142,7 @@ def test_badge_button_clears_the_mark(client, session):
         "Gone",
         "Remote",
         models.OpportunityState.AUTO_IGNORE,
-        auto_ignore.UNAVAILABLE_REASON,
+        review_auto_ignore.UNAVAILABLE_REASON,
     )
     o.unavailable_at = dt.datetime.now(dt.UTC)
     session.commit()
@@ -170,10 +172,12 @@ def test_rule_moves_a_vacancy_that_is_not_accepting(session):
     o = add(session, "Closed", "Remote")
     o.not_accepting_at = dt.datetime.now(dt.UTC)
     assert (
-        auto_ignore.reason_for(session, o, auto_ignore.Rules(countries=()))
-        == auto_ignore.NOT_ACCEPTING_REASON
+        review_auto_ignore.reason_for(session, o, review_auto_ignore.Rules(countries=()))
+        == review_auto_ignore.NOT_ACCEPTING_REASON
     )
     assert (
-        auto_ignore.reason_for(session, o, auto_ignore.Rules(countries=(), unavailable=False))
+        review_auto_ignore.reason_for(
+            session, o, review_auto_ignore.Rules(countries=(), unavailable=False)
+        )
         is None
     )

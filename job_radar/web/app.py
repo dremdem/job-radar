@@ -30,30 +30,30 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.ai.analysis as ai_analysis
-import job_radar.applications as applications
-import job_radar.auto_ignore as auto_ignore
 import job_radar.claude.analysis as claude_analysis
 import job_radar.claude.memory as claude_memory
 import job_radar.claude.prompt as claude_prompt
 import job_radar.claude.runner as jr_claude_runner
 import job_radar.config as config
-import job_radar.contacts as contacts
 import job_radar.db as db
+import job_radar.history.applications as history_applications
+import job_radar.history.contacts as history_contacts
+import job_radar.history.rejections as history_rejections
 import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.linkedin.capture as linkedin_capture
 import job_radar.linkedin.chrome as linkedin_chrome
 import job_radar.linkedin.public as linkedin_public
 import job_radar.manual as manual
 import job_radar.models as models
-import job_radar.notes as notes
 import job_radar.pipeline as pipeline
 import job_radar.profile.stack as profile_stack
-import job_radar.rejections as rejections
+import job_radar.review.auto_ignore as review_auto_ignore
+import job_radar.review.notes as review_notes
+import job_radar.review.suggestions as review_suggestions
 import job_radar.scoring.description as scoring_description
 import job_radar.scoring.findings as scoring_findings
 import job_radar.scoring.language as scoring_language
 import job_radar.skills as skills
-import job_radar.suggestions as suggestions
 import job_radar.web.description_job as web_description_job
 import job_radar.web.sync_job as web_sync_job
 
@@ -125,7 +125,7 @@ def local_time(value: dt.datetime | None, fmt: str, tz: dt.tzinfo | None = None)
 
 templates.env.filters["local"] = local_time
 templates.env.globals["EVENT_KINDS"] = manual.EVENT_KINDS
-templates.env.globals["reason_icon"] = notes.reason_icon
+templates.env.globals["reason_icon"] = review_notes.reason_icon
 templates.env.globals["today"] = lambda: dt.datetime.now().strftime("%Y-%m-%d")
 
 # Queue order: undecided first, then the ones worth a look.
@@ -372,7 +372,7 @@ def create_app(
     ) -> fastapi_responses.RedirectResponse:
         # The cross on the "unavailable" badge: the next Chrome fill may try it again (#276).
         opportunity = _get_opportunity(session, opportunity_id)
-        auto_ignore.clear_unavailable(opportunity)
+        review_auto_ignore.clear_unavailable(opportunity)
         session.commit()
         return fastapi_responses.RedirectResponse(
             f"/opportunities/{opportunity.id}", status_code=303
@@ -482,7 +482,7 @@ def create_app(
         filters = Filters(country, company, title, q, desc, per, sort)
         # Rejection is per company: redraw this row and its company's other rows only (#138).
         opportunity = _get_opportunity(session, opportunity_id)
-        rejections.toggle_manual_rejection(session, opportunity)
+        history_rejections.toggle_manual_rejection(session, opportunity)
         session.commit()
         if source == "panel":
             return _panel_response(request, session, opportunity, _tab(tab), filters)
@@ -514,9 +514,9 @@ def create_app(
         opportunity = _get_opportunity(session, opportunity_id)
         try:
             if action == "ignore":
-                notes.ignore_with_reason(session, opportunity, kind, detail, comment)
+                review_notes.ignore_with_reason(session, opportunity, kind, detail, comment)
             elif action == "note":
-                notes.add_note(session, opportunity, models.NoteKind.NOTE, comment=comment)
+                review_notes.add_note(session, opportunity, models.NoteKind.NOTE, comment=comment)
             else:
                 raise fastapi.HTTPException(status_code=422, detail="Unknown action")
         except ValueError as e:
@@ -548,7 +548,7 @@ def create_app(
         if note is None:
             raise fastapi.HTTPException(status_code=404, detail="Note not found")
         opportunity = _get_opportunity(session, note.opportunity_id)
-        notes.delete_note(session, note_id)
+        review_notes.delete_note(session, note_id)
         return _company_rows(request, session, opportunity, _tab(tab), filters)
 
     def _after_manual(
@@ -616,7 +616,7 @@ def create_app(
         # Any record of the company history, from the vacancy you are looking at (#225).
         filters = Filters(country, company, title, q, desc, per, sort)
         shown = _get_opportunity(session, opportunity)
-        if not contacts.delete_history_item(session, kind, item_id):
+        if not history_contacts.delete_history_item(session, kind, item_id):
             raise fastapi.HTTPException(status_code=404, detail="No such history record")
         return _after_manual(request, session, shown, source, tab, filters)
 
@@ -678,7 +678,7 @@ def create_app(
         claude_any: t.Annotated[str | None, fastapi.Form()] = None,
         claude_kinds: t.Annotated[list[str] | None, fastapi.Form()] = None,
     ) -> fastapi_responses.HTMLResponse:
-        rules = auto_ignore.Rules(
+        rules = review_auto_ignore.Rules(
             hybrid=hybrid is not None,
             applied=applied is not None,
             ignored=ignored is not None,
@@ -688,11 +688,11 @@ def create_app(
             language=language is not None,
             unavailable=unavailable is not None,
             days=days,
-            countries=auto_ignore.parse_countries(countries),
+            countries=review_auto_ignore.parse_countries(countries),
             claude_any=claude_any is not None,
-            claude_kinds=auto_ignore.parse_claude_kinds(claude_kinds),
+            claude_kinds=review_auto_ignore.parse_claude_kinds(claude_kinds),
         )
-        auto_ignore.save_rules(session, rules)
+        review_auto_ignore.save_rules(session, rules)
         context = _settings_context(session, settings)
         context["message"] = "Saved. New vacancies follow these rules."
         return templates.TemplateResponse(request, "settings.html", context)
@@ -885,7 +885,7 @@ def create_app(
     def apply_settings(
         request: fastapi.Request, session: SessionDep
     ) -> fastapi_responses.HTMLResponse:
-        moved = auto_ignore.apply_to_review(session)
+        moved = review_auto_ignore.apply_to_review(session)
         word = "vacancy" if moved == 1 else "vacancies"
         context = _settings_context(session, settings)
         context["message"] = f"{moved} {word} auto-ignored from To review."
@@ -1048,7 +1048,7 @@ def create_app(
         company: t.Annotated[str, fastapi.Form()] = "",
     ) -> fastapi_responses.HTMLResponse:
         # with a filter: only the suggestions shown
-        applications.confirm_all(session, company)
+        history_applications.confirm_all(session, company)
         return templates.TemplateResponse(
             request, "_applications.html", _applications_context(session, company)
         )
@@ -1061,7 +1061,10 @@ def create_app(
         session: SessionDep,
         company: t.Annotated[str, fastapi.Form()] = "",
     ) -> fastapi_responses.HTMLResponse:
-        handlers = {"confirm": applications.confirm, "dismiss": applications.dismiss}
+        handlers = {
+            "confirm": history_applications.confirm,
+            "dismiss": history_applications.dismiss,
+        }
         if action not in handlers:
             raise fastapi.HTTPException(status_code=404, detail="Unknown action")
         if handlers[action](session, app_id) is None:
@@ -1097,7 +1100,7 @@ def _applications_context(session: sa_orm.Session, company: str = "") -> dict:
     items = [
         {
             "a": a,
-            "status": applications.application_status(session, a),
+            "status": history_applications.application_status(session, a),
             "gmail": _gmail_link(thread),
         }
         for a, thread in rows
@@ -1146,7 +1149,7 @@ def _panel_response(
     (updated, or deleted when they left the tab), and the tab counts (#158)."""
     session.refresh(opportunity)
     states = TABS[tab][1]
-    rejected = rejections.latest_rejections(session)
+    rejected = history_rejections.latest_rejections(session)
 
     def visible(o: models.Opportunity) -> bool:
         in_tab = states is None or o.state in states
@@ -1175,7 +1178,7 @@ def _company_rows(
     tab counts: history and penalties are per company, the queue is not re-rendered (#138)."""
     session.refresh(opportunity)
     states = TABS[tab][1]
-    rejected = rejections.latest_rejections(session)
+    rejected = history_rejections.latest_rejections(session)
 
     def visible(o: models.Opportunity) -> bool:
         in_tab = states is None or o.state in states
@@ -1227,8 +1230,8 @@ def save_close_after(session: sa_orm.Session, seconds: float) -> None:
 
 def _settings_context(session: sa_orm.Session, settings: config.Settings) -> dict:
     return {
-        "rules": auto_ignore.load_rules(session),
-        "claude_kinds": auto_ignore.CLAUDE_KINDS,
+        "rules": review_auto_ignore.load_rules(session),
+        "claude_kinds": review_auto_ignore.CLAUDE_KINDS,
         "claude": claude_analysis.load_claude_settings(session),
         "pause": linkedin_public.load_pause(session),
         "chrome_pause": linkedin_chrome.load_chrome_pause(session),
@@ -1318,11 +1321,13 @@ def _score(
     session: sa_orm.Session, opportunity: models.Opportunity, rejected_at: dt.datetime | None
 ) -> tuple[float | None, list, str | None]:
     """The score shown and sorted by, its extra reasons, and the description used."""
-    eff_score = rejections.effective_score(opportunity.score, rejected=rejected_at is not None)
+    eff_score = history_rejections.effective_score(
+        opportunity.score, rejected=rejected_at is not None
+    )
     extra_reasons = []
     description = scoring_description.latest_description(opportunity)
     effects = (
-        notes.location_penalty(session, opportunity),
+        review_notes.location_penalty(session, opportunity),
         scoring_language.language_risk(opportunity.title, description),
         scoring_description.python_risk(opportunity.title, description),
         *scoring_findings.risks(scoring_findings.latest_analysis(opportunity), _profile(session)),
@@ -1341,12 +1346,12 @@ def _row_context(
     session: sa_orm.Session, opportunity: models.Opportunity, rejected: dict | None = None
 ) -> dict:
     if rejected is None:
-        rejected = rejections.latest_rejections(session)
+        rejected = history_rejections.latest_rejections(session)
     rejected_at = rejected.get(opportunity.company_id)
-    history = contacts.company_history(session, opportunity.company_id)
+    history = history_contacts.company_history(session, opportunity.company_id)
     eff_score, extra_reasons, description = _score(session, opportunity, rejected_at)
     python_check = scoring_description.check_python(description) if description else None
-    others = contacts.other_vacancies(session, opportunity.company_id, opportunity.id)
+    others = history_contacts.other_vacancies(session, opportunity.company_id, opportunity.id)
     applied = [e.at for e in history if e.kind == "applied"]
     applied += [at for o, at in others if o.state is models.OpportunityState.APPLIED]
     return {
@@ -1363,7 +1368,7 @@ def _row_context(
         "description": description or "",
         "claude": claude_analysis.latest(session, opportunity.id),
         "chat_count": len(claude_analysis.messages(session, opportunity.id)),
-        "suggestions": suggestions.suggest(
+        "suggestions": review_suggestions.suggest(
             opportunity,
             description=description,
             analysis=scoring_findings.latest_analysis(opportunity),
@@ -1371,7 +1376,7 @@ def _row_context(
             claude=claude_analysis.latest(session, opportunity.id),
         ),
         "stack_hint": _first_gap(scoring_findings.latest_analysis(opportunity), _profile(session)),
-        "country": notes.country_from_location(opportunity.location) or "",
+        "country": review_notes.country_from_location(opportunity.location) or "",
         "reason_kinds": [k for k in models.NoteKind if k is not models.NoteKind.NOTE],
     }
 
@@ -1425,7 +1430,7 @@ def _queue_context(
     session: sa_orm.Session, tab: str = DEFAULT_TAB, filters: Filters | None = None, page: int = 1
 ) -> dict:
     filters = filters or Filters()
-    rejected = rejections.latest_rejections(session)
+    rejected = history_rejections.latest_rejections(session)
     opportunities = [
         o for o in _load_opportunities(session, TABS[tab][1]) if filters.matches_opportunity(o)
     ]

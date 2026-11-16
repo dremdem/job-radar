@@ -7,7 +7,7 @@ email), and the user can toggle a manual rejection from the queue. See
 docs/data-model.md.
 
 Usage:
-    import job_radar.rejections as rejections
+    import job_radar.history.rejections as history_rejections
 """
 
 import datetime as dt

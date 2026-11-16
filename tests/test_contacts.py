@@ -1,4 +1,4 @@
-"""Tests for job_radar.contacts: linking mail to companies, labels, and the company
+"""Tests for job_radar.history.contacts: linking mail to companies, labels, and the company
 history shown in the queue (docs/applications.md#company-history).
 """
 
@@ -7,10 +7,10 @@ import datetime as dt
 import pytest
 import sqlalchemy as sa
 
-import job_radar.contacts as contacts
 import job_radar.dedup as dedup
+import job_radar.history.contacts as history_contacts
+import job_radar.history.rejections as history_rejections
 import job_radar.models as models
-import job_radar.rejections as rejections
 
 T0 = dt.datetime(2026, 5, 1, 9, 0, tzinfo=dt.UTC)
 
@@ -62,7 +62,7 @@ def add_email(
     ],
 )
 def test_classify(subject, snippet, label):
-    assert contacts.classify(subject, snippet) == label
+    assert history_contacts.classify(subject, snippet) == label
 
 
 def test_thread_propagates_company(session):
@@ -85,7 +85,7 @@ def test_thread_propagates_company(session):
         direction=models.EmailDirection.OUT,
         at=T0 + dt.timedelta(hours=1),
     )
-    contacts.link_and_label(session)
+    history_contacts.link_and_label(session)
     session.refresh(reply)
     assert (reply.company_id, reply.company_match) == (acme.id, "exact")
 
@@ -99,7 +99,7 @@ def test_domains_are_learned_but_not_free_mail_or_ats(session):
     add_email(session, "w", from_addr="n@ashbyhq.com", subject="z", company=acme, event="other")
     other = add_email(session, "b", from_addr="Bob <bob@northwind.com>", subject="Hello")
     stranger = add_email(session, "c", from_addr="someone@gmail.com", subject="Hi")
-    contacts.link_and_label(session)
+    history_contacts.link_and_label(session)
     for email in (other, stranger):
         session.refresh(email)
     session.refresh(acme)
@@ -115,7 +115,7 @@ def test_probable_match_by_name_in_subject(session):
         session, "a", from_addr="x@mailer.example", subject="Your Northwind offer"
     )
     short_name = add_email(session, "b", from_addr="y@mailer.example", subject="Rain forecast")
-    contacts.link_and_label(session)
+    history_contacts.link_and_label(session)
     session.refresh(long_name)
     session.refresh(short_name)
     assert long_name.company_match == "probable"
@@ -130,13 +130,13 @@ def test_ats_rejection_from_snippet_is_recorded(session):
         subject="Abacum Inc Application Update",
         snippet="Hi Alex, Unfortunately, we will not be moving forward with your application.",
     )
-    stats = contacts.link_and_label(session)
+    stats = history_contacts.link_and_label(session)
     session.refresh(email)
     assert stats.rejections == 1
     assert email.detected_event == "rejection"
     rejection = session.scalar(sa.select(models.Rejection))
     assert rejection.company.name == "Abacum Inc"
-    assert contacts.link_and_label(session).rejections == 0
+    assert history_contacts.link_and_label(session).rejections == 0
     assert session.scalar(sa.select(sa.func.count()).select_from(models.Rejection)) == 1
 
 
@@ -159,7 +159,7 @@ def test_recruiter_outreach_is_the_first_inbound_message(session):
         at=T0 + dt.timedelta(days=1),
         company=acme,
     )
-    contacts.link_and_label(session)
+    history_contacts.link_and_label(session)
     session.refresh(first)
     session.refresh(later)
     assert (first.detected_event, later.detected_event) == ("recruiter_outreach", "other")
@@ -186,7 +186,7 @@ def test_company_history_merges_without_duplicates(session):
             email_message_id=confirmation.id,
         )
     )
-    rejections.mark_rejected(
+    history_rejections.mark_rejected(
         session,
         company_id=acme.id,
         rejected_at=T0 + dt.timedelta(days=7),
@@ -203,7 +203,7 @@ def test_company_history_merges_without_duplicates(session):
     )
     session.commit()
 
-    events = contacts.company_history(session, acme.id)
+    events = history_contacts.company_history(session, acme.id)
     assert [e.kind for e in events] == ["rejection", "interview", "applied"]
     assert events[2].text == "Sr Python Developer"
     assert events[2].gmail_url == "https://mail.google.com/mail/u/0/#all/thr-app"
@@ -211,7 +211,8 @@ def test_company_history_merges_without_duplicates(session):
 
 def test_company_history_empty(session):
     assert (
-        contacts.company_history(session, dedup.get_or_create_company(session, "Nobody").id) == []
+        history_contacts.company_history(session, dedup.get_or_create_company(session, "Nobody").id)
+        == []
     )
 
 
@@ -238,7 +239,7 @@ def test_links_made_by_other_modules_count_as_exact(session):
         at=T0 + dt.timedelta(hours=1),
     )
     other = add_email(session, "c", from_addr="bob@northwind.com", subject="Hello")
-    stats = contacts.link_and_label(session)
+    stats = history_contacts.link_and_label(session)
     for e in (source, reply, other):
         session.refresh(e)
     assert source.company_match == "exact"
@@ -253,7 +254,7 @@ def test_linkedin_application_viewed_is_linked_exactly(session):
         from_addr="LinkedIn <jobs-noreply@linkedin.com>",
         subject="Your application was viewed by genieX",
     )
-    contacts.link_and_label(session)
+    history_contacts.link_and_label(session)
     session.refresh(email)
     assert email.company_match == "exact"
     assert email.detected_event == "viewed"
@@ -271,7 +272,7 @@ def test_name_match_confirmed_by_sender_domain_is_exact_and_learns_domain(sessio
     elsewhere = add_email(
         session, "c", from_addr="news@mailer.example", subject="Northwind raises a round"
     )
-    contacts.link_and_label(session)
+    history_contacts.link_and_label(session)
     for e in (named, later, elsewhere):
         session.refresh(e)
     session.refresh(engine)
@@ -326,7 +327,7 @@ def test_hibob_is_an_ats_and_wrong_domain_links_are_undone(session):
         from_addr='"Polina P. (via Bob)" <notifications@hibob.com>',
         subject="Interview for the ‌‌‌Agentic Product Engineer‌‌‌‌ at Altery‌",
     )
-    contacts.link_and_label(session)
+    history_contacts.link_and_label(session)
     session.refresh(ecars)
     assert "hibob.com" not in (ecars.domains or [])
     names = {}

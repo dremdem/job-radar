@@ -96,7 +96,7 @@ def _is_vacancy(source: telegram_sources.Source, text: str) -> bool:
 def _create_vacancy(
     session: sa_orm.Session, source: telegram_sources.Source, message: dict[str, t.Any]
 ) -> models.Opportunity | None:
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
     job = telegram_posts.parse_post(message["text"])
     if job is None or not source.wants_title(job.title):
@@ -121,7 +121,7 @@ def _create_vacancy(
     session.flush()
     dedup.add_snapshot(session, record, telegram_posts.clean(message["text"]).strip())
     session.refresh(opportunity)
-    auto_ignore.apply_rules(session, opportunity)
+    review_auto_ignore.apply_rules(session, opportunity)
     return opportunity
 
 

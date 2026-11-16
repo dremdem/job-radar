@@ -17,9 +17,9 @@ import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
 import job_radar.hh.notifications as hh_notifications
+import job_radar.history.rejections as history_rejections
 import job_radar.models as models
-import job_radar.notes as notes
-import job_radar.rejections as rejections
+import job_radar.review.notes as review_notes
 import job_radar.scoring.rules as scoring_rules
 
 # Kinds you can add; "applied" and "rejection" become an Application and a Rejection.
@@ -77,7 +77,7 @@ def add_event(
         opportunity.state_changed_at = at
         opportunity.auto_ignore_reason = None
     elif kind == "rejection":
-        rejections.mark_rejected(
+        history_rejections.mark_rejected(
             session,
             company_id=opportunity.company_id,
             opportunity_id=opportunity.id,
@@ -174,6 +174,6 @@ def add_vacancy(
         opportunity.state = state
         opportunity.state_changed_at = dt.datetime.now(dt.UTC)
         if comment.strip():
-            notes.add_note(session, opportunity, models.NoteKind.NOTE, comment=comment)
+            review_notes.add_note(session, opportunity, models.NoteKind.NOTE, comment=comment)
     session.commit()
     return opportunity

@@ -767,9 +767,11 @@ def test_no_browser_notifications(client):
 
 
 def test_finished_skip_auto_ignores_when_the_reason_is_chosen(session, tmp_path):
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
-    auto_ignore.save_rules(session, auto_ignore.Rules(countries=(), claude_kinds=("location",)))
+    review_auto_ignore.save_rules(
+        session, review_auto_ignore.Rules(countries=(), claude_kinds=("location",))
+    )
     eu, stack = vacancy(session, title="EU job"), vacancy(session, title="Stack job")
     claude_analysis.enqueue(session, [eu.id, stack.id])
     skip = dict(RESULT, verdict="skip")

@@ -147,9 +147,9 @@ def add_linkedin_job(
         )
     )
     session.flush()
-    import job_radar.auto_ignore as auto_ignore
+    import job_radar.review.auto_ignore as review_auto_ignore
 
-    auto_ignore.apply_rules(session, opportunity)
+    review_auto_ignore.apply_rules(session, opportunity)
     return True
 
 
