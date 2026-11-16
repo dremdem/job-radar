@@ -5,15 +5,15 @@ Revises: 00cdf25ed2b3
 Create Date: 2026-09-28 17:50:43.057180
 """
 
-from collections.abc import Sequence
+import collections.abc as cabc
 
+import alembic.op as op
 import sqlalchemy as sa
-from alembic import op
 
 revision: str = "5df02b5e4bb9"
 down_revision: str | None = "00cdf25ed2b3"
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+branch_labels: str | cabc.Sequence[str] | None = None
+depends_on: str | cabc.Sequence[str] | None = None
 
 
 def upgrade() -> None:

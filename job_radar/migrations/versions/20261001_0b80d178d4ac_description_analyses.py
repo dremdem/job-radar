@@ -5,15 +5,15 @@ Revises: c1a12865fbc8
 Create Date: 2026-10-01 18:40:54.963822
 """
 
-from collections.abc import Sequence
+import collections.abc as cabc
 
+import alembic.op as op
 import sqlalchemy as sa
-from alembic import op
 
 revision: str = "0b80d178d4ac"
 down_revision: str | None = "c1a12865fbc8"
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+branch_labels: str | cabc.Sequence[str] | None = None
+depends_on: str | cabc.Sequence[str] | None = None
 
 
 def upgrade() -> None:

@@ -5,15 +5,15 @@ Revises: 80c216f05c69
 Create Date: 2026-09-25 11:11:30.573331
 """
 
-from collections.abc import Sequence
+import collections.abc as cabc
 
+import alembic.op as op
 import sqlalchemy as sa
-from alembic import op
 
 revision: str = "45dc270b488e"
 down_revision: str | None = "80c216f05c69"
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+branch_labels: str | cabc.Sequence[str] | None = None
+depends_on: str | cabc.Sequence[str] | None = None
 
 
 def upgrade() -> None:
