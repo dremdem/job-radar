@@ -6,7 +6,7 @@ answer, and ``chat_system_prompt`` / ``quick_prompts`` serve the chat. Only stor
 goes in, so Claude does not have to guess. See docs/claude.md.
 
 Usage:
-    import job_radar.claude.prompt as claude_prompt
+    import job_radar.ai.claude.prompt as claude_prompt
 """
 
 import typing as t

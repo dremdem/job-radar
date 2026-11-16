@@ -1,4 +1,4 @@
-"""Tests for job_radar.claude.memory: memory blocks in chat answers, edits with a
+"""Tests for job_radar.ai.claude.memory: memory blocks in chat answers, edits with a
 change log, and the memory section of the prompt (docs/claude-memory.md).
 """
 
@@ -6,9 +6,9 @@ import json
 
 import test_claude
 
-import job_radar.claude.analysis as claude_analysis
-import job_radar.claude.memory as claude_memory
-import job_radar.claude.runner as claude_runner
+import job_radar.ai.claude.analysis as claude_analysis
+import job_radar.ai.claude.memory as claude_memory
+import job_radar.ai.claude.runner as claude_runner
 import job_radar.models as models
 
 

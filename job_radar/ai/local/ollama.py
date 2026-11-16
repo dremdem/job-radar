@@ -4,7 +4,7 @@
 parsed object; ``OllamaError`` covers connection and format problems. See docs/ai.md.
 
 Usage:
-    import job_radar.ai.ollama as ai_ollama
+    import job_radar.ai.local.ollama as local_ollama
 """
 
 import json

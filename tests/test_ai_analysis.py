@@ -1,4 +1,4 @@
-"""Tests for job_radar.ai.analysis: quote checks, verified facts, risks and the
+"""Tests for job_radar.ai.local.analysis: quote checks, verified facts, risks and the
 residence rule, with a fake local model (docs/ai.md).
 """
 
@@ -6,7 +6,7 @@ import typing as t
 
 import pytest
 
-import job_radar.ai.analysis as ai_analysis
+import job_radar.ai.local.analysis as local_analysis
 import job_radar.dedup as dedup
 import job_radar.models as models
 import job_radar.review.auto_ignore as review_auto_ignore
@@ -86,23 +86,23 @@ def add_vacancy(session, title="Python Developer", text=UK_ONLY, state=models.Op
     ],
 )
 def test_quote_in_text(quote, found):
-    assert ai_analysis.quote_in_text(quote, UK_ONLY) is found
+    assert local_analysis.quote_in_text(quote, UK_ONLY) is found
 
 
 def test_verify_keeps_supported_facts():
-    facts = ai_analysis.verify(UK_ANSWER, UK_ONLY)
+    facts = local_analysis.verify(UK_ANSWER, UK_ONLY)
     assert facts.residence == ["UK"] and facts.work_mode == "remote"
 
 
 def test_verify_drops_invented_quotes_and_places():
-    facts = ai_analysis.verify(
+    facts = local_analysis.verify(
         answer("hybrid", "Three days a week in our Berlin office.", ["UK", "Thailand"], "x y z"),
         UK_ONLY,
     )
     assert facts.work_mode == "unknown" and facts.work_mode_quote == ""
     assert facts.residence == []
     # A place the text never names is dropped even with a real quote.
-    facts = ai_analysis.verify(
+    facts = local_analysis.verify(
         answer(residence=["Thailand"], residence_quote=UK_ANSWER["residence_quote"]), UK_ONLY
     )
     assert facts.residence == []
@@ -150,7 +150,7 @@ def test_analyze_pending_stores_once_and_only_for_to_review(session):
     add_vacancy(session, title="Mine", state=models.OpportunityState.INTERESTED)
 
     model = FakeModel([UK_ANSWER])
-    stats = ai_analysis.analyze_pending(session, model)
+    stats = local_analysis.analyze_pending(session, model)
     assert (stats.analyzed, stats.flagged, stats.errors) == (1, 1, 0)
     [analysis] = session.query(models.DescriptionAnalysis).all()
     assert analysis.opportunity_id == flagged.id and analysis.model == "fake:1b"
@@ -158,13 +158,13 @@ def test_analyze_pending_stores_once_and_only_for_to_review(session):
     assert "must be based in the UK" in model.prompts[0]
 
     # Already analyzed: nothing to do.
-    assert ai_analysis.analyze_pending(session, FakeModel([])).analyzed == 0
+    assert local_analysis.analyze_pending(session, FakeModel([])).analyzed == 0
 
 
 def test_analyze_pending_limit_and_errors(session):
     for title in ("A", "B", "C"):
         add_vacancy(session, title=title, text=f"{title}: {UK_ONLY}")
-    stats = ai_analysis.analyze_pending(
+    stats = local_analysis.analyze_pending(
         session, FakeModel([RuntimeError("bad JSON"), UK_ANSWER]), limit=2
     )
     assert (stats.analyzed, stats.errors, stats.pending) == (1, 1, 1)
@@ -174,7 +174,7 @@ def test_analyze_pending_limit_and_errors(session):
 def test_ai_rule_auto_ignores(session):
     review_auto_ignore.save_rules(session, review_auto_ignore.Rules(ai_location=True))
     o = add_vacancy(session)
-    ai_analysis.analyze_pending(session, FakeModel([UK_ANSWER]))
+    local_analysis.analyze_pending(session, FakeModel([UK_ANSWER]))
     session.refresh(o)
     assert o.state is models.OpportunityState.AUTO_IGNORE
     assert o.auto_ignore_reason == "AI: only for UK"
@@ -182,14 +182,14 @@ def test_ai_rule_auto_ignores(session):
 
 def test_ai_rule_is_off_by_default(session):
     o = add_vacancy(session)
-    ai_analysis.analyze_pending(session, FakeModel([UK_ANSWER]))
+    local_analysis.analyze_pending(session, FakeModel([UK_ANSWER]))
     session.refresh(o)
     assert o.state is models.OpportunityState.NEW
 
 
 def test_queue_shows_ai_reason_and_lowers_score(client, session):
     o = add_vacancy(session)
-    ai_analysis.analyze_pending(session, FakeModel([UK_ANSWER]))
+    local_analysis.analyze_pending(session, FakeModel([UK_ANSWER]))
     # 8.0 - 2.5; no Python bonus, the title already says Python.
     assert ">5.5<" in client.get("/").text
     text = client.get(f"/opportunities/{o.id}/panel").text
@@ -246,7 +246,9 @@ def test_pipeline_reports(session, tmp_path):
     ],
 )
 def test_verify_drops_exclusions_preferences_and_flags(places, quote, text):
-    assert ai_analysis.verify(answer(residence=places, residence_quote=quote), text).residence == []
+    assert (
+        local_analysis.verify(answer(residence=places, residence_quote=quote), text).residence == []
+    )
 
 
 def test_any_city_is_not_a_restriction():

@@ -5,5 +5,5 @@ told, ``analysis`` keeps the queue of analyses and the background workers, and
 ``memory`` holds the facts and skills Claude keeps between chats. See docs/claude.md.
 
 Usage:
-    import job_radar.claude as claude
+    import job_radar.ai.claude as claude
 """

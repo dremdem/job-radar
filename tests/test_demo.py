@@ -106,7 +106,7 @@ def test_remove_demo_takes_what_was_attached(session):
 
 def test_demo_gives_the_background_analysis_nothing_to_send(session):
     """Auto-analyze (#264) must not spend the user's Claude on made-up vacancies."""
-    import job_radar.claude.analysis as claude_analysis
+    import job_radar.ai.claude.analysis as claude_analysis
 
     jr_demo.seed_demo(session)
     assert claude_analysis.enqueue_new_descriptions(session) == 0

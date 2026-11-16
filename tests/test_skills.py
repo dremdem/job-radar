@@ -1,4 +1,4 @@
-"""Tests for job_radar.skills: normalizing gaps, the report, the best set and the
+"""Tests for job_radar.ai.skills: normalizing gaps, the report, the best set and the
 Skills page (docs/skills.md).
 """
 
@@ -7,9 +7,9 @@ import datetime as dt
 import pytest
 import test_ai_analysis
 
+import job_radar.ai.skills as ai_skills
 import job_radar.models as models
 import job_radar.profile.stack as profile_stack
-import job_radar.skills as skills
 
 PROFILE = profile_stack.Profile(known=["Python", "Django"], learnable=["Redis"])
 
@@ -30,7 +30,7 @@ PROFILE = profile_stack.Profile(known=["Python", "Django"], learnable=["Redis"])
     ],
 )
 def test_normalize(raw, name):
-    assert skills.normalize(raw) == name
+    assert ai_skills.normalize(raw) == name
 
 
 def claude(session, o, gaps, location="ok"):
@@ -67,7 +67,7 @@ def test_report_counts_and_unlocks(session):
     # ignored without a stack reason: left out
     claude(session, ignored, [gap("Go")])
 
-    report = skills.build_report(session, PROFILE)
+    report = ai_skills.build_report(session, PROFILE)
     rows = {r.name: r for r in report.rows}
     # only A: B also needs Spark
     assert rows["Go"].must == 3 and rows["Go"].unlock == 1
@@ -88,16 +88,16 @@ def test_local_stack_check_counts_too(session):
         stack=[{"skill": "Terraform", "status": "required", "quote": "Terraform required."}],
     ))  # fmt: skip
     session.commit()
-    rows = {r.name: r for r in skills.build_report(session, PROFILE).rows}
+    rows = {r.name: r for r in ai_skills.build_report(session, PROFILE).rows}
     assert rows["Terraform"].must == 1 and rows["Terraform"].unlock == 1
 
 
 def test_best_set_is_greedy():
     missing = [{"Go"}, {"Go"}, {"Go", "Spark"}, {"Spark", "Terraform"}, {"Redis"}]
-    assert skills.best_set(missing, 1) == ["Go"]
+    assert ai_skills.best_set(missing, 1) == ["Go"]
     # Go + Spark opens 3
-    assert skills.best_set(missing, 2) == ["Go", "Spark"]
-    assert skills.best_set(missing, 3)[:2] == ["Go", "Spark"]
+    assert ai_skills.best_set(missing, 2) == ["Go", "Spark"]
+    assert ai_skills.best_set(missing, 3)[:2] == ["Go", "Spark"]
 
 
 def test_skills_page_and_level_action(client, session):
@@ -119,25 +119,25 @@ def test_all_analysed_counts_ignored_too(session):
         session, title="Ignored", text="Go", state=models.OpportunityState.IGNORE
     )
     claude(session, o, [gap("Go")])
-    assert "Go" not in {r.name for r in skills.build_report(session, PROFILE).rows}
-    assert "Go" in {r.name for r in skills.build_report(session, PROFILE, everything=True).rows}
+    assert "Go" not in {r.name for r in ai_skills.build_report(session, PROFILE).rows}
+    assert "Go" in {r.name for r in ai_skills.build_report(session, PROFILE, everything=True).rows}
 
 
 def test_sort_rows():
-    rows = [skills.SkillRow("Go", must=3, nice=1, unlock=1, scores=[6.0]),
-            skills.SkillRow("Azure", must=5, nice=4, unlock=0, scores=[8.0]),
-            skills.SkillRow("Redis", must=1, nice=0, unlock=2, level="learnable")]  # fmt: skip
-    assert [r.name for r in skills.sort_rows(rows, "must", "desc")] == ["Azure", "Go", "Redis"]
-    assert [r.name for r in skills.sort_rows(rows, "name", "asc")] == ["Azure", "Go", "Redis"]
-    assert [r.name for r in skills.sort_rows(rows, "avg", "desc")] == [
+    rows = [ai_skills.SkillRow("Go", must=3, nice=1, unlock=1, scores=[6.0]),
+            ai_skills.SkillRow("Azure", must=5, nice=4, unlock=0, scores=[8.0]),
+            ai_skills.SkillRow("Redis", must=1, nice=0, unlock=2, level="learnable")]  # fmt: skip
+    assert [r.name for r in ai_skills.sort_rows(rows, "must", "desc")] == ["Azure", "Go", "Redis"]
+    assert [r.name for r in ai_skills.sort_rows(rows, "name", "asc")] == ["Azure", "Go", "Redis"]
+    assert [r.name for r in ai_skills.sort_rows(rows, "avg", "desc")] == [
         "Azure",
         "Go",
         "Redis",
         # no score last
     ]
-    assert [r.name for r in skills.sort_rows(rows, "unlock", "asc")] == ["Azure", "Go", "Redis"]
+    assert [r.name for r in ai_skills.sort_rows(rows, "unlock", "asc")] == ["Azure", "Go", "Redis"]
     # default: unlock
-    assert skills.sort_rows(rows, "nope", "desc")[0].name == "Redis"
+    assert ai_skills.sort_rows(rows, "nope", "desc")[0].name == "Redis"
 
 
 def test_sort_links_on_the_page(client, session):

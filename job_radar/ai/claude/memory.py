@@ -6,7 +6,7 @@ answer, ``save`` / ``delete`` are the edits from the Memory page, and ``prompt_s
 puts the whole memory into a prompt. See docs/claude-memory.md.
 
 Usage:
-    import job_radar.claude.memory as claude_memory
+    import job_radar.ai.claude.memory as claude_memory
 """
 
 import datetime as dt

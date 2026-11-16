@@ -16,7 +16,7 @@ flowchart TB
         WEB[web/app.py<br/>FastAPI routes, Jinja2 + HTMX]
         SJ[web/sync_job.py<br/>one sync at a time]
         PL[pipeline.py<br/>every sync step in order]
-        CW[claude/analysis.py<br/>worker pool + chat thread]
+        CW[ai/claude/analysis.py<br/>worker pool + chat thread]
     end
     DB[(SQLite<br/>models.py, Alembic)]
     CL[[claude -p]]
@@ -38,7 +38,7 @@ flowchart TB
 2. **Is stored once.** `dedup.py` upserts idempotently: one `Company` per normalized name (legal suffixes dropped, aliases), one `SourceRecord` per source and external id, one `JobSnapshot` per distinct description (by SHA-256). Re-running any import never creates duplicates. The same vacancy seen in two different sources stays two opportunities; only a repost of a vacancy already applied to (same company, same title) is merged into it (`review/applied_duplicates.py`).
 3. **Is scored.** `scoring/rules.py` gives 0–10 from title and location, every rule leaving a `Reason`. `scoring/description.py` adds Python-in-description checks; `review/notes.py` and `history/rejections.py` adjust for what the user said and what companies answered.
 4. **Is filtered.** `review/auto_ignore.py` moves noise out of *To review* (hybrid, country-only, Claude said skip, …), each with the rule's name; `review/applied_duplicates.py` attaches a repost of a vacancy already applied to.
-5. **Is analyzed.** With a description, it is queued for Claude (`claude/analysis.py`). Optionally the local model extracts work mode and residence first (`ai/analysis.py`); `scoring/findings.py` reads what it stored.
+5. **Is analyzed.** With a description, it is queued for Claude (`ai/claude/analysis.py`). Optionally the local model extracts work mode and residence first (`ai/local/analysis.py`); `scoring/findings.py` reads what it stored.
 6. **Is decided by the user** in the queue: interested, ignore with a reason, applied. Mail about it later lands in the company history (`history/contacts.py`, `history/applications.py`).
 
 ## Sync
@@ -64,10 +64,10 @@ sequenceDiagram
     UI->>DB: poll status, redraw the row
 ```
 
-- `claude/prompt.py` builds the prompt (CV, profile, fixed facts, the vacancy) and the answer's JSON schema; `PROMPT_VERSION` is stored with each answer.
-- `claude/runner.py` is the only place that starts the CLI: environment without API keys, timeouts, transient-error detection.
-- `claude/analysis.py` owns the queue: claiming, retries with backoff, the daily cap, the 15-minute pause on a usage limit, re-queueing unfinished work at startup.
-- `claude/memory.py` keeps facts Claude learned about the user between chats, with a change log.
+- `ai/claude/prompt.py` builds the prompt (CV, profile, fixed facts, the vacancy) and the answer's JSON schema; `PROMPT_VERSION` is stored with each answer.
+- `ai/claude/runner.py` is the only place that starts the CLI: environment without API keys, timeouts, transient-error detection.
+- `ai/claude/analysis.py` owns the queue: claiming, retries with backoff, the daily cap, the 15-minute pause on a usage limit, re-queueing unfinished work at startup.
+- `ai/claude/memory.py` keeps facts Claude learned about the user between chats, with a change log.
 
 Everything that talks to the outside world sits behind a small `Protocol` (`Model`, `Runner`, board and Gmail clients), so tests pass fakes and never touch the network.
 
@@ -98,7 +98,7 @@ uv run python -c "import sqlite3; sqlite3.connect('data/job_radar.db').backup(sq
 | Profile | `profile/home.py`, `profile/stack.py` |
 | Scoring and filters | `scoring/rules.py`, `scoring/description.py`, `scoring/language.py`, `scoring/findings.py`, `review/notes.py`, `review/suggestions.py`, `review/auto_ignore.py`, `review/applied_duplicates.py` |
 | History | `history/applications.py`, `history/rejections.py`, `history/contacts.py` |
-| AI | `ai/` (Ollama), `claude/` (Claude Code), `skills.py` (skills gap report) |
+| AI | `ai/local/` (Ollama), `ai/claude/` (Claude Code), `ai/skills.py` (skills gap report) |
 | Background jobs | `pipeline.py`, `web/sync_job.py`, `web/description_job.py` |
 
 The database schema is described in [data-model.md](data-model.md).

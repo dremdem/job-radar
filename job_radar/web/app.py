@@ -29,11 +29,12 @@ import markupsafe
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
-import job_radar.ai.analysis as ai_analysis
-import job_radar.claude.analysis as claude_analysis
-import job_radar.claude.memory as claude_memory
-import job_radar.claude.prompt as claude_prompt
-import job_radar.claude.runner as jr_claude_runner
+import job_radar.ai.claude.analysis as claude_analysis
+import job_radar.ai.claude.memory as claude_memory
+import job_radar.ai.claude.prompt as claude_prompt
+import job_radar.ai.claude.runner as jr_claude_runner
+import job_radar.ai.local.analysis as local_analysis
+import job_radar.ai.skills as ai_skills
 import job_radar.config as config
 import job_radar.db as db
 import job_radar.history.applications as history_applications
@@ -48,7 +49,6 @@ import job_radar.review.suggestions as review_suggestions
 import job_radar.scoring.description as scoring_description
 import job_radar.scoring.findings as scoring_findings
 import job_radar.scoring.language as scoring_language
-import job_radar.skills as skills
 import job_radar.sources.linkedin.alerts as linkedin_alerts
 import job_radar.sources.linkedin.capture as linkedin_capture
 import job_radar.sources.linkedin.chrome as linkedin_chrome
@@ -756,15 +756,15 @@ def create_app(
         dir: str = "desc",
     ) -> fastapi_responses.HTMLResponse:
         everything = scope == "all"
-        report = skills.build_report(
+        report = ai_skills.build_report(
             session,
             profile_stack.load_profile(settings.profile),
             days=days or None,
             everything=everything,
         )
-        report.rows = skills.sort_rows(report.rows, sort, dir)
+        report.rows = ai_skills.sort_rows(report.rows, sort, dir)
         context = {"report": report, "days": days, "scope": scope, "message": ""}
-        context |= {"sort": sort if sort in skills.SORTS else "unlock", "dir": dir}
+        context |= {"sort": sort if sort in ai_skills.SORTS else "unlock", "dir": dir}
         return templates.TemplateResponse(request, "skills.html", context)
 
     @app.post("/skills/level", response_class=fastapi_responses.HTMLResponse)
@@ -783,7 +783,7 @@ def create_app(
                  for k in ("known", "learnable", "blockers")}  # fmt: skip
         lists[level].append(name.strip())
         profile_stack.save_profile(settings.profile, dataclasses.replace(profile, **lists))
-        report = skills.build_report(
+        report = ai_skills.build_report(
             session,
             profile_stack.load_profile(settings.profile),
             days=days or None,
@@ -867,7 +867,7 @@ def create_app(
             home_regions=lines(home_regions),
         )
         profile_stack.save_profile(settings.profile, profile)
-        asked = ai_analysis.recheck_stack(session)
+        asked = local_analysis.recheck_stack(session)
         message = "Saved." + (
             f" The stack of {asked} vacancies in To review is checked again at the next Sync."
             if asked

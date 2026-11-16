@@ -407,24 +407,24 @@ def analyze_descriptions(
     session: sa_orm.Session, settings: config.Settings, echo: Echo, model=None
 ) -> None:
     """Work mode and residence from descriptions with a local model (docs/ai.md)."""
-    import job_radar.ai.analysis as ai_analysis
-    import job_radar.ai.ollama as ai_ollama
+    import job_radar.ai.local.analysis as local_analysis
+    import job_radar.ai.local.ollama as local_ollama
     import job_radar.profile.stack as profile_stack
 
     if not settings.ai_analysis:
         echo("ai: disabled (JOB_RADAR_AI_ANALYSIS=false).")
         return
     if model is None:
-        model = ai_ollama.OllamaClient(settings.ollama_url, settings.ai_model)
+        model = local_ollama.OllamaClient(settings.ollama_url, settings.ai_model)
         try:
             model.check()
-        except ai_ollama.OllamaError as e:
+        except local_ollama.OllamaError as e:
             echo(f"ai: skipped: {e}")
             return
     profile = profile_stack.load_profile(settings.profile)
     if profile is None:
         echo(f"ai: no {settings.profile}; the stack check is skipped (see profile.example.yaml).")
-    stats = ai_analysis.analyze_pending(
+    stats = local_analysis.analyze_pending(
         session, model, limit=settings.ai_max_per_sync, profile=profile
     )
     echo(

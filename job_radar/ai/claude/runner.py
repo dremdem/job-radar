@@ -6,7 +6,7 @@ the session id to continue. ``Runner`` is the interface the workers use, so test
 fake. ``is_transient`` tells errors worth a retry. See docs/claude.md.
 
 Usage:
-    import job_radar.claude.runner as claude_runner
+    import job_radar.ai.claude.runner as claude_runner
 """
 
 import dataclasses

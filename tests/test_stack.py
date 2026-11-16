@@ -7,7 +7,7 @@ import typing as t
 import pytest
 import test_ai_analysis
 
-import job_radar.ai.analysis as ai_analysis
+import job_radar.ai.local.analysis as local_analysis
 import job_radar.models as models
 import job_radar.profile.stack as profile_stack
 import job_radar.scoring.findings as scoring_findings
@@ -71,7 +71,7 @@ def test_check_stack_keeps_required_gaps_only():
         }
     )
     known = {k.lower() for k in KNOWN}
-    stack, raw = ai_analysis.check_stack(GO_JOB, model, known)
+    stack, raw = local_analysis.check_stack(GO_JOB, model, known)
     assert model.asked == ["Go", "Kotlin", "Rust", "Prometheus"]
     by_skill = {s["skill"]: s["status"] for s in stack}
     assert by_skill == {
@@ -105,11 +105,13 @@ def test_analyze_pending_checks_stack_also_for_analyzed_descriptions(session):
     o = test_ai_analysis.add_vacancy(session, title="Python Developer", text=GO_JOB)
     # Analyzed before a profile existed: no stack yet.
 
-    ai_analysis.analyze_pending(session, test_ai_analysis.FakeModel([test_ai_analysis.UK_ANSWER]))
+    local_analysis.analyze_pending(
+        session, test_ai_analysis.FakeModel([test_ai_analysis.UK_ANSWER])
+    )
     assert o.analyses[0].stack is None
 
     model = FakeModel({"Go": {"status": "required", "quote": "working in Go in production"}})
-    stats = ai_analysis.analyze_pending(session, model, known={k.lower() for k in KNOWN})
+    stats = local_analysis.analyze_pending(session, model, known={k.lower() for k in KNOWN})
     session.refresh(o)
     # the same row, now with the stack
     assert len(o.analyses) == 1
@@ -121,7 +123,7 @@ def test_analyze_pending_checks_stack_also_for_analyzed_descriptions(session):
 def test_queue_shows_stack_gap(client, session):
     o = test_ai_analysis.add_vacancy(session, title="Python Developer", text=GO_JOB)
     model = FakeModel({"Go": {"status": "required", "quote": "working in Go in production"}})
-    ai_analysis.analyze_pending(session, model, known={k.lower() for k in KNOWN})
+    local_analysis.analyze_pending(session, model, known={k.lower() for k in KNOWN})
     # 8.0 - 1
     assert ">7.0<" in client.get("/").text
     text = client.get(f"/opportunities/{o.id}/panel").text

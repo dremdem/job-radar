@@ -7,7 +7,7 @@ threads within the daily cap from ``ClaudeSettings``, and answers chat questions
 queue page. See docs/claude.md.
 
 Usage:
-    import job_radar.claude.analysis as claude_analysis
+    import job_radar.ai.claude.analysis as claude_analysis
 """
 
 import dataclasses
@@ -22,10 +22,10 @@ import uuid
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
-import job_radar.ai.analysis as ai_analysis
-import job_radar.claude.memory as claude_memory
-import job_radar.claude.prompt as claude_prompt
-import job_radar.claude.runner as claude_runner
+import job_radar.ai.claude.memory as claude_memory
+import job_radar.ai.claude.prompt as claude_prompt
+import job_radar.ai.claude.runner as claude_runner
+import job_radar.ai.local.analysis as local_analysis
 import job_radar.models as models
 import job_radar.profile.stack as profile_stack
 import job_radar.review.auto_ignore as review_auto_ignore
@@ -256,7 +256,7 @@ def _check_quotes(result: dict[str, t.Any], text: str) -> dict[str, t.Any]:
 
     def mark(item: dict[str, t.Any]) -> None:
         quote = str(item.get("quote") or "")
-        item["quote_ok"] = bool(quote) and ai_analysis.quote_in_text(quote, text)
+        item["quote_ok"] = bool(quote) and local_analysis.quote_in_text(quote, text)
 
     if isinstance(result.get("location"), dict):
         mark(result["location"])
