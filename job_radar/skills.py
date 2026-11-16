@@ -17,8 +17,8 @@ import re
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
-import job_radar.ai.analysis as ai_analysis
 import job_radar.description as description
+import job_radar.findings as findings
 import job_radar.language as language
 import job_radar.models as models
 import job_radar.stack as stack
@@ -193,9 +193,9 @@ def build_report(
                     continue
                 target = must if g.get("requirement") == "must_have" else nice
                 target.setdefault(name, str(g.get("quote") or ""))
-        analysis = ai_analysis.latest_analysis(o)
+        analysis = findings.latest_analysis(o)
         if analysis is not None:
-            if analysis.work_mode in ("hybrid", "onsite") or ai_analysis.residence_restriction(
+            if analysis.work_mode in ("hybrid", "onsite") or findings.residence_restriction(
                 analysis
             ):
                 blocked = True

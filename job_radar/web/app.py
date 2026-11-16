@@ -40,6 +40,7 @@ import job_radar.config as config
 import job_radar.contacts as contacts
 import job_radar.db as db
 import job_radar.description as jr_description
+import job_radar.findings as findings
 import job_radar.language as jr_language
 import job_radar.linkedin.alerts as linkedin_alerts
 import job_radar.linkedin.capture as linkedin_capture
@@ -1321,7 +1322,7 @@ def _score(
         notes.location_penalty(session, opportunity),
         jr_language.language_risk(opportunity.title, description),
         jr_description.python_risk(opportunity.title, description),
-        *ai_analysis.risks(ai_analysis.latest_analysis(opportunity), _profile(session)),
+        *findings.risks(findings.latest_analysis(opportunity), _profile(session)),
     )
     for penalty in effects:
         if penalty is None:
@@ -1362,11 +1363,11 @@ def _row_context(
         "suggestions": suggestions.suggest(
             opportunity,
             description=description,
-            analysis=ai_analysis.latest_analysis(opportunity),
+            analysis=findings.latest_analysis(opportunity),
             profile=_profile(session),
             claude=claude_analysis.latest(session, opportunity.id),
         ),
-        "stack_hint": _first_gap(ai_analysis.latest_analysis(opportunity), _profile(session)),
+        "stack_hint": _first_gap(findings.latest_analysis(opportunity), _profile(session)),
         "country": notes.country_from_location(opportunity.location) or "",
         "reason_kinds": [k for k in models.NoteKind if k is not models.NoteKind.NOTE],
     }

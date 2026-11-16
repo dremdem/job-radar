@@ -24,6 +24,7 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.description as description
+import job_radar.findings as findings
 import job_radar.models as models
 
 SETTINGS_KEY = "auto_ignore"
@@ -318,11 +319,8 @@ def reason_for(
             return f"language: {found}"
     if reason := claude_reason(session, opportunity, rules):
         return reason
-    if rules.ai_location:
-        import job_radar.ai.analysis as ai_analysis
-
-        if reason := ai_analysis.auto_ignore_reason(opportunity):
-            return reason
+    if rules.ai_location and (reason := findings.auto_ignore_reason(opportunity)):
+        return reason
     return None
 
 

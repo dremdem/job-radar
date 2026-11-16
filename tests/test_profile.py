@@ -3,6 +3,7 @@ and the risks they give (docs/ai.md#stack-vs-your-cv).
 """
 
 import job_radar.ai.analysis as ai_analysis
+import job_radar.findings as findings
 import job_radar.models as models
 import job_radar.stack as stack
 
@@ -48,7 +49,7 @@ def test_levels():
 
 def test_stack_risks_by_level():
     p = stack.Profile(known=["Redis"], learnable=["RabbitMQ"], blockers=["TensorFlow"])
-    found = ai_analysis.stack_risks(required("Go", "RabbitMQ", "TensorFlow", "Redis"), p)
+    found = findings.stack_risks(required("Go", "RabbitMQ", "TensorFlow", "Redis"), p)
     texts = [r.text for _, r in found]
     assert texts == [
         "Requires Go (not in your CV) — “Go in production”",
@@ -61,7 +62,7 @@ def test_stack_risks_by_level():
 
 def test_non_blockers_are_capped_blockers_are_not():
     p = stack.Profile(blockers=["TensorFlow", "PyTorch"])
-    found = ai_analysis.stack_risks(
+    found = findings.stack_risks(
         required("Go", "Rust", "Scala", "Kotlin", "TensorFlow", "PyTorch"), p
     )
     # -3 capped + -3 - 3

@@ -8,6 +8,7 @@ import pytest
 import test_ai_analysis
 
 import job_radar.ai.analysis as ai_analysis
+import job_radar.findings as findings
 import job_radar.models as models
 import job_radar.stack as jr_stack
 
@@ -90,12 +91,12 @@ def test_stack_risks():
         ]
         + [{"skill": "Scala", "status": "nice_to_have", "quote": "Scala"}]
     )
-    found = ai_analysis.stack_risks(analysis)
+    found = findings.stack_risks(analysis)
     assert found[0][1].text == "Requires Go (not in your CV) — “Go in production”"
     assert len(found) == 4
     # capped
     assert sum(points for points, _ in found) == -3.0
-    assert ai_analysis.stack_risks(models.DescriptionAnalysis(stack=None)) == []
+    assert findings.stack_risks(models.DescriptionAnalysis(stack=None)) == []
 
 
 def test_analyze_pending_checks_stack_also_for_analyzed_descriptions(session):
