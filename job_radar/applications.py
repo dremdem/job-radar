@@ -1,36 +1,34 @@
-"""Past applications reconstructed from mail. See docs/applications.md.
+"""Past applications reconstructed from confirmation mail.
 
-LinkedIn confirmations are facts and are stored as confirmed; ATS confirmations are
-recognized by heuristics and stored as suggestions for the user to confirm or dismiss.
+LinkedIn confirmations are facts and are stored as confirmed applications. ATS
+confirmations (Greenhouse, Lever, Workable and the like) are recognized by heuristics and
+stored as suggestions that the user confirms or dismisses in the queue.
+
+Main entry points: ``detect_application`` reads one email, ``import_applications`` turns
+stored mail into ``Application`` rows (idempotent by email id), ``application_status``
+says whether an application was rejected later, and ``confirm`` / ``dismiss`` /
+``confirm_all`` resolve suggestions. See docs/applications.md.
+
+Usage:
+    import job_radar.applications as applications
 """
 
+import dataclasses
+import datetime as dt
+import email.utils as email_utils
 import re
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from email.utils import parseaddr
 
-from bs4 import BeautifulSoup
-from sqlalchemy import and_, or_, select
-from sqlalchemy.orm import Session
+import bs4
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .dedup import get_or_create_company
-from .linkedin.rejections import GONE_EVENT, FetchBody, MessageGone, detect_rejection
-from .models import (
-    Application,
-    ApplicationReview,
-    ApplicationSource,
-    EmailDirection,
-    EmailMessage,
-    Opportunity,
-    OpportunityState,
-    Rejection,
-    SourceRecord,
-    SourceType,
-)
+import job_radar.dedup as dedup
+import job_radar.linkedin.rejections as linkedin_rejections
+import job_radar.models as models
 
 CONFIRMATION_EVENT = "application_confirmation"
 # One application usually produces a LinkedIn and an ATS email a day or two apart.
-SAME_APPLICATION_WINDOW = timedelta(days=3)
+SAME_APPLICATION_WINDOW = dt.timedelta(days=3)
 
 LINKEDIN_SENDER = "jobs-noreply@linkedin.com"
 _LINKEDIN_SUBJECT = re.compile(r"your application was sent to (?P<company>.+)$", re.IGNORECASE)
@@ -57,7 +55,8 @@ ATS_DOMAINS = (
     "breezy.hr",
     "jobvite.com",
     "icims.com",
-    "hibob.com",  # "… (via Bob)": many employers send through it (#178)
+    # "… (via Bob)": many employers send through it (#178)
+    "hibob.com",
 )
 # Subdomain labels that name the ATS region/product, not the company.
 _GENERIC_LABELS = {"us", "eu", "candidates", "inbound", "hire", "mail", "email", "jobs", "app"}
@@ -113,19 +112,22 @@ _ROLE_PREFIX = re.compile(
 )
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class DetectedApplication:
-    source: ApplicationSource
+    """What one confirmation email says: source, company, role and, for LinkedIn, the job id."""
+
+    source: models.ApplicationSource
     company: str
     role: str | None
     linkedin_job_id: str | None = None
-    needs_body: bool = False  # LinkedIn mail stored without a body: role is in the body
+    # LinkedIn mail stored without a body: role is in the body
+    needs_body: bool = False
 
 
 def _linkedin_details(html: str | None, text: str | None) -> tuple[str | None, str | None]:
     """(role, job id) from a LinkedIn confirmation: the first job link is the applied job."""
     if html:
-        soup = BeautifulSoup(html, "html.parser")
+        soup = bs4.BeautifulSoup(html, "html.parser")
         anchors = [a for a in soup.find_all("a", href=True) if _JOB_ID.search(a["href"])]
         if anchors:
             job_id = _JOB_ID.search(anchors[0]["href"]).group(1)
@@ -183,7 +185,7 @@ def _split_sender(from_addr: str) -> tuple[str, str]:
     # parseaddr trips over "@" in a display name ("Careers @ Hugging Face <...>").
     if match := re.match(r"^(?P<display>.*)<(?P<address>[^<>]+)>\s*$", from_addr.strip()):
         return match["display"].strip().strip('"'), match["address"].strip().lower()
-    display, address = parseaddr(from_addr)
+    display, address = email_utils.parseaddr(from_addr)
     return display, address.lower()
 
 
@@ -198,7 +200,7 @@ def detect_application(
             return None
         role, job_id = _linkedin_details(html, text)
         return DetectedApplication(
-            source=ApplicationSource.LINKEDIN,
+            source=models.ApplicationSource.LINKEDIN,
             company=match["company"].strip(),
             role=role,
             linkedin_job_id=job_id,
@@ -211,7 +213,7 @@ def detect_application(
             return None
         role, _, company = match["rest"].rpartition(" at ")
         return DetectedApplication(
-            source=ApplicationSource.FDETIMES, company=company.strip(), role=role.strip()
+            source=models.ApplicationSource.FDETIMES, company=company.strip(), role=role.strip()
         )
     if not any(domain == d or domain.endswith("." + d) for d in ATS_DOMAINS):
         return None
@@ -219,92 +221,106 @@ def detect_application(
     if (
         _STATUS_UPDATE.search(subject)
         or not _CONFIRMATION.search(probe)
-        or detect_rejection("Your application to x at y", probe)
+        or linkedin_rejections.detect_rejection("Your application to x at y", probe)
     ):
         return None
     company = _ats_company(display, domain, subject)
     if not company:
         return None
     return DetectedApplication(
-        source=ApplicationSource.ATS, company=company, role=_ats_role(subject, snippet, company)
+        source=models.ApplicationSource.ATS,
+        company=company,
+        role=_ats_role(subject, snippet, company),
     )
 
 
-@dataclass
+@dataclasses.dataclass
 class ImportStats:
+    """Counters of one ``import_applications`` run, for the sync status line."""
+
     emails: int = 0
     detected: int = 0
     new: int = 0
-    linked: int = 0  # emails attached to an application found in another email
+    # emails attached to an application found in another email
+    linked: int = 0
     fetched: int = 0
-    pending: int = 0  # LinkedIn confirmations whose role waits for Gmail access
-    gone: int = 0  # deleted from Gmail before the body was read; role stays unknown
+    # LinkedIn confirmations whose role waits for Gmail access
+    pending: int = 0
+    # deleted from Gmail before the body was read; role stays unknown
+    gone: int = 0
 
 
-def _as_utc(value: datetime) -> datetime:
-    return value if value.tzinfo else value.replace(tzinfo=UTC)
+def _as_utc(value: dt.datetime) -> dt.datetime:
+    return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
 
 
-def _nearby_application(session: Session, company_id: int, at: datetime) -> Application | None:
+def _nearby_application(
+    session: sa_orm.Session, company_id: int, at: dt.datetime
+) -> models.Application | None:
     at = _as_utc(at)
-    for app in session.scalars(select(Application).where(Application.company_id == company_id)):
+    for app in session.scalars(
+        sa.select(models.Application).where(models.Application.company_id == company_id)
+    ):
         if abs(_as_utc(app.applied_at) - at) <= SAME_APPLICATION_WINDOW:
             return app
     return None
 
 
-def _opportunity_for(session: Session, job_id: str | None) -> int | None:
+def _opportunity_for(session: sa_orm.Session, job_id: str | None) -> int | None:
     if job_id is None:
         return None
     return session.scalar(
-        select(SourceRecord.opportunity_id).where(
-            SourceRecord.source_type == SourceType.LINKEDIN_ALERT,
-            SourceRecord.external_id == job_id,
+        sa.select(models.SourceRecord.opportunity_id).where(
+            models.SourceRecord.source_type == models.SourceType.LINKEDIN_ALERT,
+            models.SourceRecord.external_id == job_id,
         )
     )
 
 
-def _fdetimes_vacancy(session: Session, company_id: int, role: str) -> Opportunity:
+def _fdetimes_vacancy(session: sa_orm.Session, company_id: int, role: str) -> models.Opportunity:
     """The vacancy an FDE Times confirmation is about: the FDE Times one of the company with
     this title, else another one with this title, else a new one. Marked Applied; other
     copies with the title join it (#269)."""
-    from .applied_duplicates import MERGEABLE, _seen_again, same_title
-    from .dedup import merge_opportunities
+    import job_radar.applied_duplicates as applied_duplicates
+    import job_radar.dedup as dedup
 
     same = [
         o
         for o in session.scalars(
-            select(Opportunity)
-            .where(Opportunity.company_id == company_id)
-            .order_by(Opportunity.id.desc())
+            sa.select(models.Opportunity)
+            .where(models.Opportunity.company_id == company_id)
+            .order_by(models.Opportunity.id.desc())
         )
-        if same_title(o.title) == same_title(role)
+        if applied_duplicates.same_title(o.title) == applied_duplicates.same_title(role)
     ]
     ranked = sorted(
         same,
         key=lambda o: (
-            not any(r.source_type is SourceType.FDETIMES for r in o.source_records),
-            o.state is not OpportunityState.APPLIED,
+            not any(r.source_type is models.SourceType.FDETIMES for r in o.source_records),
+            o.state is not models.OpportunityState.APPLIED,
         ),
     )
     if ranked:
         keep = ranked[0]
     else:
-        keep = Opportunity(title=role[:255], company_id=company_id)
+        keep = models.Opportunity(title=role[:255], company_id=company_id)
         session.add(keep)
-    if keep.state is not OpportunityState.APPLIED:
-        keep.state = OpportunityState.APPLIED
+    if keep.state is not models.OpportunityState.APPLIED:
+        keep.state = models.OpportunityState.APPLIED
         keep.auto_ignore_reason = None
     session.flush()
-    now = datetime.now(UTC)
+    now = dt.datetime.now(dt.UTC)
     for dup in ranked[1:]:
-        if dup.state in MERGEABLE:  # "interested" or applied: your own call, kept apart
-            _seen_again(session, keep, dup, now)
-            merge_opportunities(session, keep, dup)
+        # "interested" or applied: your own call, kept apart
+        if dup.state in applied_duplicates.MERGEABLE:
+            applied_duplicates._seen_again(session, keep, dup, now)
+            dedup.merge_opportunities(session, keep, dup)
     return keep
 
 
-def import_applications(session: Session, fetch_body: FetchBody | None = None) -> ImportStats:
+def import_applications(
+    session: sa_orm.Session, fetch_body: linkedin_rejections.FetchBody | None = None
+) -> ImportStats:
     """Create applications from confirmation emails. Idempotent by email id.
 
     LinkedIn confirmations stored without a body are recorded right away; their role is
@@ -312,19 +328,20 @@ def import_applications(session: Session, fetch_body: FetchBody | None = None) -
     """
     stats = ImportStats()
     emails = session.scalars(
-        select(EmailMessage)
+        sa.select(models.EmailMessage)
         .where(
-            EmailMessage.direction == EmailDirection.IN,
-            or_(
-                EmailMessage.detected_event.is_(None),
-                and_(
-                    EmailMessage.from_addr.ilike(f"%@{FDETIMES_DOMAIN}%"),
-                    EmailMessage.detected_event.in_(_RELABEL),
+            models.EmailMessage.direction == models.EmailDirection.IN,
+            sa.or_(
+                models.EmailMessage.detected_event.is_(None),
+                sa.and_(
+                    models.EmailMessage.from_addr.ilike(f"%@{FDETIMES_DOMAIN}%"),
+                    models.EmailMessage.detected_event.in_(_RELABEL),
                 ),
             ),
-            EmailMessage.hidden_at.is_(None),  # deleted from the company history (#225)
+            # deleted from the company history (#225)
+            models.EmailMessage.hidden_at.is_(None),
         )
-        .order_by(EmailMessage.sent_at)
+        .order_by(models.EmailMessage.sent_at)
     ).all()
     for email in emails:
         stats.emails += 1
@@ -337,7 +354,7 @@ def import_applications(session: Session, fetch_body: FetchBody | None = None) -
         if found.needs_body and fetch_body is not None:
             try:
                 html, text = fetch_body(email.gmail_message_id)
-            except MessageGone:
+            except linkedin_rejections.MessageGone:
                 gone = True
                 stats.gone += 1
             else:
@@ -347,81 +364,90 @@ def import_applications(session: Session, fetch_body: FetchBody | None = None) -
                 )
         waiting = found.needs_body and not gone
 
-        app = session.scalar(select(Application).where(Application.email_message_id == email.id))
-        company = app.company if app else get_or_create_company(session, found.company)
+        app = session.scalar(
+            sa.select(models.Application).where(models.Application.email_message_id == email.id)
+        )
+        company = app.company if app else dedup.get_or_create_company(session, found.company)
         if app is None:
             app = _nearby_application(session, company.id, email.sent_at)
             if app is not None:
                 stats.linked += 1
         if app is None:
-            app = Application(
+            app = models.Application(
                 company_id=company.id,
                 applied_at=email.sent_at,
                 source=found.source,
                 review=(
-                    ApplicationReview.CONFIRMED
-                    if found.source in (ApplicationSource.LINKEDIN, ApplicationSource.FDETIMES)
-                    else ApplicationReview.SUGGESTED
+                    models.ApplicationReview.CONFIRMED
+                    if found.source
+                    in (models.ApplicationSource.LINKEDIN, models.ApplicationSource.FDETIMES)
+                    else models.ApplicationReview.SUGGESTED
                 ),
                 email_message_id=email.id,
             )
             session.add(app)
             stats.new += 1
-        confirmed = (ApplicationSource.LINKEDIN, ApplicationSource.FDETIMES)
-        if found.source in confirmed and app.review is ApplicationReview.SUGGESTED:
+        confirmed = (models.ApplicationSource.LINKEDIN, models.ApplicationSource.FDETIMES)
+        if found.source in confirmed and app.review is models.ApplicationReview.SUGGESTED:
             # LinkedIn and FDE Times state it as a fact; a dismissal by the user still wins.
-            app.review = ApplicationReview.CONFIRMED
+            app.review = models.ApplicationReview.CONFIRMED
         app.role = app.role or found.role
         app.linkedin_job_id = app.linkedin_job_id or found.linkedin_job_id
         app.opportunity_id = app.opportunity_id or _opportunity_for(session, found.linkedin_job_id)
-        if found.source is ApplicationSource.FDETIMES and found.role:
+        if found.source is models.ApplicationSource.FDETIMES and found.role:
             app.opportunity_id = app.opportunity_id or (
                 _fdetimes_vacancy(session, company.id, found.role).id
             )
         email.company_id = company.id
         email.company_match = "exact"
         if waiting:
-            stats.pending += 1  # revisited on a run with Gmail access
+            # revisited on a run with Gmail access
+            stats.pending += 1
         else:
-            email.detected_event = GONE_EVENT if gone else CONFIRMATION_EVENT
+            email.detected_event = linkedin_rejections.GONE_EVENT if gone else CONFIRMATION_EVENT
         session.commit()
     return stats
 
 
-def application_status(session: Session, app: Application) -> str:
+def application_status(session: sa_orm.Session, app: models.Application) -> str:
     """`rejected` when the company rejected on or after the application date."""
     rejected = session.scalar(
-        select(Rejection.id).where(
-            Rejection.company_id == app.company_id, Rejection.rejected_at >= app.applied_at
+        sa.select(models.Rejection.id).where(
+            models.Rejection.company_id == app.company_id,
+            models.Rejection.rejected_at >= app.applied_at,
         )
     )
     return "rejected" if rejected is not None else app.status
 
 
-def _set_review(session: Session, app_id: int, review: ApplicationReview) -> Application | None:
-    app = session.get(Application, app_id)
+def _set_review(
+    session: sa_orm.Session, app_id: int, review: models.ApplicationReview
+) -> models.Application | None:
+    app = session.get(models.Application, app_id)
     if app is not None:
         app.review = review
         session.commit()
     return app
 
 
-def confirm(session: Session, app_id: int) -> Application | None:
-    return _set_review(session, app_id, ApplicationReview.CONFIRMED)
+def confirm(session: sa_orm.Session, app_id: int) -> models.Application | None:
+    return _set_review(session, app_id, models.ApplicationReview.CONFIRMED)
 
 
-def dismiss(session: Session, app_id: int) -> Application | None:
-    return _set_review(session, app_id, ApplicationReview.DISMISSED)
+def dismiss(session: sa_orm.Session, app_id: int) -> models.Application | None:
+    return _set_review(session, app_id, models.ApplicationReview.DISMISSED)
 
 
-def confirm_all(session: Session, company: str = "") -> int:
+def confirm_all(session: sa_orm.Session, company: str = "") -> int:
     """Confirm every suggestion, or only those whose company contains ``company``."""
     needle = company.strip().casefold()
     suggested = session.scalars(
-        select(Application).where(Application.review == ApplicationReview.SUGGESTED)
+        sa.select(models.Application).where(
+            models.Application.review == models.ApplicationReview.SUGGESTED
+        )
     ).all()
     chosen = [a for a in suggested if needle in a.company.name.casefold()]
     for a in chosen:
-        a.review = ApplicationReview.CONFIRMED
+        a.review = models.ApplicationReview.CONFIRMED
     session.commit()
     return len(chosen)

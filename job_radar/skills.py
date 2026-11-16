@@ -1,19 +1,27 @@
-"""Skills gap report: which missing technologies would open the most vacancies. See
-docs/skills.md (#154)."""
+"""Skills gap report: which missing technologies would open the most vacancies.
 
+Claude's analyses list the skills each vacancy needs that the user lacks. The report
+normalizes them to catalogue names, counts must-have and nice-to-have mentions, and
+``best_set`` picks the few technologies that would complete the most vacancies.
+``build_report`` builds it for the Skills page. See docs/skills.md (#154).
+
+Usage:
+    import job_radar.skills as skills
+"""
+
+import collections
+import dataclasses
+import datetime as dt
 import re
-from collections import Counter
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .ai.analysis import latest_analysis, residence_restriction
-from .description import latest_description
-from .language import vacancy_language
-from .models import ClaudeAnalysis, NoteKind, Opportunity, OpportunityNote, OpportunityState
-from .stack import CATALOGUE, Profile
+import job_radar.ai.analysis as ai_analysis
+import job_radar.description as description
+import job_radar.language as language
+import job_radar.models as models
+import job_radar.stack as stack
 
 # Gaps that are not technologies: listed apart, never "learn this".
 _NON_TECH = re.compile(
@@ -31,7 +39,7 @@ def normalize(raw: str) -> str | None:
     text = " ".join(str(raw).split())
     if not text:
         return None
-    for tech in CATALOGUE:
+    for tech in stack.CATALOGUE:
         if tech.search(text):
             return tech.name
     if _NON_TECH.search(text):
@@ -45,53 +53,62 @@ def _short(raw: str) -> str:
     return head[:40]
 
 
-@dataclass
+@dataclasses.dataclass
 class Example:
+    """A vacancy that asks for a missing skill, with the quote from its analysis."""
+
     opportunity_id: int
     title: str
     company: str
     quote: str
 
 
-@dataclass
+@dataclasses.dataclass
 class SkillRow:
+    """One missing technology in the report: how often it is a must or a plus, and examples."""
+
     name: str
     must: int = 0
     nice: int = 0
     unlock: int = 0
     level: str = "unknown"
-    scores: list[float] = field(default_factory=list)
-    examples: list[Example] = field(default_factory=list)
+    scores: list[float] = dataclasses.field(default_factory=list)
+    examples: list[Example] = dataclasses.field(default_factory=list)
 
     @property
     def avg_score(self) -> float | None:
         return round(sum(self.scores) / len(self.scores), 1) if self.scores else None
 
 
-@dataclass
+@dataclasses.dataclass
 class Report:
+    """The whole skills gap report shown on the Skills page."""
+
     rows: list[SkillRow]
-    non_tech: Counter
+    non_tech: collections.Counter
     vacancies: int
     best: dict[int, list[str]]
     best_unlocks: dict[int, int]
 
 
-def _ignored_for_stack(session: Session, opportunity: Opportunity) -> bool:
+def _ignored_for_stack(session: sa_orm.Session, opportunity: models.Opportunity) -> bool:
     note = session.scalar(
-        select(OpportunityNote)
-        .where(OpportunityNote.opportunity_id == opportunity.id)
-        .order_by(OpportunityNote.id.desc())
+        sa.select(models.OpportunityNote)
+        .where(models.OpportunityNote.opportunity_id == opportunity.id)
+        .order_by(models.OpportunityNote.id.desc())
         .limit(1)
     )
-    return note is not None and note.kind is NoteKind.STACK
+    return note is not None and note.kind is models.NoteKind.STACK
 
 
-def _latest_claude(session: Session, opportunity_id: int) -> ClaudeAnalysis | None:
+def _latest_claude(session: sa_orm.Session, opportunity_id: int) -> models.ClaudeAnalysis | None:
     return session.scalar(
-        select(ClaudeAnalysis)
-        .where(ClaudeAnalysis.opportunity_id == opportunity_id, ClaudeAnalysis.state == "done")
-        .order_by(ClaudeAnalysis.id.desc())
+        sa.select(models.ClaudeAnalysis)
+        .where(
+            models.ClaudeAnalysis.opportunity_id == opportunity_id,
+            models.ClaudeAnalysis.state == "done",
+        )
+        .order_by(models.ClaudeAnalysis.id.desc())
         .limit(1)
     )
 
@@ -117,13 +134,17 @@ def best_set(missing: list[set[str]], size: int) -> list[str]:
 
 
 def build_report(
-    session: Session, profile: Profile | None, *, days: int | None = None, everything: bool = False
+    session: sa_orm.Session,
+    profile: stack.Profile | None,
+    *,
+    days: int | None = None,
+    everything: bool = False,
 ) -> Report:
     """``everything``: all analysed vacancies (market demand), not only the ones still open."""
-    profile = profile or Profile()
-    since = datetime.now(UTC) - timedelta(days=days) if days else None
+    profile = profile or stack.Profile()
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(days=days) if days else None
     rows: dict[str, SkillRow] = {}
-    non_tech: Counter = Counter()
+    non_tech: collections.Counter = collections.Counter()
     unlockable: list[set[str]] = []
     counted = 0
 
@@ -132,20 +153,24 @@ def build_report(
             rows[name] = SkillRow(name=name, level=profile.level(name))
         return rows[name]
 
-    states = (OpportunityState.NEW, OpportunityState.INTERESTED, OpportunityState.IGNORE)
+    states = (
+        models.OpportunityState.NEW,
+        models.OpportunityState.INTERESTED,
+        models.OpportunityState.IGNORE,
+    )
     query = (
-        select(Opportunity)
+        sa.select(models.Opportunity)
         if everything
-        else select(Opportunity).where(Opportunity.state.in_(states))
+        else sa.select(models.Opportunity).where(models.Opportunity.state.in_(states))
     )
     for o in session.scalars(query):
         if (
             not everything
-            and o.state is OpportunityState.IGNORE
+            and o.state is models.OpportunityState.IGNORE
             and not _ignored_for_stack(session, o)
         ):
             continue
-        created = o.created_at if o.created_at.tzinfo else o.created_at.replace(tzinfo=UTC)
+        created = o.created_at if o.created_at.tzinfo else o.created_at.replace(tzinfo=dt.UTC)
         if since and created < since:
             continue
         must: dict[str, str] = {}
@@ -168,9 +193,11 @@ def build_report(
                     continue
                 target = must if g.get("requirement") == "must_have" else nice
                 target.setdefault(name, str(g.get("quote") or ""))
-        analysis = latest_analysis(o)
+        analysis = ai_analysis.latest_analysis(o)
         if analysis is not None:
-            if analysis.work_mode in ("hybrid", "onsite") or residence_restriction(analysis):
+            if analysis.work_mode in ("hybrid", "onsite") or ai_analysis.residence_restriction(
+                analysis
+            ):
                 blocked = True
             for item in analysis.stack or []:
                 if item.get("status") != "required":
@@ -178,7 +205,7 @@ def build_report(
                 name = normalize(item["skill"]) or item["skill"]
                 if profile.level(name) != "known":
                     must.setdefault(name, str(item.get("quote") or ""))
-        if vacancy_language(o.title, latest_description(o)):
+        if language.vacancy_language(o.title, description.latest_description(o)):
             blocked = True
         if _BLOCKING_FORMAT.search(o.location or ""):
             blocked = True

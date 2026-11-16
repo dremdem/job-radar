@@ -1,16 +1,24 @@
-"""Guess the language of a vacancy title and description, offline and rule-based.
+"""Guess the language of a vacancy, offline and rule-based.
 
-English and Russian are fine for the user; any other language gives a risk. See
-docs/applications.md#vacancy-language.
+English and Russian are fine for the user; any other language is a risk. Words are
+scored by script, accented letters, role words and common small words, and
+``required_language`` finds a sentence that asks for another language ("fluent German
+required"). ``vacancy_language`` combines them and ``language_risk`` turns the result into
+a score effect. See docs/applications.md#vacancy-language.
+
+Usage:
+    import job_radar.language as language
 """
 
+import functools
 import re
-from functools import lru_cache
 
-from .scoring import Reason
+import job_radar.scoring as scoring
 
-LANGUAGE_PENALTY = -8.0  # a hard blocker (#115)
-MIN_EVIDENCE = 2  # a single weak hint (one accented letter, "para") is not enough
+# a hard blocker (#115)
+LANGUAGE_PENALTY = -8.0
+# a single weak hint (one accented letter, "para") is not enough
+MIN_EVIDENCE = 2
 
 # Non-Latin scripts, checked in this order (Japanese uses Han characters too).
 _SCRIPTS = [
@@ -83,7 +91,8 @@ def detect_title_language(title: str) -> str | None:
         if pattern.search(title):
             return language
     if _CYRILLIC.search(title):
-        return None  # Russian is fine
+        # Russian is fine
+        return None
     return _latin_language(title)
 
 
@@ -100,8 +109,10 @@ _COMMON = {
 }
 _COMMON_SETS = {language: set(words.split()) for language, words in _COMMON.items()}
 _VIETNAMESE = re.compile(r"[ạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹđ]", re.IGNORECASE)
-MIN_SHARE = 0.05  # of all words
-SCRIPT_SHARE = 0.3  # of all letters
+# of all words
+MIN_SHARE = 0.05
+# of all letters
+SCRIPT_SHARE = 0.3
 
 
 def detect_text_language(text: str) -> str | None:
@@ -168,18 +179,21 @@ def vacancy_language(title: str, description: str | None) -> str | None:
     return detect_text_language(description) or (required[0] if required else None)
 
 
-@lru_cache(maxsize=8192)  # pure text check, run for every vacancy in a list (#180)
-def language_risk(title: str, description: str | None = None) -> tuple[float, Reason] | None:
+# pure text check, run for every vacancy in a list (#180)
+@functools.lru_cache(maxsize=8192)
+def language_risk(
+    title: str, description: str | None = None
+) -> tuple[float, scoring.Reason] | None:
     if language := detect_title_language(title):
-        return LANGUAGE_PENALTY, Reason(
+        return LANGUAGE_PENALTY, scoring.Reason(
             "-", f"Title in {language}: the job likely needs {language}"
         )
     if description and (language := detect_text_language(description)):
-        return LANGUAGE_PENALTY, Reason(
+        return LANGUAGE_PENALTY, scoring.Reason(
             "-", f"Description in {language}: the job likely needs {language}"
         )
     if description and (required := required_language(description)):
         language, sentence = required
         shown = sentence if len(sentence) <= 160 else sentence[:159] + "…"
-        return LANGUAGE_PENALTY, Reason("-", f"Requires {language} — “{shown}”")
+        return LANGUAGE_PENALTY, scoring.Reason("-", f"Requires {language} — “{shown}”")
     return None
