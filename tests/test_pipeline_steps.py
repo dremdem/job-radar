@@ -1,10 +1,14 @@
-from google.auth.exceptions import RefreshError
+"""Tests for job_radar.pipeline.run_sync: every step runs on its own, failures are
+reported with a hint and do not stop the rest (docs/queue.md#sync).
+"""
 
-from job_radar import pipeline
-from job_radar.config import Settings
+import google.auth.exceptions as auth_exceptions
+
+import job_radar.config as config
+import job_radar.pipeline as pipeline
 
 
-def settings(tmp_path, database_url, **extra) -> Settings:
+def settings(tmp_path, database_url, **extra) -> config.Settings:
     base = {
         "database_url": database_url,
         "gmail_token": tmp_path / "missing.json",
@@ -12,7 +16,7 @@ def settings(tmp_path, database_url, **extra) -> Settings:
         "fdetimes": False,
         "ai_analysis": False,
     }
-    return Settings(**(base | extra))
+    return config.Settings(**(base | extra))
 
 
 def by_key(steps):
@@ -57,7 +61,7 @@ def test_gmail_never_set_up_is_off_not_failed(tmp_path, engine, database_url):
 
 
 def test_expired_token_reads_as_a_hint():
-    error = RefreshError("invalid_grant: Token has been expired or revoked.", {})
+    error = auth_exceptions.RefreshError("invalid_grant: Token has been expired or revoked.", {})
     assert pipeline.describe_error(error) == (
         "Gmail access expired or revoked: run `./jr auth` (docs/gmail.md)"
     )
@@ -88,4 +92,4 @@ def test_summary_is_the_step_result_without_prefix(tmp_path, engine, database_ur
 def test_local_model_is_off_by_default(monkeypatch):
     # Claude does the filtering now; the Ollama step is opt-in (#223).
     monkeypatch.delenv("JOB_RADAR_AI_ANALYSIS", raising=False)
-    assert Settings(_env_file=None).ai_analysis is False
+    assert config.Settings(_env_file=None).ai_analysis is False

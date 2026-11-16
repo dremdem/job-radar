@@ -1,42 +1,35 @@
 """Deleting a record from the company history (#225): any record, and it stays deleted."""
 
-from datetime import UTC, datetime
+import datetime as dt
 
-from sqlalchemy import func, select
-from test_contacts import add_email
-from test_linkedin_rejections import add_email as add_linkedin_email
-from test_linkedin_rejections import fixture
-from test_manual import vacancy
+import sqlalchemy as sa
+import test_contacts
+import test_linkedin_rejections
+import test_manual
 
-from job_radar.applications import import_applications
-from job_radar.contacts import company_history, link_and_label
-from job_radar.linkedin.rejections import import_rejections
-from job_radar.manual import add_event
-from job_radar.models import (
-    Application,
-    ApplicationReview,
-    ApplicationSource,
-    NoteKind,
-    OpportunityNote,
-    OpportunityState,
-    Rejection,
-)
-from job_radar.notes import ignore_with_reason
-from job_radar.rejections import latest_rejections
+import job_radar.applications as applications
+import job_radar.contacts as contacts
+import job_radar.linkedin.rejections as linkedin_rejections
+import job_radar.manual as manual
+import job_radar.models as models
+import job_radar.notes as notes
+import job_radar.rejections as rejections
 
 
 def kinds(session, company_id) -> list[str]:
-    return [e.kind for e in company_history(session, company_id)]
+    return [e.kind for e in contacts.company_history(session, company_id)]
 
 
 def test_ignored_then_interested_the_ignore_can_be_deleted_from_the_card(client, session):
-    o = vacancy(session)
-    note = ignore_with_reason(session, o, NoteKind.SALARY, comment="too low")
-    o.state = OpportunityState.INTERESTED  # changed your mind
+    o = test_manual.vacancy(session)
+    note = notes.ignore_with_reason(session, o, models.NoteKind.SALARY, comment="too low")
+    # changed your mind
+    o.state = models.OpportunityState.INTERESTED
     session.commit()
     panel = client.get(f"/opportunities/{o.id}/panel").text
     assert f'hx-post="/history/note/{note.id}/delete"' in panel
-    assert "hx-confirm=" in panel  # one record at a time, and asked first
+    # one record at a time, and asked first
+    assert "hx-confirm=" in panel
 
     response = client.post(
         f"/history/note/{note.id}/delete", data={"from": "panel", "opportunity": o.id}
@@ -45,19 +38,22 @@ def test_ignored_then_interested_the_ignore_can_be_deleted_from_the_card(client,
     assert "too low" not in response.text
     # Really gone: a fresh page does not bring it back, and the state stays yours.
     assert "too low" not in client.get(f"/opportunities/{o.id}").text
-    assert session.scalar(select(func.count()).select_from(OpportunityNote)) == 0
+    assert session.scalar(sa.select(sa.func.count()).select_from(models.OpportunityNote)) == 0
     session.refresh(o)
-    assert o.state is OpportunityState.INTERESTED
+    assert o.state is models.OpportunityState.INTERESTED
 
 
 def test_every_record_on_the_card_has_a_delete_button(client, session):
-    o = vacancy(session)
-    add_email(session, "m1", from_addr="anna@acme.com", subject="Quick chat?", company=o.company)
-    add_event(session, o, "call", datetime(2026, 10, 1, tzinfo=UTC), "intro")
-    add_event(session, o, "applied", datetime(2026, 9, 1, tzinfo=UTC))
-    add_event(session, o, "rejection", datetime(2026, 10, 2, tzinfo=UTC))
-    history = company_history(session, o.company_id)
-    assert len(history) == 4  # the email, the call, the application and the rejection
+    o = test_manual.vacancy(session)
+    test_contacts.add_email(
+        session, "m1", from_addr="anna@acme.com", subject="Quick chat?", company=o.company
+    )
+    manual.add_event(session, o, "call", dt.datetime(2026, 10, 1, tzinfo=dt.UTC), "intro")
+    manual.add_event(session, o, "applied", dt.datetime(2026, 9, 1, tzinfo=dt.UTC))
+    manual.add_event(session, o, "rejection", dt.datetime(2026, 10, 2, tzinfo=dt.UTC))
+    history = contacts.company_history(session, o.company_id)
+    # the email, the call, the application and the rejection
+    assert len(history) == 4
     page = client.get(f"/opportunities/{o.id}").text
     for e in history:
         assert e.ref is not None, e.kind
@@ -66,50 +62,52 @@ def test_every_record_on_the_card_has_a_delete_button(client, session):
 
 
 def test_mail_records_stay_deleted_after_the_next_sync(session):
-    from job_radar.contacts import delete_history_item
 
-    o = vacancy(session, title="Python engineer", company="SCUBE")
+    o = test_manual.vacancy(session, title="Python engineer", company="SCUBE")
     # A LinkedIn rejection, an ATS confirmation and a plain email.
-    add_linkedin_email(
-        session, "r1", subject="Your application to Python engineer at SCUBE", html=fixture("scube")
+    test_linkedin_rejections.add_email(
+        session,
+        "r1",
+        subject="Your application to Python engineer at SCUBE",
+        html=test_linkedin_rejections.fixture("scube"),
     )
-    import_rejections(session)
-    plain = add_email(
+    linkedin_rejections.import_rejections(session)
+    plain = test_contacts.add_email(
         session, "e1", from_addr="hr@scube.com", subject="Hello from SCUBE", company=o.company
     )
     session.add(
-        Application(
+        models.Application(
             company_id=o.company_id,
-            applied_at=datetime(2026, 9, 1, tzinfo=UTC),
+            applied_at=dt.datetime(2026, 9, 1, tzinfo=dt.UTC),
             role="Python engineer",
-            source=ApplicationSource.ATS,
-            review=ApplicationReview.CONFIRMED,
+            source=models.ApplicationSource.ATS,
+            review=models.ApplicationReview.CONFIRMED,
         )
     )
     session.commit()
-    link_and_label(session)
+    contacts.link_and_label(session)
     assert set(kinds(session, o.company_id)) >= {"rejection", "applied"}
-    assert o.company_id in latest_rejections(session)
+    assert o.company_id in rejections.latest_rejections(session)
 
-    for e in company_history(session, o.company_id):
-        assert delete_history_item(session, *e.ref), e.kind
+    for e in contacts.company_history(session, o.company_id):
+        assert contacts.delete_history_item(session, *e.ref), e.kind
     assert kinds(session, o.company_id) == []
     # The rejection no longer counts for the score.
-    assert o.company_id not in latest_rejections(session)
-    assert session.scalar(select(func.count()).select_from(Rejection)) == 0
+    assert o.company_id not in rejections.latest_rejections(session)
+    assert session.scalar(sa.select(sa.func.count()).select_from(models.Rejection)) == 0
 
     # The mail is still in the database and in Gmail; the next sync must not bring it back.
-    import_rejections(session)
-    import_applications(session)
-    link_and_label(session)
+    linkedin_rejections.import_rejections(session)
+    applications.import_applications(session)
+    contacts.link_and_label(session)
     assert kinds(session, o.company_id) == []
-    assert session.scalar(select(func.count()).select_from(Rejection)) == 0
+    assert session.scalar(sa.select(sa.func.count()).select_from(models.Rejection)) == 0
     session.refresh(plain)
     assert plain.hidden_at is not None
 
 
 def test_unknown_record(client, session):
-    o = vacancy(session)
+    o = test_manual.vacancy(session)
     data = {"from": "panel", "opportunity": o.id}
     assert client.post("/history/note/999/delete", data=data).status_code == 404
     assert client.post("/history/party/1/delete", data=data).status_code == 404

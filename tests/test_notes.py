@@ -1,17 +1,15 @@
-from datetime import UTC, datetime, timedelta
+"""Tests for job_radar.notes: reasons to ignore, free notes and the location penalty
+for the company's other vacancies (docs/applications.md#reasons-and-notes).
+"""
+
+import datetime as dt
 
 import pytest
 
-from job_radar.contacts import company_history
-from job_radar.dedup import get_or_create_company
-from job_radar.models import NoteKind, Opportunity, OpportunityState
-from job_radar.notes import (
-    add_note,
-    country_from_location,
-    delete_note,
-    ignore_with_reason,
-    location_penalty,
-)
+import job_radar.contacts as contacts
+import job_radar.dedup as dedup
+import job_radar.models as models
+import job_radar.notes as notes
 
 
 @pytest.mark.parametrize(
@@ -26,13 +24,15 @@ from job_radar.notes import (
     ],
 )
 def test_country_from_location(location, country):
-    assert country_from_location(location) == country
+    assert notes.country_from_location(location) == country
 
 
 def opp(
     session, company="Tricon Solutions", location="Lucknow, Uttar Pradesh, India", title="Sr Python"
 ):
-    o = Opportunity(title=title, company=get_or_create_company(session, company), location=location)
+    o = models.Opportunity(
+        title=title, company=dedup.get_or_create_company(session, company), location=location
+    )
     session.add(o)
     session.commit()
     return o
@@ -40,10 +40,12 @@ def opp(
 
 def test_ignore_with_reason_sets_state_and_stores_note(session):
     o = opp(session)
-    note = ignore_with_reason(session, o, NoteKind.ONLY_LOCATION, "India", "residents only")
-    assert o.state is OpportunityState.IGNORE
+    note = notes.ignore_with_reason(
+        session, o, models.NoteKind.ONLY_LOCATION, "India", "residents only"
+    )
+    assert o.state is models.OpportunityState.IGNORE
     assert (note.kind, note.detail, note.comment, note.company_id) == (
-        NoteKind.ONLY_LOCATION,
+        models.NoteKind.ONLY_LOCATION,
         "India",
         "residents only",
         o.company_id,
@@ -52,60 +54,61 @@ def test_ignore_with_reason_sets_state_and_stores_note(session):
 
 def test_note_does_not_change_state(session):
     o = opp(session)
-    o.state = OpportunityState.INTERESTED
-    add_note(session, o, NoteKind.NOTE, comment="ask about EOR")
-    assert o.state is OpportunityState.INTERESTED
+    o.state = models.OpportunityState.INTERESTED
+    notes.add_note(session, o, models.NoteKind.NOTE, comment="ask about EOR")
+    assert o.state is models.OpportunityState.INTERESTED
 
 
 def test_note_needs_text():
     with pytest.raises(ValueError):
-        add_note(None, None, NoteKind.NOTE, comment="  ")
+        notes.add_note(None, None, models.NoteKind.NOTE, comment="  ")
 
 
 def test_location_penalty_applies_to_other_vacancies_of_the_company(session):
     ignored = opp(session)
-    ignore_with_reason(session, ignored, NoteKind.ONLY_LOCATION, "India")
+    notes.ignore_with_reason(session, ignored, models.NoteKind.ONLY_LOCATION, "India")
     same_country = opp(session, location="Pune, India")
     elsewhere = opp(session, location="Poland")
     other_company = opp(session, company="Other Co")
 
-    assert location_penalty(session, ignored) is None  # its own reason, already ignored
-    points, reason = location_penalty(session, same_country)
+    # its own reason, already ignored
+    assert notes.location_penalty(session, ignored) is None
+    points, reason = notes.location_penalty(session, same_country)
     assert points == -3.0
     assert reason.text.startswith("Last time Tricon Solutions hired only in India (")
-    assert location_penalty(session, elsewhere)[0] == -1.5
-    assert location_penalty(session, other_company) is None
+    assert notes.location_penalty(session, elsewhere)[0] == -1.5
+    assert notes.location_penalty(session, other_company) is None
 
 
 def test_only_latest_location_reason_counts(session):
     first = opp(session)
-    note = ignore_with_reason(session, first, NoteKind.ONLY_LOCATION, "India")
-    note.created_at = datetime.now(UTC) - timedelta(days=30)
+    note = notes.ignore_with_reason(session, first, models.NoteKind.ONLY_LOCATION, "India")
+    note.created_at = dt.datetime.now(dt.UTC) - dt.timedelta(days=30)
     second = opp(session, location="United Kingdom")
-    ignore_with_reason(session, second, NoteKind.ONLY_LOCATION, "United Kingdom")
+    notes.ignore_with_reason(session, second, models.NoteKind.ONLY_LOCATION, "United Kingdom")
     new = opp(session, location="London, United Kingdom")
-    points, reason = location_penalty(session, new)
+    points, reason = notes.location_penalty(session, new)
     assert points == -3.0 and "United Kingdom" in reason.text
 
 
 def test_deleting_the_reason_removes_the_penalty(session):
     ignored = opp(session)
-    note = ignore_with_reason(session, ignored, NoteKind.ONLY_LOCATION, "India")
+    note = notes.ignore_with_reason(session, ignored, models.NoteKind.ONLY_LOCATION, "India")
     other = opp(session, location="India")
-    delete_note(session, note.id)
-    assert location_penalty(session, other) is None
+    notes.delete_note(session, note.id)
+    assert notes.location_penalty(session, other) is None
 
 
 def test_other_reasons_do_not_penalize(session):
-    ignore_with_reason(session, opp(session), NoteKind.SALARY, comment="too low")
-    assert location_penalty(session, opp(session)) is None
+    notes.ignore_with_reason(session, opp(session), models.NoteKind.SALARY, comment="too low")
+    assert notes.location_penalty(session, opp(session)) is None
 
 
 def test_reasons_and_notes_in_company_history(session):
     o = opp(session)
-    ignore_with_reason(session, o, NoteKind.ONLY_LOCATION, "India", "residents only")
-    add_note(session, o, NoteKind.NOTE, comment="recruiter was nice")
-    events = company_history(session, o.company_id)
+    notes.ignore_with_reason(session, o, models.NoteKind.ONLY_LOCATION, "India", "residents only")
+    notes.add_note(session, o, models.NoteKind.NOTE, comment="recruiter was nice")
+    events = contacts.company_history(session, o.company_id)
     texts = {(e.kind, e.text) for e in events}
     assert ("ignored", "only India · residents only") in texts
     assert ("note", "recruiter was nice") in texts
@@ -113,10 +116,10 @@ def test_reasons_and_notes_in_company_history(session):
 
 
 def test_language_reason(session):
-    from job_radar.notes import describe
 
     o = opp(session, title="Desarrollador Python")
-    note = ignore_with_reason(session, o, NoteKind.LANGUAGE, "Spanish", "not for me")
+    note = notes.ignore_with_reason(session, o, models.NoteKind.LANGUAGE, "Spanish", "not for me")
     assert note.detail == "Spanish"
-    assert describe(note) == "language: Spanish · not for me"
-    assert location_penalty(session, opp(session)) is None  # not a location reason
+    assert notes.describe(note) == "language: Spanish · not for me"
+    # not a location reason
+    assert notes.location_penalty(session, opp(session)) is None

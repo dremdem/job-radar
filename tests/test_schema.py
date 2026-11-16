@@ -1,10 +1,13 @@
-import sqlalchemy as sa
-from alembic.autogenerate import compare_metadata
-from alembic.migration import MigrationContext
-from sqlalchemy import inspect
+"""Tests for the database schema: migrations create every table, match the models and
+can run twice (docs/data-model.md).
+"""
 
-from job_radar.db import upgrade_database
-from job_radar.models import Base
+import alembic.autogenerate as alembic_autogenerate
+import alembic.migration as alembic_migration
+import sqlalchemy as sa
+
+import job_radar.db as db
+import job_radar.models as models
 
 EXPECTED_TABLES = {
     "companies",
@@ -19,24 +22,26 @@ EXPECTED_TABLES = {
 
 
 def test_upgrade_creates_all_tables(engine):
-    tables = set(inspect(engine).get_table_names())
+    tables = set(sa.inspect(engine).get_table_names())
     assert tables >= EXPECTED_TABLES
     assert "alembic_version" in tables
 
 
 def test_migrations_match_models(engine):
     with engine.connect() as conn:
-        diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+        diff = alembic_autogenerate.compare_metadata(
+            alembic_migration.MigrationContext.configure(conn), models.Base.metadata
+        )
     assert diff == []
 
 
 def test_upgrade_is_idempotent(engine, database_url):
-    upgrade_database(database_url)
-    assert set(inspect(engine).get_table_names()) >= EXPECTED_TABLES
+    db.upgrade_database(database_url)
+    assert set(sa.inspect(engine).get_table_names()) >= EXPECTED_TABLES
 
 
 def test_migration_turns_unavailable_events_into_the_flag(database_url):
-    upgrade_database(database_url, "8c3f5b2d9e61")
+    db.upgrade_database(database_url, "8c3f5b2d9e61")
     engine = sa.create_engine(database_url)
     t = {"now": "2026-11-08 07:08:12"}
     with engine.begin() as c:
@@ -64,7 +69,7 @@ def test_migration_turns_unavailable_events_into_the_flag(database_url):
                 ),
                 t | {"oid": oid, "kind": kind},
             )
-    upgrade_database(database_url)
+    db.upgrade_database(database_url)
     with engine.connect() as c:
         rows = c.execute(sa.text("SELECT id, state, auto_ignore_reason, unavailable_at IS NOT NULL"
                                  " FROM opportunities ORDER BY id")).all()  # fmt: skip

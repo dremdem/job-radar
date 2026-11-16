@@ -1,20 +1,24 @@
-from typer.testing import CliRunner
+"""Tests for the ``job-radar`` command line: database upgrade, sync and its error
+messages, import commands (docs/usage.md).
+"""
 
-from job_radar.cli import app
+import typer.testing as typer_testing
 
-runner = CliRunner()
+import job_radar.cli as cli
+
+runner = typer_testing.CliRunner()
 
 
 def test_db_upgrade_creates_database(tmp_path, monkeypatch):
     db_path = tmp_path / "nested" / "job_radar.db"
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{db_path}")
-    result = runner.invoke(app, ["db", "upgrade"])
+    result = runner.invoke(cli.app, ["db", "upgrade"])
     assert result.exit_code == 0, result.output
     assert db_path.exists()
 
 
 def test_sync_is_not_implemented_yet():
-    result = runner.invoke(app, ["sync", "linkedin_alert"])
+    result = runner.invoke(cli.app, ["sync", "linkedin_alert"])
     assert result.exit_code == 1
     assert "not implemented" in result.output
 
@@ -22,13 +26,15 @@ def test_sync_is_not_implemented_yet():
 def test_sync_gmail_without_token_explains_auth(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
     monkeypatch.setenv("JOB_RADAR_GMAIL_TOKEN", str(tmp_path / "missing.json"))
-    client = tmp_path / "client.json"  # set up half way: the client file, no token yet
+    # set up half way: the client file, no token yet
+    client = tmp_path / "client.json"
     client.write_text("{}")
     monkeypatch.setenv("JOB_RADAR_GMAIL_CLIENT_SECRET", str(client))
     monkeypatch.setenv("JOB_RADAR_HIMALAYAS", "false")
-    monkeypatch.setenv("JOB_RADAR_FDETIMES", "false")  # no network in tests
+    # no network in tests
+    monkeypatch.setenv("JOB_RADAR_FDETIMES", "false")
     monkeypatch.setenv("JOB_RADAR_AI_ANALYSIS", "false")
-    result = runner.invoke(app, ["sync", "gmail"])
+    result = runner.invoke(cli.app, ["sync", "gmail"])
     assert result.exit_code == 1
     assert "job-radar gmail auth" in result.output
     # The other steps still ran.
@@ -49,50 +55,51 @@ def test_sync_on_a_fresh_clone_succeeds_without_gmail(tmp_path, monkeypatch):
         "BOARDS",
         "AI_ANALYSIS",
     ):
-        monkeypatch.setenv(f"JOB_RADAR_{source}", "false")  # no network in tests
-    result = runner.invoke(app, ["sync", "gmail"])
+        # no network in tests
+        monkeypatch.setenv(f"JOB_RADAR_{source}", "false")
+    result = runner.invoke(cli.app, ["sync", "gmail"])
     assert result.exit_code == 0, result.output
     assert "step failed" not in result.output
 
 
 def test_sync_gmail_rejects_unknown_query(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
-    result = runner.invoke(app, ["sync", "gmail", "--query", "nope"])
+    result = runner.invoke(cli.app, ["sync", "gmail", "--query", "nope"])
     assert result.exit_code == 2
     assert "Unknown query" in result.output
 
 
 def test_import_linkedin(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
-    result = runner.invoke(app, ["import", "linkedin"])
+    result = runner.invoke(cli.app, ["import", "linkedin"])
     assert result.exit_code == 0, result.output
     assert "0 alert emails" in result.output
 
 
 def test_import_rejections_without_gmail_reports_pending(tmp_path, monkeypatch):
-    from datetime import UTC, datetime
+    import datetime as dt
 
-    from job_radar.db import make_engine, make_session_factory, upgrade_database
-    from job_radar.models import EmailDirection, EmailMessage
+    import job_radar.db as db
+    import job_radar.models as models
 
     url = f"sqlite:///{tmp_path / 'j.db'}"
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", url)
     monkeypatch.setenv("JOB_RADAR_GMAIL_TOKEN", str(tmp_path / "missing.json"))
-    upgrade_database(url)
-    with make_session_factory(make_engine(url))() as session:
+    db.upgrade_database(url)
+    with db.make_session_factory(db.make_engine(url))() as session:
         session.add(
-            EmailMessage(
+            models.EmailMessage(
                 gmail_message_id="old1",
                 gmail_thread_id="old1",
-                direction=EmailDirection.IN,
-                sent_at=datetime(2026, 1, 1, tzinfo=UTC),
+                direction=models.EmailDirection.IN,
+                sent_at=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
                 from_addr="LinkedIn <jobs-noreply@linkedin.com>",
                 to_addr="user@example.com",
                 subject="Your application to Python Developer at Acme",
             )
         )
         session.commit()
-    result = runner.invoke(app, ["import", "rejections"])
+    result = runner.invoke(cli.app, ["import", "rejections"])
     assert result.exit_code == 0, result.output
     assert "1 without body" in result.output
     assert "job-radar gmail auth" in result.output
@@ -101,14 +108,14 @@ def test_import_rejections_without_gmail_reports_pending(tmp_path, monkeypatch):
 def test_import_applications(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
     monkeypatch.setenv("JOB_RADAR_GMAIL_TOKEN", str(tmp_path / "missing.json"))
-    result = runner.invoke(app, ["import", "applications"])
+    result = runner.invoke(cli.app, ["import", "applications"])
     assert result.exit_code == 0, result.output
     assert "applications: 0 found, 0 new" in result.output
 
 
 def test_import_contacts(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
-    result = runner.invoke(app, ["import", "contacts"])
+    result = runner.invoke(cli.app, ["import", "contacts"])
     assert result.exit_code == 0, result.output
     assert "contacts: 0 linked" in result.output
 
@@ -116,7 +123,7 @@ def test_import_contacts(tmp_path, monkeypatch):
 def test_import_linkedin_search_is_off_by_default(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
     monkeypatch.delenv("JOB_RADAR_LINKEDIN_PUBLIC_SEARCH", raising=False)
-    result = runner.invoke(app, ["import", "linkedin-search"])
+    result = runner.invoke(cli.app, ["import", "linkedin-search"])
     assert result.exit_code == 0, result.output
     assert "disabled" in result.output
     assert "JOB_RADAR_LINKEDIN_PUBLIC_SEARCH=true" in result.output
@@ -125,7 +132,7 @@ def test_import_linkedin_search_is_off_by_default(tmp_path, monkeypatch):
 def test_import_linkedin_search_enabled_without_alerts(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
     monkeypatch.setenv("JOB_RADAR_LINKEDIN_PUBLIC_SEARCH", "true")
-    result = runner.invoke(app, ["import", "linkedin-search"])
+    result = runner.invoke(cli.app, ["import", "linkedin-search"])
     assert result.exit_code == 0, result.output
     assert "linkedin-search: 0 searches, 0 requests" in result.output
 
@@ -134,7 +141,7 @@ def test_import_descriptions_is_off_without_linkedin_and_fdetimes(tmp_path, monk
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
     monkeypatch.delenv("JOB_RADAR_LINKEDIN_PUBLIC_SEARCH", raising=False)
     monkeypatch.setenv("JOB_RADAR_FDETIMES", "false")
-    result = runner.invoke(app, ["import", "descriptions"])
+    result = runner.invoke(cli.app, ["import", "descriptions"])
     assert result.exit_code == 0 and "disabled" in result.output
 
 
@@ -143,7 +150,7 @@ def test_import_descriptions_reads_fdetimes_by_default(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
     monkeypatch.delenv("JOB_RADAR_LINKEDIN_PUBLIC_SEARCH", raising=False)
     monkeypatch.delenv("JOB_RADAR_FDETIMES", raising=False)
-    result = runner.invoke(app, ["import", "descriptions"])
+    result = runner.invoke(cli.app, ["import", "descriptions"])
     assert result.exit_code == 0, result.output
     assert "descriptions: 0 requests, 0 saved" in result.output
 
@@ -151,12 +158,12 @@ def test_import_descriptions_reads_fdetimes_by_default(tmp_path, monkeypatch):
 def test_sync_telegram_needs_configuration(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
     monkeypatch.delenv("JOB_RADAR_TELEGRAM_MCP_COMMAND", raising=False)
-    result = runner.invoke(app, ["sync", "telegram"])
+    result = runner.invoke(cli.app, ["sync", "telegram"])
     assert result.exit_code == 0 and "telegram: not configured" in result.output
 
 
 def test_sync_himalayas_can_be_disabled(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
     monkeypatch.setenv("JOB_RADAR_HIMALAYAS", "false")
-    result = runner.invoke(app, ["sync", "himalayas"])
+    result = runner.invoke(cli.app, ["sync", "himalayas"])
     assert result.exit_code == 0 and "himalayas: disabled" in result.output

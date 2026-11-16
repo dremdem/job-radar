@@ -1,8 +1,12 @@
-from test_ai_analysis import add_vacancy
+"""Tests for job_radar.suggestions: ready-made ignore reasons from the checks and the
+one-tap ignore in the queue (docs/applications.md#reasons-and-notes).
+"""
 
-from job_radar.models import ClaudeAnalysis, DescriptionAnalysis, NoteKind, OpportunityState
-from job_radar.stack import Profile
-from job_radar.suggestions import suggest
+import test_ai_analysis
+
+import job_radar.models as models
+import job_radar.stack as stack
+import job_radar.suggestions as suggestions
 
 
 def kinds(found):
@@ -10,33 +14,35 @@ def kinds(found):
 
 
 def test_language_suggestion(session):
-    o = add_vacancy(session, title="Senior Python Developer", text="Fluent German is required.")
-    assert kinds(suggest(o, description="Fluent German is required.")) == [
-        (NoteKind.LANGUAGE, "German", "language: German")
+    o = test_ai_analysis.add_vacancy(
+        session, title="Senior Python Developer", text="Fluent German is required."
+    )
+    assert kinds(suggestions.suggest(o, description="Fluent German is required.")) == [
+        (models.NoteKind.LANGUAGE, "German", "language: German")
     ]
 
 
 def test_local_model_suggestions():
-    analysis = DescriptionAnalysis(
+    analysis = models.DescriptionAnalysis(
         work_mode="hybrid",
         work_mode_quote="3 days in office",
         residence=["EU"],
         residence_quote="EU only",
         stack=[{"skill": "TensorFlow", "status": "required", "quote": "x"}],
     )
-    found = suggest(
-        None, description="", analysis=analysis, profile=Profile(blockers=["TensorFlow"])
+    found = suggestions.suggest(
+        None, description="", analysis=analysis, profile=stack.Profile(blockers=["TensorFlow"])
     )
     assert kinds(found) == [
-        (NoteKind.ONLY_LOCATION, "EU", "only EU"),
-        (NoteKind.WORK_FORMAT, None, "hybrid / on-site"),
-        (NoteKind.STACK, "TensorFlow", "stack: TensorFlow"),
+        (models.NoteKind.ONLY_LOCATION, "EU", "only EU"),
+        (models.NoteKind.WORK_FORMAT, None, "hybrid / on-site"),
+        (models.NoteKind.STACK, "TensorFlow", "stack: TensorFlow"),
     ]
 
 
 def test_claude_skip_suggestion_prefers_its_blocker():
     def claude(result):
-        return ClaudeAnalysis(state="done", result=result)
+        return models.ClaudeAnalysis(state="done", result=result)
 
     gap_language = {
         "verdict": "skip",
@@ -44,8 +50,8 @@ def test_claude_skip_suggestion_prefers_its_blocker():
         "location": {"verdict": "ok"},
         "gaps": [{"skill": "Нидерландский или французский (свободно)", "blocker": True}],
     }
-    assert kinds(suggest(None, description="", claude=claude(gap_language)))[0][:2] == (
-        NoteKind.LANGUAGE,
+    assert kinds(suggestions.suggest(None, description="", claude=claude(gap_language)))[0][:2] == (
+        models.NoteKind.LANGUAGE,
         "Dutch",
     )
     gap_stack = {
@@ -54,8 +60,8 @@ def test_claude_skip_suggestion_prefers_its_blocker():
         "location": {"verdict": "ok"},
         "gaps": [{"skill": "Azure", "blocker": True}],
     }
-    assert kinds(suggest(None, description="", claude=claude(gap_stack))) == [
-        (NoteKind.STACK, "Azure", "stack: Azure")
+    assert kinds(suggestions.suggest(None, description="", claude=claude(gap_stack))) == [
+        (models.NoteKind.STACK, "Azure", "stack: Azure")
     ]
     location = {
         "verdict": "skip",
@@ -63,18 +69,21 @@ def test_claude_skip_suggestion_prefers_its_blocker():
         "location": {"verdict": "blocker", "note": "Only office in Limassol"},
         "gaps": [],
     }
-    assert kinds(suggest(None, description="", claude=claude(location)))[0][0] is NoteKind.OTHER
+    assert (
+        kinds(suggestions.suggest(None, description="", claude=claude(location)))[0][0]
+        is models.NoteKind.OTHER
+    )
     plain = {"verdict": "skip", "summary": "Infra role, not Python. More text.", "gaps": []}
-    [s] = suggest(None, description="", claude=claude(plain))
-    assert s.kind is NoteKind.OTHER and s.comment == "Claude: Infra role, not Python."
-    assert suggest(None, description="", claude=claude({"verdict": "apply"})) == []
+    [s] = suggestions.suggest(None, description="", claude=claude(plain))
+    assert s.kind is models.NoteKind.OTHER and s.comment == "Claude: Infra role, not Python."
+    assert suggestions.suggest(None, description="", claude=claude({"verdict": "apply"})) == []
 
 
 def test_duplicates_are_dropped_and_at_most_three():
-    analysis = DescriptionAnalysis(
+    analysis = models.DescriptionAnalysis(
         work_mode="onsite", work_mode_quote="office", residence=["UK"], residence_quote="UK only"
     )
-    claude = ClaudeAnalysis(
+    claude = models.ClaudeAnalysis(
         state="done",
         result={
             "verdict": "skip",
@@ -82,7 +91,7 @@ def test_duplicates_are_dropped_and_at_most_three():
             "gaps": [{"skill": "Go", "blocker": True}, {"skill": "Rust", "blocker": True}],
         },
     )
-    found = suggest(
+    found = suggestions.suggest(
         None, description="Fluent German is required.", analysis=analysis, claude=claude
     )
     assert len(found) == 3
@@ -90,7 +99,9 @@ def test_duplicates_are_dropped_and_at_most_three():
 
 
 def test_one_tap_ignore_from_the_row(client, session):
-    o = add_vacancy(session, title="Senior Python Developer", text="Fluent German is required.")
+    o = test_ai_analysis.add_vacancy(
+        session, title="Senior Python Developer", text="Fluent German is required."
+    )
     assert "ignore? \U0001f5e3\ufe0f language: German" in client.get("/").text
     assert "Ignore: language: German" in client.get(f"/opportunities/{o.id}/panel").text
     response = client.post(
@@ -105,12 +116,12 @@ def test_one_tap_ignore_from_the_row(client, session):
     )
     assert response.status_code == 200
     session.refresh(o)
-    assert o.state is OpportunityState.IGNORE
+    assert o.state is models.OpportunityState.IGNORE
     assert "language: German" in client.get(f"/opportunities/{o.id}").text
 
 
 def test_reason_chips_and_work_format_reason(client, session):
-    o = add_vacancy(session, title="Python Developer", text="Remote.")
+    o = test_ai_analysis.add_vacancy(session, title="Python Developer", text="Remote.")
     o.location = "Lucknow, India"
     session.commit()
     panel = client.get(f"/opportunities/{o.id}/panel").text
@@ -132,12 +143,16 @@ def test_claude_names_its_ignore_reason():
         "gaps": [{"skill": "Long text", "blocker": True}],
         "ignore_reason": {"kind": "location", "detail": "EU only"},
     }
-    [s] = suggest(None, description="", claude=ClaudeAnalysis(state="done", result=result))
-    assert (s.kind, s.detail, s.label) == (NoteKind.ONLY_LOCATION, "EU only", "only EU only")
+    [s] = suggestions.suggest(
+        None, description="", claude=models.ClaudeAnalysis(state="done", result=result)
+    )
+    assert (s.kind, s.detail, s.label) == (models.NoteKind.ONLY_LOCATION, "EU only", "only EU only")
     result["ignore_reason"] = {"kind": "seniority", "detail": "team lead"}
-    [s] = suggest(None, description="", claude=ClaudeAnalysis(state="done", result=result))
+    [s] = suggestions.suggest(
+        None, description="", claude=models.ClaudeAnalysis(state="done", result=result)
+    )
     assert (s.kind, s.label, s.comment) == (
-        NoteKind.SENIORITY,
+        models.NoteKind.SENIORITY,
         "seniority: team lead",
         "Claude: team lead",
     )
@@ -149,7 +164,9 @@ def test_old_long_gaps_are_shortened():
         "summary": "No.",
         "gaps": [{"skill": "Профессиональный опыт в DevOps-роли (5+ лет)", "blocker": True}],
     }
-    [s] = suggest(None, description="", claude=ClaudeAnalysis(state="done", result=result))
+    [s] = suggestions.suggest(
+        None, description="", claude=models.ClaudeAnalysis(state="done", result=result)
+    )
     assert s.label == "stack: Профессиональный опыт в…"
 
 
@@ -159,21 +176,21 @@ def test_one_language_suggestion_even_from_two_sources():
         "summary": "No.",
         "ignore_reason": {"kind": "language", "detail": "Dutch/French"},
     }
-    found = suggest(
+    found = suggestions.suggest(
         None,
         description="Speak fluent Dutch and/or French.",
-        claude=ClaudeAnalysis(state="done", result=result),
+        claude=models.ClaudeAnalysis(state="done", result=result),
     )
     assert [s.label for s in found] == ["language: Dutch"]
 
 
 def test_reasons_have_icons(client, session):
-    from job_radar.models import NoteKind
-    from job_radar.notes import REASON_ICONS, reason_icon
+    import job_radar.notes as notes
 
-    assert set(REASON_ICONS) == set(NoteKind)  # every reason has a picture (#195)
-    assert reason_icon("salary") == "\U0001f4b0" and reason_icon("nope") == ""
-    o = add_vacancy(session, title="Python Developer", text="Remote.")
+    # every reason has a picture (#195)
+    assert set(notes.REASON_ICONS) == set(models.NoteKind)
+    assert notes.reason_icon("salary") == "\U0001f4b0" and notes.reason_icon("nope") == ""
+    o = test_ai_analysis.add_vacancy(session, title="Python Developer", text="Remote.")
     panel = client.get(f"/opportunities/{o.id}/panel").text
     assert "\U0001f4b0 Salary<" in panel and "\U0001f3e2 Hybrid / on-site<" in panel
     client.post(f"/opportunities/{o.id}/notes", data={"action": "ignore", "kind": "salary"})

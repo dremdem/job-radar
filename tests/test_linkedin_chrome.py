@@ -1,52 +1,39 @@
 """Chrome fill (#247) with a fake browser: what it opens, reads, saves, and when it stops."""
 
 import asyncio
+import dataclasses
+import datetime as dt
 import re
 import threading
 import time
-from dataclasses import asdict
-from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import func, select
+import sqlalchemy as sa
 
-from job_radar.auto_ignore import UNAVAILABLE_REASON, Rules, clear_unavailable, save_rules
-from job_radar.linkedin.alerts import AlertJob, add_linkedin_job
-from job_radar.linkedin.chrome import (
-    EXPAND,
-    PROBE,
-    READER,
-    BrowserError,
-    block_reason,
-    fill_descriptions,
-    page_of,
-    parse_result,
-)
-from job_radar.models import (
-    FILL_PROBLEM,
-    CompanyEvent,
-    JobSnapshot,
-    LinkedInFetch,
-    Opportunity,
-    OpportunityState,
-    SourceRecord,
-    SourceType,
-)
+import job_radar.auto_ignore as auto_ignore
+import job_radar.linkedin.alerts as linkedin_alerts
+import job_radar.linkedin.chrome as linkedin_chrome
+import job_radar.models as models
 
 VISIBLE = "We build payments.\nRequirements:\n- Python, FastAPI"
 FOLDED = "\n- PostgreSQL\nFully remote, worldwide."
 
 
 class FakePage:
+    """One vacancy page as the fake browser shows it."""
+
     def __init__(
         self, job_id, *, status=200, href=None, title=None, folded=True, text=None, ready_after=0,
         unavailable=False, fail=None,
     ):  # fmt: skip
         self.job_id = job_id
-        self.unavailable = unavailable  # hh.ru: "Вам недоступна эта вакансия" (#272)
-        self.fail = fail  # raised as soon as the page is opened
+        # hh.ru: "Вам недоступна эта вакансия" (#272)
+        self.unavailable = unavailable
+        # raised as soon as the page is opened
+        self.fail = fail
         self.hh = bool(href and "hh.ru" in href)
-        self.ready_after = ready_after  # probes before the description box is on the page
+        # probes before the description box is on the page
+        self.ready_after = ready_after
         self.status = status
         self.href = href or f"https://www.linkedin.com/jobs/view/{job_id}/"
         self.title = title or f"Senior Python Engineer | Acme {job_id} | LinkedIn"
@@ -63,7 +50,8 @@ class FakeBrowser:
         self.tabs = tabs if tabs is not None else ["https://github.com/dremdem/job-radar"]
         self.calls: list[tuple[str, str]] = []
         self.page: FakePage | None = None
-        self.after_open = after_open  # e.g. the user clicks elsewhere: replace the page
+        # e.g. the user clicks elsewhere: replace the page
+        self.after_open = after_open
 
     def _show(self, url):
         job_id = url.rstrip("/").split("/")[-1]
@@ -93,21 +81,24 @@ class FakeBrowser:
 
     async def evaluate(self, function):
         p = self.page
-        if function == PROBE:
+        if function == linkedin_chrome.PROBE:
             self.calls.append(("probe", ""))
             ready = p.ready_after <= 0
             p.ready_after -= 1
             return {"href": p.href, "title": p.title, "status": p.status, "ready": ready,
                     "unavailable": p.unavailable}  # fmt: skip
-        if function == EXPAND:
+        if function == linkedin_chrome.EXPAND:
             self.calls.append(("expand", ""))
             if p.folded:
                 p.folded = False
                 return "… more"
             return ""
-        assert READER in function, "only the bookmarklet's own reader reads the page"
+        assert linkedin_chrome.READER in function, (
+            "only the bookmarklet's own reader reads the page"
+        )
         self.calls.append(("read", ""))
-        if p.hh:  # the bookmarklet's reader on an hh.ru vacancy page (#136)
+        # the bookmarklet's reader on an hh.ru vacancy page (#136)
+        if p.hh:
             m = re.search(r"hh\.ru/vacancy/(\d+)", p.href)
             return {
                 "source": "hh",
@@ -124,17 +115,18 @@ class FakeBrowser:
             "source_url": p.href,
             "cards": [
                 {"job_id": p.job_id, "text": f"Senior Python Engineer\nAcme {p.job_id}\nRemote"},
-                {"job_id": "777", "text": "Similar job\nOther Co\nBerlin"},  # "similar jobs"
+                # "similar jobs"
+                {"job_id": "777", "text": "Similar job\nOther Co\nBerlin"},
             ],
             "detail": {"job_id": job_id, "page_title": p.title, "description": description},
         }
 
 
 def vacancy(session, job_id, title="Senior Python Engineer"):
-    add_linkedin_job(
+    linkedin_alerts.add_linkedin_job(
         session,
-        AlertJob(job_id, title, f"Acme {job_id}", "Remote", None, None),
-        SourceType.LINKEDIN_ALERT,
+        linkedin_alerts.AlertJob(job_id, title, f"Acme {job_id}", "Remote", None, None),
+        models.SourceType.LINKEDIN_ALERT,
     )
     session.commit()
 
@@ -143,11 +135,16 @@ def run(session, browser, **kw):
     async def no_sleep(_):
         return None
 
-    return asyncio.run(fill_descriptions(session, browser, pause=(0, 0), sleep=no_sleep, **kw))
+    return asyncio.run(
+        linkedin_chrome.fill_descriptions(session, browser, pause=(0, 0), sleep=no_sleep, **kw)
+    )
 
 
 def descriptions(session):
-    return {s.source_record.external_id: s.raw_text for s in session.scalars(select(JobSnapshot))}
+    return {
+        s.source_record.external_id: s.raw_text
+        for s in session.scalars(sa.select(models.JobSnapshot))
+    }
 
 
 def test_folded_description_is_expanded_before_reading(session):
@@ -164,7 +161,8 @@ def test_own_tab_one_page_at_a_time_then_closed(session):
     browser = FakeBrowser()
     run(session, browser)
     kinds = [c[0] for c in browser.calls if c[0] != "list_tabs"]
-    assert kinds[0] == "open_tab"  # never the tab you are working in
+    # never the tab you are working in
+    assert kinds[0] == "open_tab"
     assert kinds.count("open_tab") == 1 and kinds.count("navigate") == 1
     assert kinds[-1] == "close_tab"
     urls = [u for k, u in browser.calls if k in ("open_tab", "navigate")]
@@ -180,7 +178,7 @@ def test_own_tab_one_page_at_a_time_then_closed(session):
 def test_similar_jobs_on_the_page_are_not_imported(session):
     vacancy(session, "101")
     run(session, FakeBrowser())
-    assert session.scalar(select(func.count(Opportunity.id))) == 1
+    assert session.scalar(sa.select(sa.func.count(models.Opportunity.id))) == 1
 
 
 def test_blocks_stop_the_run(session):
@@ -192,9 +190,9 @@ def test_blocks_stop_the_run(session):
         FakePage("101", title="Security Verification | LinkedIn"),
     ):
         session.rollback()
-        for row in session.scalars(select(LinkedInFetch)):
+        for row in session.scalars(sa.select(models.LinkedInFetch)):
             session.delete(row)
-        if not session.scalar(select(func.count(Opportunity.id))):
+        if not session.scalar(sa.select(sa.func.count(models.Opportunity.id))):
             vacancy(session, "101")
             vacancy(session, "102")
         browser = FakeBrowser({"101": page, "102": FakePage("102")})
@@ -203,9 +201,10 @@ def test_blocks_stop_the_run(session):
         opened = [u for k, u in browser.calls if k in ("open_tab", "navigate")]
         assert len(opened) == 1, f"went on after {stats.reason}"
         assert ("read", "") not in browser.calls
-        assert ("close_tab", "") not in browser.calls  # left open for you to see
+        # left open for you to see
+        assert ("close_tab", "") not in browser.calls
         assert descriptions(session) == {}
-        assert session.scalar(select(LinkedInFetch.status)) == "blocked"
+        assert session.scalar(sa.select(models.LinkedInFetch.status)) == "blocked"
 
 
 def test_another_page_in_the_tab_saves_nothing(session):
@@ -231,9 +230,10 @@ def test_tab_left_before_the_next_vacancy_stops_before_navigating(session):
 
     async def evaluate(function):
         result = await original(function)
-        if function == PROBE:
+        if function == linkedin_chrome.PROBE:
             probes.append(1)
-            if len(probes) == 2:  # the check before leaving page 1: you are on Gmail now
+            # the check before leaving page 1: you are on Gmail now
+            if len(probes) == 2:
                 gmail = "https://mail.google.com/mail/u/0/"
                 return {"href": gmail, "title": "Inbox", "status": 200}
         return result
@@ -241,7 +241,8 @@ def test_tab_left_before_the_next_vacancy_stops_before_navigating(session):
     browser.evaluate = evaluate
     stats = run(session, browser)
     assert stats.blocked and stats.saved == 1
-    assert [k for k, _ in browser.calls].count("navigate") == 0  # your tab is never navigated
+    # your tab is never navigated
+    assert [k for k, _ in browser.calls].count("navigate") == 0
 
 
 def test_rerun_skips_saved_and_does_not_duplicate(session):
@@ -252,10 +253,12 @@ def test_rerun_skips_saved_and_does_not_duplicate(session):
     changed = {n: FakePage(n, text="changed") for n in ("101", "102")}
     browser = FakeBrowser(changed)
     stats = run(session, browser)
-    assert stats.total == 1  # continues with what is left
-    assert session.scalar(select(func.count(JobSnapshot.id))) == 2
+    # continues with what is left
+    assert stats.total == 1
+    assert session.scalar(sa.select(sa.func.count(models.JobSnapshot.id))) == 2
     first = [d for d in descriptions(session).values() if d != "changed"]
-    assert len(first) == 1  # the first description is not overwritten
+    # the first description is not overwritten
+    assert len(first) == 1
     assert run(session, FakeBrowser()).total == 0
 
 
@@ -277,19 +280,23 @@ def test_pages_without_description_stop_after_three(session):
 
 def test_block_reason_and_parse_result():
     job_page = "https://www.linkedin.com/jobs/view/1/"
-    assert block_reason({"href": job_page, "title": "x", "status": 200}) is None
-    assert block_reason({"href": "https://www.linkedin.com/uas/login", "title": "", "status": 200})
+    assert linkedin_chrome.block_reason({"href": job_page, "title": "x", "status": 200}) is None
+    assert linkedin_chrome.block_reason(
+        {"href": "https://www.linkedin.com/uas/login", "title": "", "status": 200}
+    )
     text = '### Result\n{\n  "a": 1\n}\n### Ran Playwright code\n```js\nawait page.evaluate()\n```'
-    assert parse_result(text) == {"a": 1}
-    assert parse_result('### Result\n"… more"\n### Page\n- x') == "… more"
+    assert linkedin_chrome.parse_result(text) == {"a": 1}
+    assert linkedin_chrome.parse_result('### Result\n"… more"\n### Page\n- x') == "… more"
 
 
 def test_bookmarklet_and_fill_share_one_reader():
-    from job_radar.web.app import bookmarklet
+    import job_radar.web.app as web_app
 
-    assert READER.startswith("function () {") and "return {" in READER
-    assert "window.open" not in READER and ".click(" not in READER
-    code = bookmarklet("http://127.0.0.1:8000")
+    assert (
+        linkedin_chrome.READER.startswith("function () {") and "return {" in linkedin_chrome.READER
+    )
+    assert "window.open" not in linkedin_chrome.READER and ".click(" not in linkedin_chrome.READER
+    code = web_app.bookmarklet("http://127.0.0.1:8000")
     assert "#job-details" in code and "__READ__" not in code
 
 
@@ -297,13 +304,15 @@ def test_bookmarklet_and_fill_share_one_reader():
 
 
 def web(database_url, tmp_path, runner, **extra):
-    from fastapi.testclient import TestClient
+    import fastapi.testclient as fastapi_testclient
 
-    from job_radar.config import Settings
-    from job_radar.web.app import create_app
+    import job_radar.config as config
+    import job_radar.web.app as web_app
 
-    settings = Settings(database_url=database_url, profile=tmp_path / "p.yaml", **extra)
-    return TestClient(create_app(settings, start_worker=False, chrome_runner=runner))
+    settings = config.Settings(database_url=database_url, profile=tmp_path / "p.yaml", **extra)
+    return fastapi_testclient.TestClient(
+        web_app.create_app(settings, start_worker=False, chrome_runner=runner)
+    )
 
 
 def test_chrome_fill_is_off_by_default(engine, database_url, tmp_path):
@@ -313,7 +322,6 @@ def test_chrome_fill_is_off_by_default(engine, database_url, tmp_path):
 
 
 def test_button_starts_the_run_shows_progress_and_stops(engine, database_url, tmp_path):
-    import time
 
     release = threading.Event()
 
@@ -344,7 +352,6 @@ def test_button_starts_the_run_shows_progress_and_stops(engine, database_url, tm
 
 
 def test_blocked_run_says_why(engine, database_url, tmp_path):
-    import time
 
     def runner(job):
         job.progress(total=5, requests=1, saved=0, errors=0)
@@ -367,7 +374,8 @@ def test_page_changed_while_reading_saves_nothing(session):
 
     async def evaluate(function):
         result = await original(function)
-        if function == EXPAND:  # you clicked another vacancy right after the check
+        # you clicked another vacancy right after the check
+        if function == linkedin_chrome.EXPAND:
             browser.page = FakePage("101", href="https://www.linkedin.com/jobs/view/555/")
         return result
 
@@ -387,14 +395,16 @@ def test_extension_connect_page_is_used_and_closed_so_nothing_is_left(session):
     stats = run(session, browser)
     kinds = [k for k, _ in browser.calls]
     assert stats.saved == 2
-    assert "open_tab" not in kinds  # no second tab next to the connect page
+    # no second tab next to the connect page
+    assert "open_tab" not in kinds
     assert kinds.count("navigate") == 2 and kinds[-1] == "close_tab"
 
 
 def test_a_users_tab_is_never_navigated(session):
     cases = (["https://mail.google.com/mail/u/0/"], [CONNECT_PAGE, "https://x.com/"], [])
     for n, tabs in enumerate(cases):
-        vacancy(session, f"20{n}")  # one fresh vacancy without a description per case
+        # one fresh vacancy without a description per case
+        vacancy(session, f"20{n}")
         browser = FakeBrowser(tabs=tabs)
         assert run(session, browser).saved == 1, tabs
         kinds = [k for k, _ in browser.calls]
@@ -403,22 +413,23 @@ def test_a_users_tab_is_never_navigated(session):
 
 
 def test_parse_tabs():
-    from job_radar.linkedin.chrome import parse_tabs
 
     text = (
         "### Open tabs\n- 0: (current) [Playwright MCP extension](" + CONNECT_PAGE + ")\n"
         "- 1: [Issues · dremdem/yt_archive](https://github.com/dremdem/yt_archive/issues)\n"
     )
-    assert parse_tabs(text) == [CONNECT_PAGE, "https://github.com/dremdem/yt_archive/issues"]
-    assert parse_tabs("### Result\nNo open tabs") == []
+    assert linkedin_chrome.parse_tabs(text) == [
+        CONNECT_PAGE,
+        "https://github.com/dremdem/yt_archive/issues",
+    ]
+    assert linkedin_chrome.parse_tabs("### Result\nNo open tabs") == []
 
 
 def test_chrome_fill_has_its_own_pause(engine, database_url, tmp_path, session):
     """#252: 2-4 s by default, saved apart from the guest pause (10-40 s)."""
-    from job_radar.linkedin.chrome import load_chrome_pause
-    from job_radar.linkedin.public import PauseSettings, load_pause
+    import job_radar.linkedin.public as linkedin_public
 
-    assert load_chrome_pause(session) == PauseSettings(2, 4)
+    assert linkedin_chrome.load_chrome_pause(session) == linkedin_public.PauseSettings(2, 4)
     with web(database_url, tmp_path, lambda job: None, linkedin_chrome=True) as client:
         page = client.get("/settings").text
         assert 'name="chrome_from"' in page and 'name="chrome_to"' in page
@@ -430,28 +441,30 @@ def test_chrome_fill_has_its_own_pause(engine, database_url, tmp_path, session):
             == 422
         )
     session.expire_all()
-    assert load_chrome_pause(session) == PauseSettings(1.5, 3)
-    assert load_pause(session) == PauseSettings(10, 40)  # the guest pause is untouched
+    assert linkedin_chrome.load_chrome_pause(session) == linkedin_public.PauseSettings(1.5, 3)
+    # the guest pause is untouched
+    assert linkedin_public.load_pause(session) == linkedin_public.PauseSettings(10, 40)
 
 
 def test_pipeline_uses_the_chrome_pause(monkeypatch, database_url, session):
-    from job_radar import pipeline
-    from job_radar.config import Settings
-    from job_radar.linkedin import chrome
-    from job_radar.web.description_job import DescriptionJob
+    import job_radar.config as config
+    import job_radar.pipeline as pipeline
+    import job_radar.web.description_job as web_description_job
 
     seen = {}
 
     async def fake_fill(session, browser, *, pause, **kw):
         seen["pause"] = pause
-        return chrome.FillStats()
+        return linkedin_chrome.FillStats()
 
     async def fake_run(command, env, fill):
         return await fill(object())
 
-    monkeypatch.setattr(chrome, "fill_descriptions", fake_fill)
-    monkeypatch.setattr(chrome, "run_with_chrome", fake_run)
-    pipeline.chrome_fill_job(Settings(database_url=database_url), DescriptionJob())
+    monkeypatch.setattr(linkedin_chrome, "fill_descriptions", fake_fill)
+    monkeypatch.setattr(linkedin_chrome, "run_with_chrome", fake_run)
+    pipeline.chrome_fill_job(
+        config.Settings(database_url=database_url), web_description_job.DescriptionJob()
+    )
     assert seen["pause"] == (2, 4)
 
 
@@ -465,7 +478,9 @@ def run_timed(session, browser, **kw):
     async def sleep(seconds):
         slept.append(seconds)
 
-    stats = asyncio.run(fill_descriptions(session, browser, pause=(0, 0), sleep=sleep, **kw))
+    stats = asyncio.run(
+        linkedin_chrome.fill_descriptions(session, browser, pause=(0, 0), sleep=sleep, **kw)
+    )
     return stats, slept
 
 
@@ -483,18 +498,21 @@ def test_waits_until_the_description_appears(session):
     stats, _slept = run_timed(session, browser)
     assert stats.saved == 1
     kinds = [k for k, _ in browser.calls]
-    assert kinds.count("probe") == 4  # three not ready yet, then ready
+    # three not ready yet, then ready
+    assert kinds.count("probe") == 4
     assert kinds.index("expand") > max(i for i, k in enumerate(kinds) if k == "probe")
 
 
 def test_description_that_never_appears_is_waited_for_at_most_the_limit(session):
-    from job_radar.linkedin.chrome import LOAD_TIMEOUT
 
     vacancy(session, "101")
     browser = FakeBrowser({"101": FakePage("101", ready_after=10_000)})
     _stats, slept = run_timed(session, browser)
-    assert LOAD_TIMEOUT - 1 <= sum(slept) <= LOAD_TIMEOUT + 2.5, sum(slept)
-    assert ("read", "") in browser.calls  # read anyway: the reader decides
+    assert linkedin_chrome.LOAD_TIMEOUT - 1 <= sum(slept) <= linkedin_chrome.LOAD_TIMEOUT + 2.5, (
+        sum(slept)
+    )
+    # read anyway: the reader decides
+    assert ("read", "") in browser.calls
 
 
 def test_block_page_stops_while_waiting_for_the_description(session):
@@ -507,23 +525,24 @@ def test_block_page_stops_while_waiting_for_the_description(session):
 def test_mcp_is_started_without_snapshots_and_with_a_short_settle():
     """Every navigate sent a full aria snapshot of the page; every evaluate waited
     0.5 s + the page's own requests (up to 5 s) + 0.5 s (#254)."""
-    from job_radar.config import Settings
-    from job_radar.linkedin.chrome import mcp_argv
+    import job_radar.config as config
 
-    argv = mcp_argv(Settings().linkedin_chrome_command)
+    argv = linkedin_chrome.mcp_argv(config.Settings().linkedin_chrome_command)
     assert argv[:3] == ["npx", "-y", "@playwright/mcp@0.0.84"]
     assert "--extension" in argv
     assert argv[argv.index("--snapshot-mode") + 1] == "none"
     assert argv[argv.index("--timeout-settle") + 1] == "100"
     # A custom command keeps its own choice.
-    custom = mcp_argv("mcp --extension --timeout-settle=300 --snapshot-mode full")
+    custom = linkedin_chrome.mcp_argv("mcp --extension --timeout-settle=300 --snapshot-mode full")
     assert custom == ["mcp", "--extension", "--timeout-settle=300", "--snapshot-mode", "full"]
 
 
 def test_step_durations_are_in_the_log(session):
     vacancy(session, "101")
     run_timed(session, FakeBrowser())
-    detail = session.scalar(select(LinkedInFetch.detail).where(LinkedInFetch.status == "ok"))
+    detail = session.scalar(
+        sa.select(models.LinkedInFetch.detail).where(models.LinkedInFetch.status == "ok")
+    )
     assert detail and all(word in detail for word in ("open", "load", "expand", "read")), detail
 
 
@@ -531,16 +550,16 @@ def test_step_durations_are_in_the_log(session):
 
 
 def hh_vacancy(session, vacancy_id, score=5.0):
-    from job_radar.dedup import get_or_create_company
+    import job_radar.dedup as dedup
 
-    o = Opportunity(
+    o = models.Opportunity(
         title="Python-разработчик",
         score=score,
-        company=get_or_create_company(session, f"Компания {vacancy_id}"),
+        company=dedup.get_or_create_company(session, f"Компания {vacancy_id}"),
     )
     session.add(
-        SourceRecord(
-            source_type=SourceType.HH,
+        models.SourceRecord(
+            source_type=models.SourceType.HH,
             external_id=vacancy_id,
             url=f"https://hh.ru/vacancy/{vacancy_id}",
             opportunity=o,
@@ -556,14 +575,17 @@ def test_hh_vacancy_is_opened_read_and_saved(session):
     stats = run(session, browser)
     assert (stats.total, stats.saved) == (1, 1)
     assert ("open_tab", "https://hh.ru/vacancy/4235") in browser.calls
-    assert ("expand", "") not in browser.calls  # nothing to unfold or click on hh.ru
+    # nothing to unfold or click on hh.ru
+    assert ("expand", "") not in browser.calls
     assert descriptions(session) == {"4235": "Пишем на Python."}
-    assert session.scalar(select(func.count(Opportunity.id))) == 1  # no second vacancy
+    # no second vacancy
+    assert session.scalar(sa.select(sa.func.count(models.Opportunity.id))) == 1
 
 
 def test_linkedin_and_hh_in_one_run_best_score_first(session):
-    vacancy(session, "101")  # LinkedIn, scored by its title
-    li_score = session.scalar(select(Opportunity.score))
+    # LinkedIn, scored by its title
+    vacancy(session, "101")
+    li_score = session.scalar(sa.select(models.Opportunity.score))
     hh_vacancy(session, "4235", score=li_score + 1)
     hh_vacancy(session, "4236", score=li_score - 1)
     browser = FakeBrowser()
@@ -585,9 +607,9 @@ def test_hh_captcha_and_login_stop_the_run(session):
         FakePage("4235", href="https://hh.ru/vacancy/4235", title="Подтвердите, что вы не робот"),
     ):
         session.rollback()
-        for row in session.scalars(select(LinkedInFetch)):
+        for row in session.scalars(sa.select(models.LinkedInFetch)):
             session.delete(row)
-        if not session.scalar(select(func.count(Opportunity.id))):
+        if not session.scalar(sa.select(sa.func.count(models.Opportunity.id))):
             hh_vacancy(session, "4235", score=9)
             vacancy(session, "101")
         browser = FakeBrowser({"4235": page})
@@ -622,13 +644,16 @@ def unavailable_page(vacancy_id):
 
 def events(session):
     return {
-        e.opportunity_id: e for e in session.scalars(select(CompanyEvent).order_by(CompanyEvent.id))
+        e.opportunity_id: e
+        for e in session.scalars(sa.select(models.CompanyEvent).order_by(models.CompanyEvent.id))
     }
 
 
 def opportunity_of(session, external_id):
     return session.scalar(
-        select(SourceRecord.opportunity_id).where(SourceRecord.external_id == external_id)
+        sa.select(models.SourceRecord.opportunity_id).where(
+            models.SourceRecord.external_id == external_id
+        )
     )
 
 
@@ -640,35 +665,42 @@ def test_unavailable_hh_vacancy_is_marked_and_the_run_goes_on(session):
     assert not stats.blocked and stats.reason is None
     assert (stats.requests, stats.saved, stats.errors) == (2, 1, 1)
     assert set(descriptions(session)) == {"4236"}
-    assert browser.calls[-1] == ("close_tab", "")  # no tab is left open for an ordinary miss
-    fetch = session.scalar(select(LinkedInFetch).where(LinkedInFetch.job_id == "4235"))
+    # no tab is left open for an ordinary miss
+    assert browser.calls[-1] == ("close_tab", "")
+    fetch = session.scalar(
+        sa.select(models.LinkedInFetch).where(models.LinkedInFetch.job_id == "4235")
+    )
     assert fetch.status == "unavailable" and "403" in fetch.detail
-    opportunity = session.get(Opportunity, opportunity_of(session, "4235"))
+    opportunity = session.get(models.Opportunity, opportunity_of(session, "4235"))
     assert opportunity.unavailable_at is not None
-    assert opportunity_of(session, "4235") not in events(session)  # not in the history (#276)
+    # not in the history (#276)
+    assert opportunity_of(session, "4235") not in events(session)
     assert (opportunity.state, opportunity.auto_ignore_reason) == (
-        OpportunityState.AUTO_IGNORE,
-        UNAVAILABLE_REASON,
+        models.OpportunityState.AUTO_IGNORE,
+        auto_ignore.UNAVAILABLE_REASON,
     )
 
 
 def test_unavailable_vacancy_stays_in_review_when_the_rule_is_off(session):
-    save_rules(session, Rules(unavailable=False))
+    auto_ignore.save_rules(session, auto_ignore.Rules(unavailable=False))
     hh_vacancy(session, "4235")
     run(session, FakeBrowser({"4235": unavailable_page("4235")}))
-    opportunity = session.get(Opportunity, opportunity_of(session, "4235"))
+    opportunity = session.get(models.Opportunity, opportunity_of(session, "4235"))
     assert opportunity.unavailable_at is not None
-    assert (opportunity.state, opportunity.auto_ignore_reason) == (OpportunityState.NEW, None)
+    assert (opportunity.state, opportunity.auto_ignore_reason) == (
+        models.OpportunityState.NEW,
+        None,
+    )
 
 
 def test_unavailable_vacancy_is_not_opened_again_until_cleared(session):
-    save_rules(session, Rules(unavailable=False))
+    auto_ignore.save_rules(session, auto_ignore.Rules(unavailable=False))
     hh_vacancy(session, "4235")
     run(session, FakeBrowser({"4235": unavailable_page("4235")}))
     again = FakeBrowser()
     assert run(session, again).total == 0
     assert not [c for c in again.calls if c[0] in ("open_tab", "navigate")]
-    clear_unavailable(session.get(Opportunity, opportunity_of(session, "4235")))
+    auto_ignore.clear_unavailable(session.get(models.Opportunity, opportunity_of(session, "4235")))
     session.commit()
     assert run(session, FakeBrowser()).saved == 1
 
@@ -676,13 +708,20 @@ def test_unavailable_vacancy_is_not_opened_again_until_cleared(session):
 def test_clearing_brings_back_a_vacancy_only_this_rule_moved(session):
     hh_vacancy(session, "4235")
     run(session, FakeBrowser({"4235": unavailable_page("4235")}))
-    opportunity = session.get(Opportunity, opportunity_of(session, "4235"))
-    clear_unavailable(opportunity)
+    opportunity = session.get(models.Opportunity, opportunity_of(session, "4235"))
+    auto_ignore.clear_unavailable(opportunity)
     assert opportunity.unavailable_at is None
-    assert (opportunity.state, opportunity.auto_ignore_reason) == (OpportunityState.NEW, None)
-    opportunity.unavailable_at, opportunity.state = datetime.now(UTC), OpportunityState.IGNORE
-    clear_unavailable(opportunity)
-    assert opportunity.state is OpportunityState.IGNORE  # your own state is yours
+    assert (opportunity.state, opportunity.auto_ignore_reason) == (
+        models.OpportunityState.NEW,
+        None,
+    )
+    opportunity.unavailable_at, opportunity.state = (
+        dt.datetime.now(dt.UTC),
+        models.OpportunityState.IGNORE,
+    )
+    auto_ignore.clear_unavailable(opportunity)
+    # your own state is yours
+    assert opportunity.state is models.OpportunityState.IGNORE
 
 
 def test_a_vacancy_that_is_gone_is_marked_like_an_unavailable_one(session):
@@ -691,7 +730,9 @@ def test_a_vacancy_that_is_gone_is_marked_like_an_unavailable_one(session):
     gone = FakePage("4235", href="https://hh.ru/vacancy/4235", status=404, ready_after=99)
     stats = run(session, FakeBrowser({"4235": gone}))
     assert not stats.blocked and stats.saved == 1
-    assert session.get(Opportunity, opportunity_of(session, "4235")).unavailable_at is not None
+    assert (
+        session.get(models.Opportunity, opportunity_of(session, "4235")).unavailable_at is not None
+    )
 
 
 def test_a_plain_403_still_stops_the_run_and_marks_the_vacancy(session):
@@ -700,7 +741,7 @@ def test_a_plain_403_still_stops_the_run_and_marks_the_vacancy(session):
     plain = FakePage("4235", href="https://hh.ru/vacancy/4235", status=403)
     stats = run(session, FakeBrowser({"4235": plain}))
     assert stats.blocked and stats.reason == "HTTP 403" and stats.requests == 1
-    assert events(session)[opportunity_of(session, "4235")].kind == FILL_PROBLEM
+    assert events(session)[opportunity_of(session, "4235")].kind == models.FILL_PROBLEM
     # Not "unavailable": the next run tries it again.
     assert run(session, FakeBrowser()).saved == 2
 
@@ -708,19 +749,22 @@ def test_a_plain_403_still_stops_the_run_and_marks_the_vacancy(session):
 def test_browser_error_on_one_vacancy_is_marked_and_the_run_goes_on(session):
     hh_vacancy(session, "4235", score=9)
     hh_vacancy(session, "4236", score=8)
-    broken = FakePage("4235", href="https://hh.ru/vacancy/4235", fail=BrowserError("net::ERR"))
+    broken = FakePage(
+        "4235", href="https://hh.ru/vacancy/4235", fail=linkedin_chrome.BrowserError("net::ERR")
+    )
     stats = run(session, FakeBrowser({"4235": broken}))
     assert not stats.blocked and (stats.requests, stats.saved, stats.errors) == (2, 1, 1)
     event = events(session)[opportunity_of(session, "4235")]
-    assert event.kind == FILL_PROBLEM and "net::ERR" in event.comment
-    fetch = session.scalar(select(LinkedInFetch).where(LinkedInFetch.job_id == "4235"))
+    assert event.kind == models.FILL_PROBLEM and "net::ERR" in event.comment
+    fetch = session.scalar(
+        sa.select(models.LinkedInFetch).where(models.LinkedInFetch.job_id == "4235")
+    )
     assert fetch.status == "error"
 
 
 def test_a_page_that_never_answers_times_out_and_the_run_goes_on(session, monkeypatch):
-    from job_radar.linkedin import chrome
 
-    monkeypatch.setattr(chrome, "PAGE_TIMEOUT", 0.05)
+    monkeypatch.setattr(linkedin_chrome, "PAGE_TIMEOUT", 0.05)
 
     class Hanging(FakeBrowser):
         async def open_tab(self, url):
@@ -736,17 +780,17 @@ def test_a_page_that_never_answers_times_out_and_the_run_goes_on(session, monkey
 
 
 def test_failure_while_saving_leaves_the_session_usable(session, monkeypatch):
-    from job_radar.linkedin import chrome
 
-    real = chrome.linkedin_capture.import_capture
+    real = linkedin_chrome.linkedin_capture.import_capture
 
     def boom(s, payload):
         if payload["detail"]["job_id"] == "4235":
-            s.add(LinkedInFetch(start=None, status="x"))  # NOT NULL: the flush raises
+            # NOT NULL: the flush raises
+            s.add(models.LinkedInFetch(start=None, status="x"))
             s.flush()
         return real(s, payload)
 
-    monkeypatch.setattr(chrome.linkedin_capture, "import_capture", boom)
+    monkeypatch.setattr(linkedin_chrome.linkedin_capture, "import_capture", boom)
     hh_vacancy(session, "4235", score=9)
     hh_vacancy(session, "4236", score=8)
     stats = run(session, FakeBrowser())
@@ -759,7 +803,9 @@ def test_three_failures_in_a_row_stop_the_run(session):
         hh_vacancy(session, f"423{n}", score=9 - n)
     pages = {
         f"423{n}": FakePage(
-            f"423{n}", href=f"https://hh.ru/vacancy/423{n}", fail=BrowserError("gone")
+            f"423{n}",
+            href=f"https://hh.ru/vacancy/423{n}",
+            fail=linkedin_chrome.BrowserError("gone"),
         )
         for n in range(5)
     }
@@ -776,7 +822,7 @@ def test_after_a_failed_navigation_the_error_page_does_not_stop_the_run(session)
             if url.endswith("4236"):
                 self.calls.append(("navigate", url))
                 self.page = FakePage("4236", href="chrome-error://chromewebdata/")
-                raise BrowserError("net::ERR_FAILED")
+                raise linkedin_chrome.BrowserError("net::ERR_FAILED")
             await super().navigate(url)
 
     for n, score in (("4235", 9), ("4236", 8), ("4237", 7)):
@@ -791,7 +837,9 @@ def test_progress_is_counted_per_source(session):
     hh_vacancy(session, "4236", score=8)
     seen = []
     browser = FakeBrowser({"4235": unavailable_page("4235")})
-    stats = run(session, browser, on_progress=lambda s: seen.append(asdict(s)["sources"]))
+    stats = run(
+        session, browser, on_progress=lambda s: seen.append(dataclasses.asdict(s)["sources"])
+    )
     assert seen[0]["hh"]["total"] == 2 and seen[0]["linkedin"]["total"] == 1
     assert seen[0]["hh"]["opened"] == 0
     hh, linkedin = stats.sources["hh"], stats.sources["linkedin"]
@@ -822,44 +870,53 @@ def test_status_shows_a_bar_and_counts_per_source(engine, database_url, tmp_path
 
 
 def test_fill_marks_are_not_contacts_or_your_actions(engine, session):
-    from job_radar.contacts import company_history
-    from job_radar.web.app import _visible_history_count, last_actions
+    import job_radar.contacts as contacts
+    import job_radar.web.app as web_app
 
     hh_vacancy(session, "4235")
-    broken = FakePage("4235", href="https://hh.ru/vacancy/4235", fail=BrowserError("net::ERR"))
+    broken = FakePage(
+        "4235", href="https://hh.ru/vacancy/4235", fail=linkedin_chrome.BrowserError("net::ERR")
+    )
     run(session, FakeBrowser({"4235": broken}))
     oid = opportunity_of(session, "4235")
-    company_id = session.get(Opportunity, oid).company_id
-    history = company_history(session, company_id)
-    assert [e.kind for e in history] == [FILL_PROBLEM]  # shown with the vacancy
+    company_id = session.get(models.Opportunity, oid).company_id
+    history = contacts.company_history(session, company_id)
+    # shown with the vacancy
+    assert [e.kind for e in history] == [models.FILL_PROBLEM]
     assert "HeadHunter" not in history[0].text and "net::ERR" in history[0].text
-    assert _visible_history_count(history) == 0  # no "contacted · 1" badge
-    assert FILL_PROBLEM.replace("_", " ") not in (last_actions(session).get(oid) or ("", ""))[1]
+    # no "contacted · 1" badge
+    assert web_app._visible_history_count(history) == 0
+    assert (
+        models.FILL_PROBLEM.replace("_", " ")
+        not in (web_app.last_actions(session).get(oid) or ("", ""))[1]
+    )
 
 
 def test_not_accepting_vacancy_is_not_opened_again_until_cleared(session):
-    save_rules(session, Rules(unavailable=False))
+    auto_ignore.save_rules(session, auto_ignore.Rules(unavailable=False))
     hh_vacancy(session, "4235")
-    opportunity = session.get(Opportunity, opportunity_of(session, "4235"))
-    opportunity.not_accepting_at = datetime.now(UTC)
+    opportunity = session.get(models.Opportunity, opportunity_of(session, "4235"))
+    opportunity.not_accepting_at = dt.datetime.now(dt.UTC)
     session.commit()
     assert run(session, FakeBrowser()).total == 0
-    clear_unavailable(opportunity)
+    auto_ignore.clear_unavailable(opportunity)
     session.commit()
     assert run(session, FakeBrowser()).total == 1
 
 
 def test_probe_asks_the_page_whether_the_vacancy_is_unavailable():
-    assert "недоступна" in PROBE and "unavailable" in PROBE
+    assert "недоступна" in linkedin_chrome.PROBE and "unavailable" in linkedin_chrome.PROBE
 
 
 def test_repeated_problem_is_recorded_once(session):
     hh_vacancy(session, "4235", score=9)
     hh_vacancy(session, "4236", score=8)
-    broken = FakePage("4235", href="https://hh.ru/vacancy/4235", fail=BrowserError("net::ERR"))
+    broken = FakePage(
+        "4235", href="https://hh.ru/vacancy/4235", fail=linkedin_chrome.BrowserError("net::ERR")
+    )
     run(session, FakeBrowser({"4235": broken}))
     run(session, FakeBrowser({"4235": broken}))
-    assert session.scalar(select(func.count(CompanyEvent.id))) == 1
+    assert session.scalar(sa.select(sa.func.count(models.CompanyEvent.id))) == 1
 
 
 def test_failed_vacancies_are_listed_with_links(session):
@@ -893,10 +950,10 @@ def test_status_lists_the_failed_vacancies(engine, database_url, tmp_path):
 def test_page_of_checks_the_host_not_a_substring():
     # CodeQL py/incomplete-url-substring-sanitization: "linkedin.com" anywhere in the URL
     # made another site's page look like a LinkedIn vacancy (#11).
-    assert page_of("https://www.linkedin.com/jobs/view/123/") == ("linkedin", "123")
-    assert page_of("https://linkedin.com/jobs/view/123/") == ("linkedin", "123")
-    assert page_of("https://example.com/linkedin.com/jobs/view/123/") is None
-    assert page_of("https://linkedin.com.example.com/jobs/view/123/") is None
+    assert linkedin_chrome.page_of("https://www.linkedin.com/jobs/view/123/") == ("linkedin", "123")
+    assert linkedin_chrome.page_of("https://linkedin.com/jobs/view/123/") == ("linkedin", "123")
+    assert linkedin_chrome.page_of("https://example.com/linkedin.com/jobs/view/123/") is None
+    assert linkedin_chrome.page_of("https://linkedin.com.example.com/jobs/view/123/") is None
 
 
 def test_finished_status_can_be_dismissed_until_the_next_run(engine, database_url, tmp_path):
@@ -904,11 +961,11 @@ def test_finished_status_can_be_dismissed_until_the_next_run(engine, database_ur
 
     Runs the page's own script in headless Chromium; see tests/test_chat_keys.py for how.
     """
-    from test_chat_keys import CHROME
+    import test_chat_keys
 
     sync_api = pytest.importorskip("playwright.sync_api")
-    if not CHROME.exists():
-        pytest.skip(f"no Chromium at {CHROME}")
+    if not test_chat_keys.CHROME.exists():
+        pytest.skip(f"no Chromium at {test_chat_keys.CHROME}")
 
     def runner(job):
         job.progress(total=2, requests=2, saved=1, errors=1)
@@ -925,7 +982,7 @@ def test_finished_status_can_be_dismissed_until_the_next_run(engine, database_ur
     assert "data-finished=" in status
 
     with sync_api.sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=str(CHROME))
+        browser = p.chromium.launch(executable_path=str(test_chat_keys.CHROME))
         page = browser.new_page()
         # Only the app's own page is served; LinkedIn, hh.ru and the CDN are never reached.
         # A real origin (not about:blank) is needed for localStorage.
@@ -950,9 +1007,11 @@ def test_finished_status_can_be_dismissed_until_the_next_run(engine, database_ur
         assert errors == []
         assert not page.locator("#chrome-status").is_visible()
 
-        page.evaluate(swap, status)  # the same run drawn again, e.g. after a reload
+        # the same run drawn again, e.g. after a reload
+        page.evaluate(swap, status)
         assert not page.locator("#chrome-status").is_visible()
 
         page.evaluate(swap, status.replace('data-finished="', 'data-finished="next-'))
-        assert page.locator("#chrome-status").is_visible()  # a new run shows again
+        # a new run shows again
+        assert page.locator("#chrome-status").is_visible()
         browser.close()
