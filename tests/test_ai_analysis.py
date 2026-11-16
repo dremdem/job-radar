@@ -9,6 +9,7 @@ import pytest
 import job_radar.ai.analysis as ai_analysis
 import job_radar.auto_ignore as auto_ignore
 import job_radar.dedup as dedup
+import job_radar.findings as findings
 import job_radar.models as models
 
 UK_ONLY = (
@@ -111,21 +112,21 @@ def test_risks():
     hybrid = models.DescriptionAnalysis(
         work_mode="hybrid", work_mode_quote="2 days in office", residence=[]
     )
-    [(points, reason)] = ai_analysis.risks(hybrid)
+    [(points, reason)] = findings.risks(hybrid)
     assert points == -3.0 and reason.text == "AI: hybrid — “2 days in office”"
 
     uk = models.DescriptionAnalysis(
         work_mode="remote", residence=["UK"], residence_quote="based in the UK"
     )
-    [(points, reason)] = ai_analysis.risks(uk)
+    [(points, reason)] = findings.risks(uk)
     assert points == -2.5 and reason.text == "AI: only for UK — “based in the UK”"
 
     assert (
-        ai_analysis.risks(models.DescriptionAnalysis(work_mode="remote", residence=["Worldwide"]))
+        findings.risks(models.DescriptionAnalysis(work_mode="remote", residence=["Worldwide"]))
         == []
     )
     # Without a home in the profile, a country is a restriction like any other.
-    [(points, _)] = ai_analysis.risks(
+    [(points, _)] = findings.risks(
         models.DescriptionAnalysis(residence=["Thailand"], residence_quote="Thailand")
     )
     assert points == -2.5
@@ -134,9 +135,7 @@ def test_risks():
 def test_home_and_its_regions_are_open(thailand):
     for open_place in ("Thailand", "APAC", "Southeast Asia"):
         assert (
-            ai_analysis.risks(
-                models.DescriptionAnalysis(work_mode="remote", residence=[open_place])
-            )
+            findings.risks(models.DescriptionAnalysis(work_mode="remote", residence=[open_place]))
             == []
         )
 
@@ -248,4 +247,4 @@ def test_verify_drops_exclusions_preferences_and_flags(places, quote, text):
 
 def test_any_city_is_not_a_restriction():
     analysis = models.DescriptionAnalysis(work_mode="remote", residence=["любой город"])
-    assert ai_analysis.risks(analysis) == []
+    assert findings.risks(analysis) == []

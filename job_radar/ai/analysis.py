@@ -1,8 +1,8 @@
 """Work mode, residence and stack from a description: the model extracts, code decides.
 
 ``extract`` asks the local model for facts with quotes, ``verify`` keeps only facts whose
-quote is really in the text (``quote_in_text``), and ``risks`` /
-``residence_restriction`` / ``auto_ignore_reason`` turn them into what the queue shows.
+quote is really in the text (``quote_in_text``). What the stored answers mean for the
+queue (penalties, restrictions, auto-ignore reasons) is read by ``findings``.
 ``check_stack`` judges unknown technologies against the user's profile.
 ``analyze_pending`` runs over To review vacancies whose newest description has no
 analysis yet; results are stored as ``DescriptionAnalysis``. See docs/ai.md.
@@ -20,27 +20,12 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.description as description
-import job_radar.home as jr_home
+import job_radar.findings as findings
 import job_radar.models as models
-import job_radar.scoring as scoring
 import job_radar.stack as jr_stack
 
-HYBRID_PENALTY = -3.0
-RESIDENCE_PENALTY = -2.5
 MAX_TEXT = 10000
-QUOTE_SHOWN = 160
-# Per required technology, by its level in the profile (docs/ai.md#stack-vs-your-cv).
-STACK_PENALTIES = {"unknown": -1.0, "learnable": -0.5, "blocker": -3.0}
-# all non-blockers together; blockers are not capped
-STACK_PENALTY_MAX = -3.0
-_LEVEL_TEXT = {"unknown": "not in your CV", "learnable": "learnable", "blocker": "blocker"}
 MAX_STACK_QUESTIONS = 8
-# Places anyone can work from; the user's own home (profile) is open too. Anything else in
-# `residence` is a restriction.
-_OPEN = re.compile(
-    r"worldwide|anywhere|global|any (country|location|city)|любой|везде",
-    re.IGNORECASE,
-)
 # The quote lists who is excluded or preferred, not where one must live (measured, #93).
 _NOT_A_REQUIREMENT = re.compile(
     r"\bexcept\b|\bexcluding\b|\bprefer|\bideally\b|\bnice to have\b|кроме|предпочт",
@@ -191,77 +176,6 @@ def check_stack(
     return stack, raw
 
 
-def stack_risks(
-    analysis: models.DescriptionAnalysis | None, profile: jr_stack.Profile | None = None
-) -> list[tuple[float, scoring.Reason]]:
-    """Required technologies by their level in the current profile (known ones drop out)."""
-    if analysis is None or not analysis.stack:
-        return []
-    out: list[tuple[float, scoring.Reason]] = []
-    left = STACK_PENALTY_MAX
-    for item in analysis.stack:
-        if item.get("status") != "required":
-            continue
-        level = profile.level(item["skill"]) if profile else "unknown"
-        if level == "known":
-            continue
-        points = STACK_PENALTIES[level]
-        if level != "blocker":
-            points = max(points, left) if left < 0 else 0.0
-            left -= points
-        text = (
-            f"Requires {item['skill']} ({_LEVEL_TEXT[level]}) — “{_shown(item.get('quote', ''))}”"
-        )
-        out.append((points, scoring.Reason("-", text)))
-    return out
-
-
-def _shown(quote: str) -> str:
-    quote = re.sub(r"\s+", " ", quote).strip()
-    return quote if len(quote) <= QUOTE_SHOWN else quote[: QUOTE_SHOWN - 1] + "…"
-
-
-def risks(
-    analysis: models.DescriptionAnalysis | None, profile: jr_stack.Profile | None = None
-) -> list[tuple[float, scoring.Reason]]:
-    if analysis is None:
-        return []
-    out = []
-    if analysis.work_mode in ("hybrid", "onsite"):
-        mode = "hybrid" if analysis.work_mode == "hybrid" else "on-site"
-        text = f"AI: {mode} — “{_shown(analysis.work_mode_quote)}”"
-        out.append((HYBRID_PENALTY, scoring.Reason("-", text)))
-    if restriction := residence_restriction(analysis):
-        text = f"AI: only for {restriction} — “{_shown(analysis.residence_quote)}”"
-        out.append((RESIDENCE_PENALTY, scoring.Reason("-", text)))
-    return out + stack_risks(analysis, profile)
-
-
-def residence_restriction(
-    analysis: models.DescriptionAnalysis, home: jr_home.Home | None = None
-) -> str | None:
-    home = jr_home.current_home() if home is None else home
-    places = analysis.residence or []
-    if not places or any(_OPEN.search(p) or home.listed_in(p) for p in places):
-        return None
-    return ", ".join(places)
-
-
-def latest_analysis(opportunity: models.Opportunity) -> models.DescriptionAnalysis | None:
-    return opportunity.analyses[-1] if opportunity.analyses else None
-
-
-def auto_ignore_reason(opportunity: models.Opportunity) -> str | None:
-    analysis = latest_analysis(opportunity)
-    if analysis is None:
-        return None
-    if analysis.work_mode in ("hybrid", "onsite"):
-        return "AI: hybrid / on-site" if analysis.work_mode == "hybrid" else "AI: on-site"
-    if restriction := residence_restriction(analysis):
-        return f"AI: only for {restriction}"
-    return None
-
-
 @dataclasses.dataclass
 class AnalysisStats:
     """Counters of one analysis run, for the sync status line."""
@@ -346,7 +260,7 @@ def analyze_pending(
         session.add(analysis)
         session.flush()
         stats.analyzed += 1
-        stats.flagged += bool(risks(analysis, profile))
+        stats.flagged += bool(findings.risks(analysis, profile))
         auto_ignore.apply_rules(session, opportunity)
         session.commit()
     return stats

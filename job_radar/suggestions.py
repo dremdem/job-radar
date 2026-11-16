@@ -13,7 +13,7 @@ import dataclasses
 import re
 import typing as t
 
-import job_radar.ai.analysis as ai_analysis
+import job_radar.findings as findings
 import job_radar.language as jr_language
 import job_radar.models as models
 import job_radar.stack as stack
@@ -127,7 +127,7 @@ def suggest(
     if language := jr_language.vacancy_language(title, description):
         found.append(_language(language))
     if analysis is not None:
-        if restriction := ai_analysis.residence_restriction(analysis):
+        if restriction := findings.residence_restriction(analysis):
             found.append(
                 Suggestion(models.NoteKind.ONLY_LOCATION, restriction, f"only {restriction}")
             )
