@@ -1,6 +1,6 @@
 # Jobicy
 
-Job Radar reads fresh Python vacancies from [Jobicy](https://jobicy.com), a board of remote jobs (issue #233). Of the free remote-job feeds measured in October 2026 it brings the most: about 25 jobs tagged `python` a day.
+Job Radar reads fresh Python vacancies from [Jobicy](https://jobicy.com), a board of remote jobs. Of the free remote-job feeds measured in October 2026 it brings the most: about 25 jobs tagged `python` a day.
 
 It uses the official free [Jobicy API](https://jobi.cy/apidocs) (no key, no login, no page scraping):
 

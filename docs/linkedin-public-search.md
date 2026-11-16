@@ -2,7 +2,7 @@
 
 > The guest search is keyword-based and cannot reproduce LinkedIn's personal ranking; for everything you see in your own browser use the [bookmarklet](linkedin-capture.md).
 
-An alert email lists about 6 jobs; the same search on LinkedIn shows ~25 on its first page. With this **opt-in** feature (#23) Job Radar reads that first page from LinkedIn's **public guest search**, without logging in. Off by default.
+An alert email lists about 6 jobs; the same search on LinkedIn shows ~25 on its first page. With this **opt-in** feature Job Radar reads that first page from LinkedIn's **public guest search**, without logging in. Off by default.
 
 What it never does: log in, send cookies, use a browser or a browser profile, click, apply. It is still automated reading of linkedin.com and against LinkedIn's terms; the account is not involved, the IP may get throttled. See the LinkedIn rule in [CLAUDE.md](../CLAUDE.md).
 
@@ -23,7 +23,7 @@ Each alert email is searched once. Only alerts from the last 3 days are consider
 | `JOB_RADAR_LINKEDIN_PUBLIC_MAX_SEARCHES_PER_DAY` | `5` | Alert searches per UTC day |
 | `JOB_RADAR_LINKEDIN_PUBLIC_MAX_JOBS` | `25` | Jobs taken per search |
 
-**Pause between requests (#205):** a random number of seconds between **From** and **To**, 10–40 by default, set on **Settings → LinkedIn** (stored in the database, used by searches and descriptions alike). A fixed 3 s pause got HTTP 429 after a few requests from 13 October on; a longer, uneven pause looks less like a script.
+**Pause between requests:** a random number of seconds between **From** and **To**, 10–40 by default, set on **Settings → LinkedIn** (stored in the database, used by searches and descriptions alike). A fixed 3 s pause got HTTP 429 after a few requests from 13 October on; a longer, uneven pause looks less like a script.
 
 **Stop on the first sign of blocking**: HTTP 429 or 999, a redirect to login/authwall/checkpoint, or a page without job cards that mentions a challenge/captcha. The fetch is recorded as `blocked` and nothing more is requested until the next UTC day. No retries, no workarounds.
 
@@ -46,7 +46,7 @@ With the same switch on, vacancies in **To review** that have no description yet
 
 Same pause between requests and the same stop: any sign of blocking stops **both** searches and descriptions until the next day. Each request is logged in `linkedin_fetches` with `kind = description` and the vacancy.
 
-### The Descriptions button (#205)
+### The Descriptions button
 
 With pauses of 10–40 s, 30 descriptions take 5–20 minutes, so in the web UI they are fetched by a **background job**:
 

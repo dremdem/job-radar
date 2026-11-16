@@ -1,7 +1,6 @@
 # ADR 0001: LinkedIn descriptions through the user's own Chrome
 
 - Status: accepted by the owner, 2026-11-02
-- Issue: #247
 - Changes: the "LinkedIn access" rule in CLAUDE.md. This is a changed requirement, not a fix.
 
 ## Context
@@ -9,7 +8,7 @@
 LinkedIn vacancies reach To review without a description, from alert emails and from the
 bookmarklet on search lists. To get a description, the user opened each vacancy and clicked
 the bookmarklet: 20–50 identical clicks per batch, before Claude can analyse anything. The
-guest page (#79) is opt-in and often empty or blocked. Until now the rule forbade any browser
+guest page is opt-in and often empty or blocked. Until now the rule forbade any browser
 automation with the user's account.
 
 ## Decision
@@ -30,9 +29,9 @@ Allow exactly one kind of automation, the **Chrome fill**:
   both paths), into the same `import_capture`. Only the vacancy itself is saved, never the
   "similar jobs" on its page.
 - **Pace:** one page at a time, with a random pause of its own between pages (Settings →
-  Fill from Chrome, 2–4 s by default; #252: by hand the owner opens a vacancy and clicks the
+  Fill from Chrome, 2–4 s by default: by hand the owner opens a vacancy and clicks the
   bookmarklet within seconds), on top of the time each page takes to load and show its
-  description (polled, at most 10 s; #254 replaced a fixed 2.5–5 s wait), and at
+  description (polled, at most 10 s, in place of a fixed 2.5–5 s wait), and at
   most 50 vacancies per run. The guest pause (10–40 s) is separate and unchanged: requests
   without a login get 429 much sooner. There is no daily cap: a person
   opens as many by hand.
@@ -54,7 +53,7 @@ Replace the first sentence with:
 
 After "…it never navigates, clicks, scrolls or sends requests to LinkedIn or hh.ru." add:
 
-> The one browser exception (#247, [ADR 0001](docs/adr/0001-chrome-description-fill.md)): the
+> The one browser exception ([ADR 0001](docs/adr/0001-chrome-description-fill.md)): the
 > **Chrome fill** may drive the user's own Chrome through Playwright MCP `--extension`, in a
 > tab of its own. It may only open the pages of LinkedIn vacancies already in To review
 > without a description, expand "show more" in that description, and read it with the

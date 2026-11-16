@@ -73,7 +73,7 @@ Everything that talks to the outside world sits behind a small `Protocol` (`Mode
 
 ## Database
 
-One SQLite file, `data/job_radar.db`, shared by the web requests and the background threads (Sync, up to four Claude analyses, the chat). `db.make_engine` sets up every connection (#22):
+One SQLite file, `data/job_radar.db`, shared by the web requests and the background threads (Sync, up to four Claude analyses, the chat). `db.make_engine` sets up every connection:
 
 - `journal_mode=WAL`: changes go to a write-ahead log first, so reading and writing no longer block each other. A page opens while an analysis is being saved, and a commit does not wait for open reads. Two writers still take turns.
 - `busy_timeout=30000`: a writer that finds the database busy waits up to 30 s instead of failing with `database is locked` at once.

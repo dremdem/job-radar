@@ -1,13 +1,19 @@
 # Data model
 
-Minimal schema for step 1 (#11). Tables grow only when a source or feature needs them.
+Minimal schema for step 1. Tables grow only when a source or feature needs them.
 
-```
-Company 1───* Opportunity 1───* SourceRecord 1───* JobSnapshot
-   │               │
-   ├──* Application *┘ (opportunity optional)
-   └──* Rejection   (opportunity + email optional)
-EmailMessage *───1 Company (optional)
+```mermaid
+erDiagram
+    Company ||--o{ Opportunity : has
+    Opportunity ||--o{ SourceRecord : "seen in"
+    SourceRecord ||--o{ JobSnapshot : "text at a time"
+    Company ||--o{ Application : "applied to"
+    Opportunity |o--o{ Application : "optional"
+    Company ||--o{ Rejection : "said no"
+    Opportunity |o--o{ Rejection : "optional"
+    EmailMessage |o--o| Application : "came from (optional)"
+    EmailMessage |o--o| Rejection : "came from (optional)"
+    Company |o--o{ EmailMessage : "linked (optional)"
 ```
 
 ## Company
@@ -30,9 +36,9 @@ One vacancy, independent of where it was seen.
 | `title`, `company_id` | |
 | `state` | `new` → `interested` / `ignore` / `applied`, changed by the user; `auto_ignore` set only by the rules in [settings.md](settings.md) |
 | `auto_ignore_reason` | Why a rule auto-ignored it; cleared when you change the state |
-| `unavailable_at` | When the Chrome fill found the site says this vacancy is not available (#276); null otherwise |
-| `not_accepting_at` | When a LinkedIn page said this vacancy is not accepting applications (#278); null otherwise |
-| `score` | Nullable float, 0–10; rule-based for now (#13). Intrinsic (title/location) score; the rejection penalty is applied at display time, see [Rejection](#rejection) |
+| `unavailable_at` | When the Chrome fill found the site says this vacancy is not available; null otherwise |
+| `not_accepting_at` | When a LinkedIn page said this vacancy is not accepting applications; null otherwise |
+| `score` | Nullable float, 0–10; rule-based for now. Intrinsic (title/location) score; the rejection penalty is applied at display time, see [Rejection](#rejection) |
 | `score_reasons` | JSON list of `{"sign": "+" or "-", "text": ...}` explaining the score |
 | `location`, `salary` | As shown by the source, free text |
 | `easy_apply` | Nullable bool: LinkedIn Easy Apply; unknown (null) for public search |
@@ -80,7 +86,7 @@ A fact that the user applied somewhere. Built from mail by [applications.md](app
 
 A company said no. A rejection is a fact about the **company**: one rejection flags
 **all** of that company's opportunities in the review queue. Recorded manually (a
-button in the queue) or auto-detected from mail (#28).
+button in the queue) or auto-detected from mail.
 
 | Column | Notes |
 |---|---|
@@ -115,7 +121,7 @@ A Gmail message relevant to the search. Unique on `gmail_message_id`.
 | `detected_event` | Nullable: `application_confirmation`, `application_update`, `rejection`, `interview`, `recruiter_outreach`, `other` |
 | `company_id` | Optional link, see [applications.md](applications.md#linking-mail-to-a-company) |
 | `company_match` | Nullable: `exact` or `probable` |
-| `hidden_at` | Nullable: when you deleted it from the company history; hidden mail is never imported again as an application or a rejection (#225) |
+| `hidden_at` | Nullable: when you deleted it from the company history; hidden mail is never imported again as an application or a rejection |
 
 ## SyncCursor
 

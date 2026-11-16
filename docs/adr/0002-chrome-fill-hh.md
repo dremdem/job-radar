@@ -1,7 +1,6 @@
 # ADR 0002: hh.ru descriptions through the user's own Chrome
 
 - Status: asked for by the owner, 2026-11-03; accepted when the CLAUDE.md rule below is merged
-- Issue: #260
 - Extends: [ADR 0001](0001-chrome-description-fill.md) (the Chrome fill for LinkedIn)
 - Changes: the "LinkedIn access" rule in CLAUDE.md ("hh.ru is never fetched automatically").
   This is a changed requirement, not a fix.
@@ -9,8 +8,8 @@
 ## Context
 
 hh.ru vacancies reach To review without a description, from the saved-search digests
-(docs/hh.md). hh.ru's API is closed to job seekers (#101), so until now the only way to get a
-description was the bookmarklet (#136): open each vacancy, click it, 20–50 times per batch.
+(docs/hh.md). hh.ru's API is closed to job seekers, so until now the only way to get a
+description was the bookmarklet: open each vacancy, click it, 20–50 times per batch.
 The Chrome fill (ADR 0001) already does exactly this for LinkedIn, and the bookmarklet's
 reader already reads hh.ru vacancy pages. The owner asked for the same button to fill hh.ru
 too, automatically.
@@ -40,7 +39,7 @@ message, save, subscribe, hide).
 
 Replace
 
-> The one browser exception (#247, [ADR 0001](docs/adr/0001-chrome-description-fill.md)): the
+> The one browser exception ([ADR 0001](docs/adr/0001-chrome-description-fill.md)): the
 > **Chrome fill** may drive the user's own Chrome through Playwright MCP `--extension`, in a
 > tab of its own, only to open the pages of LinkedIn vacancies already in To review without a
 > description, expand "show more" in that description and read it with the bookmarklet's own
@@ -49,12 +48,12 @@ Replace
 > when the tab is not the expected vacancy. It never logs in, reads or sets cookies, sends
 > requests to LinkedIn outside the browser, uses Easy Apply, or acts for the user (apply,
 > message, like, follow, save, connect). hh.ru is never fetched automatically (its API is
-> closed to job seekers, #101).
+> closed to job seekers).
 
 with
 
-> The one browser exception (#247, [ADR 0001](docs/adr/0001-chrome-description-fill.md);
-> hh.ru: #260, [ADR 0002](docs/adr/0002-chrome-fill-hh.md)): the **Chrome fill** may drive the
+> The one browser exception ([ADR 0001](docs/adr/0001-chrome-description-fill.md);
+> hh.ru: [ADR 0002](docs/adr/0002-chrome-fill-hh.md)): the **Chrome fill** may drive the
 > user's own Chrome through Playwright MCP `--extension`, in a tab of its own, only to open the
 > pages of LinkedIn and hh.ru vacancies already in To review without a description, expand
 > "show more" in a LinkedIn description and read the page with the bookmarklet's own reader —
@@ -63,9 +62,9 @@ with
 > and when the tab is not the expected vacancy. It never logs in, reads or sets cookies, sends
 > requests to LinkedIn or hh.ru outside the browser, uses Easy Apply, or acts for the user
 > (apply, respond, message, like, follow, save, connect). Apart from the Chrome fill, hh.ru is
-> never fetched automatically (its API is closed to job seekers, #101).
+> never fetched automatically (its API is closed to job seekers).
 
-## Amendment (#272, 2026-11-08): an unavailable vacancy is not a block
+## Amendment (2026-11-08): an unavailable vacancy is not a block
 
 Asked for by the owner; a changed requirement. hh.ru answers **HTTP 403** on the vacancy's own
 URL with the text "Вам недоступна эта вакансия" (a vacancy closed to this account), and "stops

@@ -1,4 +1,4 @@
-# Claude memory (#215)
+# Claude memory
 
 Claude keeps notes between conversations, in the spirit of Hermes Agent's self-improving skills. What you explain once in one vacancy's chat (where you live, what salary you name, how to answer a recruiter's usual question) it remembers in every later chat and analysis.
 

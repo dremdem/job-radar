@@ -1,12 +1,12 @@
 # Description analysis (local model)
 
-Job Radar asks a **local** model to read vacancy descriptions for what the title and location fields don't show (issue #93):
+Job Radar asks a **local** model to read vacancy descriptions for what the title and location fields don't show:
 - whether the job is hybrid or on-site;
 - whether the candidate must live in specific countries.
 
 It runs through [Ollama](https://ollama.com) on this machine, so there is no paid API and no description leaves the computer. The default model is `gemma3:4b`: 3–9 s per description on an 8 GB GPU.
 
-## Off by default (#223)
+## Off by default
 
 Since the [Claude analysis](claude.md) the step is **off** unless `JOB_RADAR_AI_ANALYSIS=true`. Measured on 2026-10-23:
 
@@ -53,7 +53,7 @@ The optional auto-ignore rule **"AI: hybrid / on-site or country-only"** in [Set
 
 ## Measured quality (2026-10-01, `gemma3:4b`, RTX 4060 Ti 8 GB)
 
-- **Labelled vacancies** (prompt tuning, #93):
+- **Labelled vacancies** (prompt tuning):
   - Of 25 vacancies ignored with an "only <country>" reason, 17 were found. Two of the misses state the restriction only in LinkedIn's location field, not in the description; that field is scored already.
   - Of 17 applied vacancies, 7 were flagged. 4 of those are real restrictions (UK, Vietnam, EU/UK, Europe). 3 are wrong: an optional office or team travel read as hybrid.
 - **To review:** 79 descriptions took 1 min 53 s, and 11 were flagged. All 11 are correct on reading (Cyprus office, Yerevan, Warsaw/Limassol hybrid, "must hold EU citizenship", Latin America).
@@ -71,16 +71,16 @@ Quality depends on the prompt, so treat the reasons as **marks to check, with th
 
 ## Stack vs your CV
 
-Vacancies that **require** a technology you have never worked with get marked and lowered, not ignored (issue #95).
+Vacancies that **require** a technology you have never worked with get marked and lowered, not ignored.
 
-1. **Your profile.** It lives in `data/profile.yaml` (git-ignored), and you can edit it on the **Profile** page (`/profile`, linked from the header) or by hand; the page reads and writes the same file (#104). It has your home and four lists:
+1. **Your profile.** It lives in `data/profile.yaml` (git-ignored), and you can edit it on the **Profile** page (`/profile`, linked from the header) or by hand; the page reads and writes the same file. It has your home and four lists:
 
    | List | Meaning | A required one costs |
    |---|---|---|
    | `known` | Technologies from your CV | nothing |
    | `learnable` | Not a blocker, e.g. something you tried or can pick up fast | −0.5 |
    | `blockers` | A separate field you won't learn in days, e.g. professional TensorFlow | −3, shown as a blocker |
-   | `rules` | Free-text rules in your words ("No relocation.", "I speak Russian (native) and English (B2+)") | passed to Claude (#105); code does not interpret them |
+   | `rules` | Free-text rules in your words ("No relocation.", "I speak Russian (native) and English (B2+)") | passed to Claude; code does not interpret them |
 
    | Home field | Meaning | Used by |
    |---|---|---|
