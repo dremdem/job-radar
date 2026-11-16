@@ -14,8 +14,8 @@ import sqlalchemy.orm as sa_orm
 
 import job_radar.config as config
 import job_radar.db as db
-import job_radar.home as home
-import job_radar.stack as stack
+import job_radar.profile.home as profile_home
+import job_radar.profile.stack as profile_stack
 import job_radar.web.app as web_app
 
 # Tests must not depend on the developer's local .env (e.g. opt-in flags turned on).
@@ -27,14 +27,16 @@ def profile_path(tmp_path, monkeypatch) -> pathlib.Path:
     """Where Home is read from in tests (the same file the web client's profile uses), never
     the developer's data/profile.yaml."""
     path = tmp_path / "profile.yaml"
-    monkeypatch.setattr(home, "_profile_path", lambda: path)
+    monkeypatch.setattr(profile_home, "_profile_path", lambda: path)
     return path
 
 
 @pytest.fixture
 def thailand(profile_path: pathlib.Path) -> pathlib.Path:
     """A profile whose home is Thailand, in Asia / APAC."""
-    stack.save_profile(profile_path, stack.Profile(home="Thailand", home_regions=["Asia", "APAC"]))
+    profile_stack.save_profile(
+        profile_path, profile_stack.Profile(home="Thailand", home_regions=["Asia", "APAC"])
+    )
     return profile_path
 
 

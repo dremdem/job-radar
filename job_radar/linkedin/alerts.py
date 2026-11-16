@@ -18,7 +18,7 @@ import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 
 ALERT_SENDER = "jobalerts-noreply@linkedin.com"
 _JOB_URL = re.compile(r"linkedin\.com/(?:comm/)?jobs/view/(\d+)")
@@ -131,7 +131,7 @@ def add_linkedin_job(
     )
     if exists is not None:
         return False
-    score = scoring.score_job(job.title, job.location, remote_known=remote_known)
+    score = scoring_rules.score_job(job.title, job.location, remote_known=remote_known)
     opportunity = models.Opportunity(
         title=job.title,
         company=dedup.get_or_create_company(session, job.company),

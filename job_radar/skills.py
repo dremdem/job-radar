@@ -17,11 +17,11 @@ import re
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
-import job_radar.description as description
-import job_radar.findings as findings
-import job_radar.language as language
 import job_radar.models as models
-import job_radar.stack as stack
+import job_radar.profile.stack as profile_stack
+import job_radar.scoring.description as scoring_description
+import job_radar.scoring.findings as scoring_findings
+import job_radar.scoring.language as scoring_language
 
 # Gaps that are not technologies: listed apart, never "learn this".
 _NON_TECH = re.compile(
@@ -39,7 +39,7 @@ def normalize(raw: str) -> str | None:
     text = " ".join(str(raw).split())
     if not text:
         return None
-    for tech in stack.CATALOGUE:
+    for tech in profile_stack.CATALOGUE:
         if tech.search(text):
             return tech.name
     if _NON_TECH.search(text):
@@ -135,13 +135,13 @@ def best_set(missing: list[set[str]], size: int) -> list[str]:
 
 def build_report(
     session: sa_orm.Session,
-    profile: stack.Profile | None,
+    profile: profile_stack.Profile | None,
     *,
     days: int | None = None,
     everything: bool = False,
 ) -> Report:
     """``everything``: all analysed vacancies (market demand), not only the ones still open."""
-    profile = profile or stack.Profile()
+    profile = profile or profile_stack.Profile()
     since = dt.datetime.now(dt.UTC) - dt.timedelta(days=days) if days else None
     rows: dict[str, SkillRow] = {}
     non_tech: collections.Counter = collections.Counter()
@@ -193,9 +193,9 @@ def build_report(
                     continue
                 target = must if g.get("requirement") == "must_have" else nice
                 target.setdefault(name, str(g.get("quote") or ""))
-        analysis = findings.latest_analysis(o)
+        analysis = scoring_findings.latest_analysis(o)
         if analysis is not None:
-            if analysis.work_mode in ("hybrid", "onsite") or findings.residence_restriction(
+            if analysis.work_mode in ("hybrid", "onsite") or scoring_findings.residence_restriction(
                 analysis
             ):
                 blocked = True
@@ -205,7 +205,7 @@ def build_report(
                 name = normalize(item["skill"]) or item["skill"]
                 if profile.level(name) != "known":
                     must.setdefault(name, str(item.get("quote") or ""))
-        if language.vacancy_language(o.title, description.latest_description(o)):
+        if scoring_language.vacancy_language(o.title, scoring_description.latest_description(o)):
             blocked = True
         if _BLOCKING_FORMAT.search(o.location or ""):
             blocked = True

@@ -19,10 +19,10 @@ import typing as t
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
-import job_radar.description as description
-import job_radar.findings as findings
 import job_radar.models as models
-import job_radar.stack as jr_stack
+import job_radar.profile.stack as profile_stack
+import job_radar.scoring.description as scoring_description
+import job_radar.scoring.findings as scoring_findings
 
 MAX_TEXT = 10000
 MAX_STACK_QUESTIONS = 8
@@ -151,13 +151,13 @@ def extract(text: str, model: Model) -> tuple[Facts, dict[str, t.Any]]:
 
 
 def check_stack(
-    text: str, model: Model, known: set[str], extra: list[jr_stack.Tech] | None = None
+    text: str, model: Model, known: set[str], extra: list[profile_stack.Tech] | None = None
 ) -> tuple[list[dict[str, str]], dict[str, t.Any]]:
     """Unknown technologies the text mentions, each judged by the model and checked by code."""
     text = text[:MAX_TEXT]
     stack: list[dict[str, str]] = []
     raw: dict[str, t.Any] = {}
-    for tech in jr_stack.unknown_mentions(text, known, extra)[:MAX_STACK_QUESTIONS]:
+    for tech in profile_stack.unknown_mentions(text, known, extra)[:MAX_STACK_QUESTIONS]:
         prompt = STACK_PROMPT.format(text=text, skill=tech.name, what=tech.what)
         answer = model.generate_json(prompt, STACK_SCHEMA)
         raw[tech.name] = answer
@@ -168,9 +168,9 @@ def check_stack(
         elif not quote_in_text(quote, text) or not tech.search(quote):
             # unsupported: don't invent a requirement
             status, quote = "not_needed", ""
-        elif status == "required" and jr_stack.known_alternative(quote, known):
+        elif status == "required" and profile_stack.known_alternative(quote, known):
             status = "alternative"
-        elif status == "required" and jr_stack.says_optional(quote):
+        elif status == "required" and profile_stack.says_optional(quote):
             status = "nice_to_have"
         stack.append({"skill": tech.name, "status": status, "quote": quote})
     return stack, raw
@@ -202,7 +202,7 @@ def pending(session: sa_orm.Session, *, with_stack: bool = False) -> list[models
         .where(models.Opportunity.state == models.OpportunityState.NEW)
         .order_by(models.Opportunity.id.desc())
     ):
-        snapshot = description.latest_snapshot(o)
+        snapshot = scoring_description.latest_snapshot(o)
         if snapshot is None:
             continue
         if snapshot.id not in stack_done or (with_stack and stack_done[snapshot.id] is None):
@@ -216,7 +216,7 @@ def analyze_pending(
     *,
     limit: int = 150,
     known: set[str] | None = None,
-    profile: jr_stack.Profile | None = None,
+    profile: profile_stack.Profile | None = None,
 ) -> AnalysisStats:
     """Work mode and residence for new descriptions; the stack check when `known` is given."""
     import job_radar.auto_ignore as auto_ignore
@@ -228,7 +228,7 @@ def analyze_pending(
     todo = pending(session, with_stack=known is not None)
     stats.pending = max(0, len(todo) - limit)
     for opportunity in todo[:limit]:
-        snapshot = description.latest_snapshot(opportunity)
+        snapshot = scoring_description.latest_snapshot(opportunity)
         analysis = session.scalar(
             sa.select(models.DescriptionAnalysis).where(
                 models.DescriptionAnalysis.snapshot_id == snapshot.id
@@ -260,7 +260,7 @@ def analyze_pending(
         session.add(analysis)
         session.flush()
         stats.analyzed += 1
-        stats.flagged += bool(findings.risks(analysis, profile))
+        stats.flagged += bool(scoring_findings.risks(analysis, profile))
         auto_ignore.apply_rules(session, opportunity)
         session.commit()
     return stats

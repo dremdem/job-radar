@@ -15,7 +15,7 @@ import job_radar.claude.analysis as claude_analysis
 import job_radar.claude.prompt as claude_prompt
 import job_radar.claude.runner as claude_runner
 import job_radar.models as models
-import job_radar.stack as jr_stack
+import job_radar.profile.stack as profile_stack
 
 DESCRIPTION = (
     "We are a fintech startup.\nRequirements:\n- 5+ years of Python and FastAPI.\n"
@@ -81,8 +81,12 @@ def worker(session, runner, tmp_path, cv=True):
 
 
 def test_prompt_has_facts_profile_cv_and_vacancy():
-    profile = jr_stack.Profile(known=["Python"], learnable=["RabbitMQ"], blockers=["TensorFlow"],
-                      rules=["Only full remote."])  # fmt: skip
+    profile = profile_stack.Profile(
+        known=["Python"],
+        learnable=["RabbitMQ"],
+        blockers=["TensorFlow"],
+        rules=["Only full remote."],
+    )
     text = claude_prompt.analysis_prompt(
         cv="CV TEXT",
         profile=profile,
@@ -109,7 +113,7 @@ def test_prompt_has_facts_profile_cv_and_vacancy():
 
 def test_prompt_and_quick_prompts_take_home_from_the_profile():
 
-    profile = jr_stack.Profile(home="Thailand")
+    profile = profile_stack.Profile(home="Thailand")
     text = claude_prompt.analysis_prompt(
         cv=None,
         profile=profile,
@@ -428,10 +432,10 @@ def test_chat_links_are_clickable():
 
 def test_description_links_are_clickable_and_python_still_marked():
     # #243: the way to apply is often a link in the description.
-    import job_radar.description as description
+    import job_radar.scoring.description as scoring_description
 
     url = "https://jobs.lever.co/python-co/1"
-    html = str(description.highlight_python(f"Python role. Apply: {url}. <b>"))
+    html = str(scoring_description.highlight_python(f"Python role. Apply: {url}. <b>"))
     assert "<mark>Python</mark> role" in html
     assert f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>.' in html
     assert "&lt;b&gt;" in html

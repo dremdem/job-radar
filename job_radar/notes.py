@@ -17,7 +17,7 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 
 OTHER_COUNTRY_PENALTY = -1.5
 SAME_COUNTRY_PENALTY = -3.0
@@ -138,7 +138,7 @@ def _as_utc(value: dt.datetime) -> dt.datetime:
 
 def location_penalty(
     session: sa_orm.Session, opportunity: models.Opportunity
-) -> tuple[float, scoring.Reason] | None:
+) -> tuple[float, scoring_rules.Reason] | None:
     """Risk from the latest "only <country>" reason on another vacancy of the same company."""
     note = session.scalar(
         sa.select(models.OpportunityNote)
@@ -156,4 +156,4 @@ def location_penalty(
     points = SAME_COUNTRY_PENALTY if here and here == note.detail.lower() else OTHER_COUNTRY_PENALTY
     company = opportunity.company.name
     text = f"Last time {company} hired only in {note.detail} ({_as_utc(note.created_at):%Y-%m-%d})"
-    return points, scoring.Reason("-", text)
+    return points, scoring_rules.Reason("-", text)

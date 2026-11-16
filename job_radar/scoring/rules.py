@@ -6,13 +6,13 @@ every rule that fires leaves a ``Reason`` the queue shows. It only ranks the que
 decides nothing. See docs/linkedin-alerts.md.
 
 Usage:
-    import job_radar.scoring as scoring
+    import job_radar.scoring.rules as scoring_rules
 """
 
 import dataclasses
 import re
 
-import job_radar.home as jr_home
+import job_radar.profile.home as profile_home
 
 BASE = 5.0
 
@@ -71,7 +71,7 @@ def _title_reasons(title: str) -> list[tuple[float, Reason]]:
 
 
 def _location_reasons(
-    location: str | None, remote_known: bool, home: jr_home.Home
+    location: str | None, remote_known: bool, home: profile_home.Home
 ) -> list[tuple[float, Reason]]:
     if not location:
         return []
@@ -96,11 +96,15 @@ def _location_reasons(
 
 
 def score_job(
-    title: str, location: str | None, *, remote_known: bool = True, home: jr_home.Home | None = None
+    title: str,
+    location: str | None,
+    *,
+    remote_known: bool = True,
+    home: profile_home.Home | None = None,
 ) -> Score:
     """``remote_known=False`` when the source never shows the work format (public search).
-    ``home`` defaults to the one in the profile (job_radar/home.py)."""
-    home = jr_home.current_home() if home is None else home
+    ``home`` defaults to the one in the profile (job_radar/profile/home.py)."""
+    home = profile_home.current_home() if home is None else home
     fired = _title_reasons(title) + _location_reasons(location, remote_known, home)
     value = BASE + sum(points for points, _ in fired)
     return Score(value=round(min(10.0, max(0.0, value)), 1), reasons=[r for _, r in fired])

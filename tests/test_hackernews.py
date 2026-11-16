@@ -216,9 +216,11 @@ def test_a_stored_post_gets_the_new_text(session):
     stats = hackernews.import_hackernews(session, FakeClient(edited))
     assert (stats.new, stats.known) == (0, 5)
     session.refresh(record.opportunity)
-    import job_radar.description as description
+    import job_radar.scoring.description as scoring_description
 
-    assert description.latest_description(record.opportunity).endswith("Apply: jobs@example.org")
+    assert scoring_description.latest_description(record.opportunity).endswith(
+        "Apply: jobs@example.org"
+    )
 
 
 # #256: the header and the text in one paragraph, no line break between them (MixRank,

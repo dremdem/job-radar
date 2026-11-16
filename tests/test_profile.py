@@ -3,9 +3,9 @@ and the risks they give (docs/ai.md#stack-vs-your-cv).
 """
 
 import job_radar.ai.analysis as ai_analysis
-import job_radar.findings as findings
 import job_radar.models as models
-import job_radar.stack as stack
+import job_radar.profile.stack as profile_stack
+import job_radar.scoring.findings as scoring_findings
 
 
 def required(*skills):
@@ -16,8 +16,8 @@ def required(*skills):
 
 def test_profile_round_trip(tmp_path):
     path = tmp_path / "profile.yaml"
-    assert stack.load_profile(path) is None
-    profile = stack.Profile(
+    assert profile_stack.load_profile(path) is None
+    profile = profile_stack.Profile(
         known=["Python", "Django"],
         learnable=["RabbitMQ"],
         blockers=["TensorFlow"],
@@ -25,20 +25,20 @@ def test_profile_round_trip(tmp_path):
         home="Thailand",
         home_regions=["Asia", "APAC"],
     )
-    stack.save_profile(path, profile)
+    profile_stack.save_profile(path, profile)
     # home first, it is short
     assert "\nhome: Thailand\nknown:" in path.read_text()
-    assert stack.load_profile(path) == profile
+    assert profile_stack.load_profile(path) == profile
 
 
 def test_old_profile_with_known_only(tmp_path):
     path = tmp_path / "profile.yaml"
     path.write_text("known:\n  - Python\n")
-    assert stack.load_profile(path) == stack.Profile(known=["Python"])
+    assert profile_stack.load_profile(path) == profile_stack.Profile(known=["Python"])
 
 
 def test_levels():
-    p = stack.Profile(known=["Python"], learnable=["RabbitMQ"], blockers=["TensorFlow"])
+    p = profile_stack.Profile(known=["Python"], learnable=["RabbitMQ"], blockers=["TensorFlow"])
     assert [p.level(s) for s in ("python", "RabbitMQ", "tensorflow", "Go")] == [
         "known",
         "learnable",
@@ -48,8 +48,8 @@ def test_levels():
 
 
 def test_stack_risks_by_level():
-    p = stack.Profile(known=["Redis"], learnable=["RabbitMQ"], blockers=["TensorFlow"])
-    found = findings.stack_risks(required("Go", "RabbitMQ", "TensorFlow", "Redis"), p)
+    p = profile_stack.Profile(known=["Redis"], learnable=["RabbitMQ"], blockers=["TensorFlow"])
+    found = scoring_findings.stack_risks(required("Go", "RabbitMQ", "TensorFlow", "Redis"), p)
     texts = [r.text for _, r in found]
     assert texts == [
         "Requires Go (not in your CV) — “Go in production”",
@@ -61,8 +61,8 @@ def test_stack_risks_by_level():
 
 
 def test_non_blockers_are_capped_blockers_are_not():
-    p = stack.Profile(blockers=["TensorFlow", "PyTorch"])
-    found = findings.stack_risks(
+    p = profile_stack.Profile(blockers=["TensorFlow", "PyTorch"])
+    found = scoring_findings.stack_risks(
         required("Go", "Rust", "Scala", "Kotlin", "TensorFlow", "PyTorch"), p
     )
     # -3 capped + -3 - 3
@@ -70,9 +70,10 @@ def test_non_blockers_are_capped_blockers_are_not():
 
 
 def test_profile_items_outside_the_catalogue_are_looked_for():
-    p = stack.Profile(blockers=["Haskell"])
+    p = profile_stack.Profile(blockers=["Haskell"])
     names = [
-        t.name for t in stack.unknown_mentions("Strong Haskell skills.", set(), p.extra_techs())
+        t.name
+        for t in profile_stack.unknown_mentions("Strong Haskell skills.", set(), p.extra_techs())
     ]
     assert names == ["Haskell"]
 
@@ -92,8 +93,8 @@ def test_profile_page(client, tmp_path, monkeypatch):
         },
     )
     assert response.status_code == 200 and "Saved" in response.text
-    saved = stack.load_profile(client.app.state.settings.profile)
-    assert saved == stack.Profile(
+    saved = profile_stack.load_profile(client.app.state.settings.profile)
+    assert saved == profile_stack.Profile(
         known=["Python", "Django"],
         learnable=["RabbitMQ"],
         blockers=["TensorFlow"],
@@ -126,8 +127,10 @@ def test_header_links_profile(client):
 
 
 def test_home_from_the_profile_page_reaches_the_score(client):
-    import job_radar.scoring as scoring
+    import job_radar.scoring.rules as scoring_rules
 
-    assert "Thailand listed" not in [r.text for r in scoring.score_job("Dev", "Thailand").reasons]
+    assert "Thailand listed" not in [
+        r.text for r in scoring_rules.score_job("Dev", "Thailand").reasons
+    ]
     client.post("/profile", data={"known": "Python", "home": "Thailand"})
-    assert "Thailand listed" in [r.text for r in scoring.score_job("Dev", "Thailand").reasons]
+    assert "Thailand listed" in [r.text for r in scoring_rules.score_job("Dev", "Thailand").reasons]

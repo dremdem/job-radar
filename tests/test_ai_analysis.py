@@ -9,8 +9,8 @@ import pytest
 import job_radar.ai.analysis as ai_analysis
 import job_radar.auto_ignore as auto_ignore
 import job_radar.dedup as dedup
-import job_radar.findings as findings
 import job_radar.models as models
+import job_radar.scoring.findings as scoring_findings
 
 UK_ONLY = (
     "We build payments.\nThe applicant must be based in the UK and able to work fully remotely.\n"
@@ -112,21 +112,23 @@ def test_risks():
     hybrid = models.DescriptionAnalysis(
         work_mode="hybrid", work_mode_quote="2 days in office", residence=[]
     )
-    [(points, reason)] = findings.risks(hybrid)
+    [(points, reason)] = scoring_findings.risks(hybrid)
     assert points == -3.0 and reason.text == "AI: hybrid — “2 days in office”"
 
     uk = models.DescriptionAnalysis(
         work_mode="remote", residence=["UK"], residence_quote="based in the UK"
     )
-    [(points, reason)] = findings.risks(uk)
+    [(points, reason)] = scoring_findings.risks(uk)
     assert points == -2.5 and reason.text == "AI: only for UK — “based in the UK”"
 
     assert (
-        findings.risks(models.DescriptionAnalysis(work_mode="remote", residence=["Worldwide"]))
+        scoring_findings.risks(
+            models.DescriptionAnalysis(work_mode="remote", residence=["Worldwide"])
+        )
         == []
     )
     # Without a home in the profile, a country is a restriction like any other.
-    [(points, _)] = findings.risks(
+    [(points, _)] = scoring_findings.risks(
         models.DescriptionAnalysis(residence=["Thailand"], residence_quote="Thailand")
     )
     assert points == -2.5
@@ -135,7 +137,9 @@ def test_risks():
 def test_home_and_its_regions_are_open(thailand):
     for open_place in ("Thailand", "APAC", "Southeast Asia"):
         assert (
-            findings.risks(models.DescriptionAnalysis(work_mode="remote", residence=[open_place]))
+            scoring_findings.risks(
+                models.DescriptionAnalysis(work_mode="remote", residence=[open_place])
+            )
             == []
         )
 
@@ -247,4 +251,4 @@ def test_verify_drops_exclusions_preferences_and_flags(places, quote, text):
 
 def test_any_city_is_not_a_restriction():
     analysis = models.DescriptionAnalysis(work_mode="remote", residence=["любой город"])
-    assert findings.risks(analysis) == []
+    assert scoring_findings.risks(analysis) == []

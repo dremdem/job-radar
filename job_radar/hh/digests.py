@@ -21,7 +21,7 @@ import job_radar.dedup as dedup
 import job_radar.hh.notifications as hh_notifications
 import job_radar.mail as mail
 import job_radar.models as models
-import job_radar.scoring as scoring
+import job_radar.scoring.rules as scoring_rules
 import job_radar.sources.titles as sources_titles
 
 DONE_EVENT = "hh_digest_done"
@@ -128,7 +128,7 @@ def _add(session: sa_orm.Session, item: DigestItem) -> None:
     import job_radar.auto_ignore as auto_ignore
 
     location = f"Remote ({item.city})" if item.city else "Remote"
-    score = scoring.score_job(item.title, location)
+    score = scoring_rules.score_job(item.title, location)
     opportunity = models.Opportunity(
         title=item.title[:255],
         company=dedup.get_or_create_company(

@@ -23,9 +23,9 @@ import re
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
-import job_radar.description as description
-import job_radar.findings as findings
 import job_radar.models as models
+import job_radar.scoring.description as scoring_description
+import job_radar.scoring.findings as scoring_findings
 
 SETTINGS_KEY = "auto_ignore"
 UNAVAILABLE_REASON = "vacancy not available"
@@ -304,22 +304,22 @@ def reason_for(
         )
         if latest and latest >= since:
             return f"ignored another {company} vacancy on {latest:%Y-%m-%d}"
-    if rules.no_python and description.lacks_python(
-        opportunity.title, description.latest_description(opportunity)
+    if rules.no_python and scoring_description.lacks_python(
+        opportunity.title, scoring_description.latest_description(opportunity)
     ):
         return "no Python in the description"
     if rules.hybrid and _HYBRID.search(f"{opportunity.title} {opportunity.location or ''}"):
         return "hybrid / on-site"
     if rules.language:
-        import job_radar.language as language
+        import job_radar.scoring.language as scoring_language
 
-        if found := language.vacancy_language(
-            opportunity.title, description.latest_description(opportunity)
+        if found := scoring_language.vacancy_language(
+            opportunity.title, scoring_description.latest_description(opportunity)
         ):
             return f"language: {found}"
     if reason := claude_reason(session, opportunity, rules):
         return reason
-    if rules.ai_location and (reason := findings.auto_ignore_reason(opportunity)):
+    if rules.ai_location and (reason := scoring_findings.auto_ignore_reason(opportunity)):
         return reason
     return None
 

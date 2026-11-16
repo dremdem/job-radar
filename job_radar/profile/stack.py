@@ -7,7 +7,7 @@ and the profile lacks; ``says_optional`` and ``known_alternative`` soften a ment
 is a plus or offers a choice. See docs/ai.md#stack-vs-your-cv.
 
 Usage:
-    import job_radar.stack as stack
+    import job_radar.profile.stack as profile_stack
 """
 
 import dataclasses
@@ -106,7 +106,7 @@ class Profile:
     blockers: list[str] = dataclasses.field(default_factory=list)
     # free text for Claude (#105)
     rules: list[str] = dataclasses.field(default_factory=list)
-    # the country you live in and work from, see job_radar/home.py
+    # the country you live in and work from, see job_radar/profile/home.py
     home: str = ""
     # areas that include it ("Asia")
     home_regions: list[str] = dataclasses.field(default_factory=list)

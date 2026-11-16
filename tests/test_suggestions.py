@@ -5,7 +5,7 @@ one-tap ignore in the queue (docs/applications.md#reasons-and-notes).
 import test_ai_analysis
 
 import job_radar.models as models
-import job_radar.stack as stack
+import job_radar.profile.stack as profile_stack
 import job_radar.suggestions as suggestions
 
 
@@ -31,7 +31,10 @@ def test_local_model_suggestions():
         stack=[{"skill": "TensorFlow", "status": "required", "quote": "x"}],
     )
     found = suggestions.suggest(
-        None, description="", analysis=analysis, profile=stack.Profile(blockers=["TensorFlow"])
+        None,
+        description="",
+        analysis=analysis,
+        profile=profile_stack.Profile(blockers=["TensorFlow"]),
     )
     assert kinds(found) == [
         (models.NoteKind.ONLY_LOCATION, "EU", "only EU"),

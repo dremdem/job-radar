@@ -1,5 +1,5 @@
 # Your profile (copy to data/profile.yaml, or edit it on the Profile page /profile).
-# See docs/ai.md#stack-vs-your-cv. One item per line; names as in job_radar/stack.py where possible.
+# See docs/ai.md#stack-vs-your-cv. One item per line; names as in job_radar/profile/stack.py where possible.
 home: Thailand  # the country you live in and work from, as job ads write it
 home_regions: # wider areas that include it and count as open
   - Asia

@@ -8,10 +8,10 @@ import pytest
 import test_ai_analysis
 
 import job_radar.models as models
+import job_radar.profile.stack as profile_stack
 import job_radar.skills as skills
-import job_radar.stack as stack
 
-PROFILE = stack.Profile(known=["Python", "Django"], learnable=["Redis"])
+PROFILE = profile_stack.Profile(known=["Python", "Django"], learnable=["Redis"])
 
 
 @pytest.mark.parametrize(
@@ -108,9 +108,9 @@ def test_skills_page_and_level_action(client, session):
     response = client.post("/skills/level", data={"name": "Go", "level": "learnable"})
     assert response.status_code == 200
 
-    assert "Go" in stack.load_profile(client.app.state.settings.profile).learnable
+    assert "Go" in profile_stack.load_profile(client.app.state.settings.profile).learnable
     client.post("/skills/level", data={"name": "Go", "level": "known"})
-    profile = stack.load_profile(client.app.state.settings.profile)
+    profile = profile_stack.load_profile(client.app.state.settings.profile)
     assert "Go" in profile.known and "Go" not in profile.learnable
 
 
