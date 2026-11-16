@@ -6,7 +6,7 @@ normalizes them to catalogue names, counts must-have and nice-to-have mentions, 
 ``build_report`` builds it for the Skills page. See docs/skills.md (#154).
 
 Usage:
-    import job_radar.skills as skills
+    import job_radar.ai.skills as ai_skills
 """
 
 import collections

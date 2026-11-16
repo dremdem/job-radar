@@ -16,8 +16,8 @@ import typing as t
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
-import job_radar.claude.analysis as claude_analysis
-import job_radar.claude.prompt as claude_prompt
+import job_radar.ai.claude.analysis as claude_analysis
+import job_radar.ai.claude.prompt as claude_prompt
 import job_radar.dedup as dedup
 import job_radar.models as models
 import job_radar.scoring.rules as scoring_rules

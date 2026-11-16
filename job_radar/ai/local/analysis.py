@@ -8,7 +8,7 @@ queue (penalties, restrictions, auto-ignore reasons) is read by ``findings``.
 analysis yet; results are stored as ``DescriptionAnalysis``. See docs/ai.md.
 
 Usage:
-    import job_radar.ai.analysis as ai_analysis
+    import job_radar.ai.local.analysis as local_analysis
 """
 
 import dataclasses

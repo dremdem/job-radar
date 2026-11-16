@@ -2,7 +2,7 @@
 and the risks they give (docs/ai.md#stack-vs-your-cv).
 """
 
-import job_radar.ai.analysis as ai_analysis
+import job_radar.ai.local.analysis as local_analysis
 import job_radar.models as models
 import job_radar.profile.stack as profile_stack
 import job_radar.scoring.findings as scoring_findings
@@ -110,7 +110,7 @@ def test_saving_the_profile_asks_the_stack_again(client, session):
     import test_ai_analysis
 
     o = test_ai_analysis.add_vacancy(session)
-    ai_analysis.analyze_pending(
+    local_analysis.analyze_pending(
         session, test_ai_analysis.FakeModel([test_ai_analysis.UK_ANSWER]), known=set()
     )
     o.analyses[0].stack = []

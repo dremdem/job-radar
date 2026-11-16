@@ -1,4 +1,4 @@
-"""Tests for job_radar.claude: the prompt, the analysis queue and its workers, quote
+"""Tests for job_radar.ai.claude: the prompt, the analysis queue and its workers, quote
 checks and the chat, with a fake Claude runner (docs/claude.md).
 """
 
@@ -11,9 +11,9 @@ import time
 
 import pytest
 
-import job_radar.claude.analysis as claude_analysis
-import job_radar.claude.prompt as claude_prompt
-import job_radar.claude.runner as claude_runner
+import job_radar.ai.claude.analysis as claude_analysis
+import job_radar.ai.claude.prompt as claude_prompt
+import job_radar.ai.claude.runner as claude_runner
 import job_radar.models as models
 import job_radar.profile.stack as profile_stack
 
