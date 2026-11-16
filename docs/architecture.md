@@ -13,7 +13,7 @@ flowchart TB
     end
     subgraph App["job-radar serve (one process)"]
         direction TB
-        WEB[web/app.py<br/>FastAPI routes, Jinja2 + HTMX]
+        WEB[web/<br/>FastAPI app + routes/, Jinja2 + HTMX]
         SJ[jobs/sync_job.py<br/>one sync at a time]
         PL[jobs/pipeline.py<br/>every sync step in order]
         CW[ai/claude/analysis.py<br/>worker pool + chat thread]
@@ -91,7 +91,7 @@ uv run python -c "import sqlite3; sqlite3.connect('data/job_radar.db').backup(sq
 
 | Area | Modules |
 |---|---|
-| Entry points | `cli.py` (`job-radar`), `web/app.py`, `./jr` (shell helper) |
+| Entry points | `cli.py` (`job-radar`), `web/` (`app.py`, `routes/`, `context.py`, `templating.py`, `deps.py`), `./jr` (shell helper) |
 | Storage | `models.py`, `db.py`, `dedup.py`, `migrations/` (Alembic) |
 | Mail port | `mail.py` (`FetchBody`, `MessageGone`: what importers need from Gmail) |
 | Sources | `sources/gmail/`, `sources/linkedin/`, `sources/hh/`, `sources/telegram/`, `sources/boards/` (`himalayas.py`, `hackernews.py`, `remoteok.py`, `jobicy.py`, `fdetimes.py`, `feeds.py`), `sources/manual.py`, shared `sources/titles.py` and `sources/http.py` (title filters, User-Agent, HTML reader), `sources/capture_read.js` |

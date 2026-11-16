@@ -426,19 +426,24 @@ def test_other_pages_share_the_inbox_look(client, session):
 def test_times_are_shown_in_local_time():
     import datetime as dt
 
-    import job_radar.web.app as web_app
+    import job_radar.web.templating as web_templating
 
     bangkok = dt.timezone(dt.timedelta(hours=7))
     # Stored as UTC, naive (SQLite) or aware: shown in the machine's zone.
-    assert web_app.local_time(dt.datetime(2026, 10, 7, 16, 36), "%H:%M", tz=bangkok) == "23:36"
     assert (
-        web_app.local_time(dt.datetime(2026, 10, 7, 16, 36, tzinfo=dt.UTC), "%H:%M", tz=bangkok)
+        web_templating.local_time(dt.datetime(2026, 10, 7, 16, 36), "%H:%M", tz=bangkok) == "23:36"
+    )
+    assert (
+        web_templating.local_time(
+            dt.datetime(2026, 10, 7, 16, 36, tzinfo=dt.UTC), "%H:%M", tz=bangkok
+        )
         == "23:36"
     )
     assert (
-        web_app.local_time(dt.datetime(2026, 10, 7, 20, 0), "%Y-%m-%d", tz=bangkok) == "2026-10-08"
+        web_templating.local_time(dt.datetime(2026, 10, 7, 20, 0), "%Y-%m-%d", tz=bangkok)
+        == "2026-10-08"
     )
-    assert web_app.local_time(None, "%H:%M") == ""
+    assert web_templating.local_time(None, "%H:%M") == ""
 
 
 def test_panel_shows_other_vacancies_of_the_company(client, session):

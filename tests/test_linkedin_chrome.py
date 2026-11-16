@@ -290,13 +290,13 @@ def test_block_reason_and_parse_result():
 
 
 def test_bookmarklet_and_fill_share_one_reader():
-    import job_radar.web.app as web_app
+    import job_radar.web.routes.capture as routes_capture
 
     assert (
         linkedin_chrome.READER.startswith("function () {") and "return {" in linkedin_chrome.READER
     )
     assert "window.open" not in linkedin_chrome.READER and ".click(" not in linkedin_chrome.READER
-    code = web_app.bookmarklet("http://127.0.0.1:8000")
+    code = routes_capture.bookmarklet("http://127.0.0.1:8000")
     assert "#job-details" in code and "__READ__" not in code
 
 
@@ -873,7 +873,7 @@ def test_status_shows_a_bar_and_counts_per_source(engine, database_url, tmp_path
 
 def test_fill_marks_are_not_contacts_or_your_actions(engine, session):
     import job_radar.history.contacts as history_contacts
-    import job_radar.web.app as web_app
+    import job_radar.web.context as web_context
 
     hh_vacancy(session, "4235")
     broken = FakePage(
@@ -887,10 +887,10 @@ def test_fill_marks_are_not_contacts_or_your_actions(engine, session):
     assert [e.kind for e in history] == [models.FILL_PROBLEM]
     assert "HeadHunter" not in history[0].text and "net::ERR" in history[0].text
     # no "contacted · 1" badge
-    assert web_app._visible_history_count(history) == 0
+    assert web_context._visible_history_count(history) == 0
     assert (
         models.FILL_PROBLEM.replace("_", " ")
-        not in (web_app.last_actions(session).get(oid) or ("", ""))[1]
+        not in (web_context.last_actions(session).get(oid) or ("", ""))[1]
     )
 
 
