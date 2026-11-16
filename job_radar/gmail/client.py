@@ -1,26 +1,41 @@
+"""A thin read-only client of the Gmail API.
+
+``GmailClient`` is the interface the sync uses (list thread ids for a query, get a
+thread); ``ApiGmailClient`` implements it over the real API, and tests pass fakes.
+``RateLimitedExecutor`` paces requests and waits and retries on rate-limit errors.
+``body_fetcher`` reads a message body for callers that must not store it. See
+docs/gmail.md.
+
+Usage:
+    import job_radar.gmail.client as gmail_client
+"""
+
+import collections.abc as cabc
 import json
 import time
-from collections.abc import Callable, Iterator
-from typing import Any, Protocol
+import typing as t
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+import google.oauth2.credentials as oauth2_credentials
+import googleapiclient.discovery as googleapiclient_discovery
+import googleapiclient.errors as googleapiclient_errors
 
 # Gmail enforces a per-user, per-minute query-cost quota. Pace requests evenly and, when the
 # quota is still hit, wait for the next minute instead of backing off at random.
 MIN_INTERVAL = 0.5
 RATE_LIMIT_WAIT = 60.0
 MAX_RATE_LIMIT_RETRIES = 5
-TRANSIENT_RETRIES = 2  # googleapiclient's own retries, for 5xx and connection errors
+# googleapiclient's own retries, for 5xx and connection errors
+TRANSIENT_RETRIES = 2
 
 
-class GmailClient(Protocol):
-    def list_thread_ids(self, query: str) -> Iterator[str]: ...
+class GmailClient(t.Protocol):
+    """What the sync needs from Gmail: thread ids for a query and a thread."""
+
+    def list_thread_ids(self, query: str) -> cabc.Iterator[str]: ...
     def get_thread(self, thread_id: str) -> dict: ...
 
 
-def _is_rate_limit(error: HttpError) -> bool:
+def _is_rate_limit(error: googleapiclient_errors.HttpError) -> bool:
     if error.resp.status == 429:
         return True
     if error.resp.status != 403:
@@ -33,14 +48,16 @@ def _is_rate_limit(error: HttpError) -> bool:
 
 
 class RateLimitedExecutor:
+    """Runs API requests with a minimum interval, retrying after rate limits."""
+
     def __init__(
         self,
         *,
         min_interval: float = MIN_INTERVAL,
         rate_limit_wait: float = RATE_LIMIT_WAIT,
         max_rate_limit_retries: int = MAX_RATE_LIMIT_RETRIES,
-        clock: Callable[[], float] = time.monotonic,
-        sleep: Callable[[float], None] = time.sleep,
+        clock: cabc.Callable[[], float] = time.monotonic,
+        sleep: cabc.Callable[[float], None] = time.sleep,
     ):
         self.min_interval = min_interval
         self.rate_limit_wait = rate_limit_wait
@@ -56,12 +73,12 @@ class RateLimitedExecutor:
                 self._sleep(wait)
         self._last_call = self._clock()
 
-    def __call__(self, request: Any) -> dict:
+    def __call__(self, request: t.Any) -> dict:
         for attempt in range(self.max_rate_limit_retries + 1):
             self._pace()
             try:
                 return request.execute(num_retries=TRANSIENT_RETRIES)
-            except HttpError as e:
+            except googleapiclient_errors.HttpError as e:
                 if not _is_rate_limit(e) or attempt == self.max_rate_limit_retries:
                     raise
                 self._sleep(self.rate_limit_wait)
@@ -71,19 +88,25 @@ class RateLimitedExecutor:
 class ApiGmailClient:
     """Thin read-only wrapper over the Gmail API for the signed-in user."""
 
-    def __init__(self, credentials: Credentials, execute: RateLimitedExecutor | None = None):
-        service = build("gmail", "v1", credentials=credentials, cache_discovery=False)
+    def __init__(
+        self,
+        credentials: oauth2_credentials.Credentials,
+        execute: RateLimitedExecutor | None = None,
+    ):
+        service = googleapiclient_discovery.build(
+            "gmail", "v1", credentials=credentials, cache_discovery=False
+        )
         self._threads = service.users().threads()
         self._messages = service.users().messages()
         self._execute = execute or RateLimitedExecutor()
 
-    def list_thread_ids(self, query: str) -> Iterator[str]:
+    def list_thread_ids(self, query: str) -> cabc.Iterator[str]:
         page_token = None
         while True:
             response = self._execute(
                 self._threads.list(userId="me", q=query, pageToken=page_token, maxResults=500)
             )
-            yield from (t["id"] for t in response.get("threads", []))
+            yield from (thread["id"] for thread in response.get("threads", []))
             page_token = response.get("nextPageToken")
             if not page_token:
                 return
@@ -95,23 +118,26 @@ class ApiGmailClient:
         return self._execute(self._messages.get(userId="me", id=gmail_message_id, format="full"))
 
 
-class MessageSource(Protocol):
+class MessageSource(t.Protocol):
+    """Anything that returns one Gmail message by id."""
+
     def get_message(self, gmail_message_id: str) -> dict: ...
 
 
-def body_fetcher(client: MessageSource) -> Callable[[str], tuple[str | None, str | None]]:
+def body_fetcher(client: MessageSource) -> cabc.Callable[[str], tuple[str | None, str | None]]:
     """(html, text) of a message by id, for callers that must not persist the body."""
-    from ..linkedin.rejections import MessageGone
-    from .parse import parse_message
+    import job_radar.gmail.parse as gmail_parse
+    import job_radar.linkedin.rejections as linkedin_rejections
 
     def fetch(gmail_message_id: str) -> tuple[str | None, str | None]:
         try:
             message = client.get_message(gmail_message_id)
-        except HttpError as e:
-            if e.resp.status == 404:  # deleted from Gmail for good (e.g. emptied Trash)
-                raise MessageGone(gmail_message_id) from e
+        except googleapiclient_errors.HttpError as e:
+            # deleted from Gmail for good (e.g. emptied Trash)
+            if e.resp.status == 404:
+                raise linkedin_rejections.MessageGone(gmail_message_id) from e
             raise
-        parsed = parse_message(message)
+        parsed = gmail_parse.parse_message(message)
         return parsed.body_html, parsed.body_text
 
     return fetch

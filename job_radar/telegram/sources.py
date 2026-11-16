@@ -1,8 +1,16 @@
-"""The channel allowlist (data/telegram.yaml). See docs/telegram.md and telegram.example.yaml."""
+"""The channel allowlist (data/telegram.yaml).
 
+Each ``Source`` is one channel or forum topic with its filters: required tags, keyword
+and title patterns, excluded titles. ``load_sources`` reads the file. See
+docs/telegram.md and telegram.example.yaml.
+
+Usage:
+    import job_radar.telegram.sources as telegram_sources
+"""
+
+import dataclasses
+import pathlib
 import re
-from dataclasses import dataclass, field
-from pathlib import Path
 
 import yaml
 
@@ -19,17 +27,20 @@ DEFAULT_EXCLUDE_TITLE = (
 )
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Source:
+    """One allowlisted channel or topic with its filters."""
+
     name: str
     chat: str | int
-    topics: list[int] = field(default_factory=list)
-    require_tags: list[str] = field(default_factory=list)
+    topics: list[int] = dataclasses.field(default_factory=list)
+    require_tags: list[str] = dataclasses.field(default_factory=list)
     keywords_pattern: str = DEFAULT_KEYWORDS
     title_pattern: str = DEFAULT_TITLE
     exclude_title_pattern: str = DEFAULT_EXCLUDE_TITLE
-    parse: str = "post"  # post | graph_org_digest
-    categories: list[str] = field(default_factory=list)
+    # post | graph_org_digest
+    parse: str = "post"
+    categories: list[str] = dataclasses.field(default_factory=list)
 
     @property
     def keywords(self) -> re.Pattern[str]:
@@ -41,7 +52,7 @@ class Source:
         )
 
 
-def load_sources(path: Path) -> list[Source]:
+def load_sources(path: pathlib.Path) -> list[Source]:
     if not path.exists():
         return []
     data = yaml.safe_load(path.read_text()) or {}

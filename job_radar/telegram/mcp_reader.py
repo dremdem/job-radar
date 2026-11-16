@@ -1,16 +1,24 @@
-"""Read posts through the existing telegram-mcp server (MCP over stdio). Read-only by design:
-only `read_messages` is ever called. See docs/telegram.md."""
+"""Read Telegram posts through the existing telegram-mcp server.
 
+The server is started as a subprocess and spoken to over MCP stdio. Read-only by design:
+only ``read_messages`` is ever called. ``fetch_posts`` runs the reads planned by
+``telegram.sync``, and ``unfence`` strips the code fences around a tool answer. See
+docs/telegram.md.
+
+Usage:
+    import job_radar.telegram.mcp_reader as telegram_mcp_reader
+"""
+
+import datetime as dt
 import json
 import re
 import shlex
-from datetime import datetime
-from typing import Any
+import typing as t
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+import mcp
+import mcp.client.stdio as client_stdio
 
-from .sync import ReadPlan
+import job_radar.telegram.sync as telegram_sync
 
 READ_TOOL = "read_messages"
 ALLOWED_TOOLS = frozenset({READ_TOOL})
@@ -21,33 +29,37 @@ _FENCE = re.compile(r"^\[[A-Z ]+- [A-Z ,]+\]\n|\n\[END [A-Z ]+\]$")
 
 
 class TelegramReadError(RuntimeError):
+    """telegram-mcp could not be started or answered with an error."""
+
     pass
 
 
-def unfence(value: Any) -> Any:
+def unfence(value: t.Any) -> t.Any:
     return _FENCE.sub("", value) if isinstance(value, str) else value
 
 
-async def _call(session: ClientSession, tool: str, args: dict[str, Any]) -> str:
-    if tool not in ALLOWED_TOOLS:  # never send, mark read, join, ...
+async def _call(session: mcp.ClientSession, tool: str, args: dict[str, t.Any]) -> str:
+    # never send, mark read, join, ...
+    if tool not in ALLOWED_TOOLS:
         raise TelegramReadError(f"tool {tool!r} is not allowed")
     result = await session.call_tool(tool, args)
     return result.content[0].text if result.content else ""
 
 
-async def _read(session: ClientSession, plan: ReadPlan) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+async def _read(session: mcp.ClientSession, plan: telegram_sync.ReadPlan) -> list[dict[str, t.Any]]:
+    rows: list[dict[str, t.Any]] = []
     offset: str | None = None
     limit = PAGE
     while len(rows) < MAX_PER_READ:
-        args: dict[str, Any] = {"chat_id": plan.source.chat, "limit": limit}
+        args: dict[str, t.Any] = {"chat_id": plan.source.chat, "limit": limit}
         if offset:
             args["offset_date"] = offset
         if plan.topic_id is not None:
             args["topic_id"] = plan.topic_id
         text = await _call(session, READ_TOOL, args)
         if not text.lstrip().startswith("["):
-            if limit > 5:  # a page with something odd in it: retry smaller
+            # a page with something odd in it: retry smaller
+            if limit > 5:
                 limit //= 2
                 continue
             raise TelegramReadError(f"{plan.source.name}: {text[:200]}")
@@ -60,30 +72,34 @@ async def _read(session: ClientSession, plan: ReadPlan) -> list[dict[str, Any]]:
         oldest = batch[-1]
         if plan.after_id is not None and oldest["id"] <= plan.after_id:
             break
-        if plan.since is not None and datetime.fromisoformat(oldest["date"]) < plan.since:
+        if plan.since is not None and dt.datetime.fromisoformat(oldest["date"]) < plan.since:
             break
         offset = oldest["date"]
     return [
         m
         for m in rows
         if (plan.after_id is None or m["id"] > plan.after_id)
-        and (plan.since is None or datetime.fromisoformat(m["date"]) >= plan.since)
+        and (plan.since is None or dt.datetime.fromisoformat(m["date"]) >= plan.since)
     ]
 
 
 async def fetch_posts(
-    command: str, plans: list[ReadPlan]
-) -> list[tuple[ReadPlan, list[dict[str, Any]] | Exception]]:
+    command: str, plans: list[telegram_sync.ReadPlan]
+) -> list[tuple[telegram_sync.ReadPlan, list[dict[str, t.Any]] | Exception]]:
     """New posts for every plan, in one telegram-mcp session; a failing channel does not stop
     the others."""
     parts = shlex.split(command)
-    params = StdioServerParameters(command=parts[0], args=parts[1:])
-    results: list[tuple[ReadPlan, list[dict[str, Any]] | Exception]] = []
-    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+    params = mcp.StdioServerParameters(command=parts[0], args=parts[1:])
+    results: list[tuple[telegram_sync.ReadPlan, list[dict[str, t.Any]] | Exception]] = []
+    async with (
+        client_stdio.stdio_client(params) as (read, write),
+        mcp.ClientSession(read, write) as session,
+    ):
         await session.initialize()
         for plan in plans:
             try:
                 results.append((plan, await _read(session, plan)))
-            except Exception as e:  # reported per channel by the caller
+            except Exception as e:
+                # reported per channel by the caller
                 results.append((plan, e))
     return results

@@ -1,28 +1,38 @@
-"""Remote Python posts from the monthly "Ask HN: Who is hiring?" thread. See docs/hackernews.md."""
+"""Remote Python posts from the monthly "Ask HN: Who is hiring?" thread.
 
+``latest_thread`` finds this month's thread through the public Hacker News API,
+``parse_post`` reads the header line of a comment (company, title, location) and
+``wants`` keeps open remote developer posts that mention Python. ``import_hackernews``
+stores new ones; a post's id is its comment id. See docs/hackernews.md.
+
+Usage:
+    import job_radar.hackernews as hackernews
+"""
+
+import dataclasses
+import datetime as dt
 import html
 import json
 import re
+import typing as t
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import Any, Protocol
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .dedup import add_snapshot, get_or_create_company
-from .himalayas import USER_AGENT, _text
-from .models import Opportunity, SourceRecord, SourceType
-from .scoring import score_job
-from .telegram.sources import DEFAULT_EXCLUDE_TITLE, DEFAULT_KEYWORDS, DEFAULT_TITLE
+import job_radar.dedup as dedup
+import job_radar.himalayas as himalayas
+import job_radar.models as models
+import job_radar.scoring as scoring
+import job_radar.telegram.sources as telegram_sources
 
 THREADS_URL = "https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring"
 ITEM_URL = "https://hn.algolia.com/api/v1/items/{id}"
 POST_URL = "https://news.ycombinator.com/item?id={id}"
 THREAD_TITLE = "Ask HN: Who is hiring?"
-_SEPARATOR = re.compile(r"\s*\|\s*|\s+[\u2014\u2013]\s+")  # | or an em / en dash
+# | or an em / en dash
+_SEPARATOR = re.compile(r"\s*\|\s*|\s+[\u2014\u2013]\s+")
 _WORK_FORMAT = re.compile(r"remote|on-?site|hybrid|in[- ]office", re.IGNORECASE)
 _REMOTE = re.compile(r"remote", re.IGNORECASE)
 _CLOSED = re.compile(r"\b(closed|filled)\b", re.IGNORECASE)
@@ -34,18 +44,24 @@ MAX_HEADER_PART = 100
 
 
 class HackerNewsError(Exception):
+    """The Hacker News API could not be read."""
+
     pass
 
 
-class Client(Protocol):
-    def threads(self) -> dict[str, Any]: ...
+class Client(t.Protocol):
+    """What the import needs from the Hacker News API. Tests pass a fake."""
 
-    def item(self, item_id: int) -> dict[str, Any]: ...
+    def threads(self) -> dict[str, t.Any]: ...
+
+    def item(self, item_id: int) -> dict[str, t.Any]: ...
 
 
 class HackerNewsClient:
-    def _get(self, url: str) -> dict[str, Any]:
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    """The real client over the public Hacker News API."""
+
+    def _get(self, url: str) -> dict[str, t.Any]:
+        request = urllib.request.Request(url, headers={"User-Agent": himalayas.USER_AGENT})
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 return json.loads(response.read())
@@ -54,15 +70,17 @@ class HackerNewsClient:
         except (urllib.error.URLError, TimeoutError, ValueError) as e:
             raise HackerNewsError(str(e)) from e
 
-    def threads(self) -> dict[str, Any]:
+    def threads(self) -> dict[str, t.Any]:
         return self._get(THREADS_URL)
 
-    def item(self, item_id: int) -> dict[str, Any]:
+    def item(self, item_id: int) -> dict[str, t.Any]:
         return self._get(ITEM_URL.format(id=item_id))
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class HackerNewsPost:
+    """One job comment of the thread, with its parsed header."""
+
     id: int
     url: str
     header: str
@@ -71,7 +89,7 @@ class HackerNewsPost:
     location: str | None
     description: str
     has_role: bool
-    published_at: datetime
+    published_at: dt.datetime
 
 
 def _split_top_level(text: str, pattern: str) -> list[str]:
@@ -111,7 +129,7 @@ def _header(raw_html: str) -> str:
     return " ".join(text.splitlines()[0].split()) if text.strip() else ""
 
 
-def parse_post(raw: dict[str, Any]) -> HackerNewsPost:
+def parse_post(raw: dict[str, t.Any]) -> HackerNewsPost:
     header = _header(raw.get("text") or "")
     parts = [p for p in _SEPARATOR.split(header) if p.strip()] or [header]
     if len(parts) > 1 and len(parts[-1]) > MAX_HEADER_PART:
@@ -122,7 +140,8 @@ def parse_post(raw: dict[str, Any]) -> HackerNewsPost:
         (
             p
             for p in parts[1:]
-            if re.search(DEFAULT_TITLE, p, re.IGNORECASE) and not _WORK_FORMAT.search(p)
+            if re.search(telegram_sources.DEFAULT_TITLE, p, re.IGNORECASE)
+            and not _WORK_FORMAT.search(p)
         ),
         None,
     )
@@ -135,9 +154,9 @@ def parse_post(raw: dict[str, Any]) -> HackerNewsPost:
         company=company,
         location=_location(parts),
         # HN separates paragraphs with a bare <p>: keep the header on its own line.
-        description=_text((raw.get("text") or "").replace("<p>", "\n<p>")),
+        description=himalayas._text((raw.get("text") or "").replace("<p>", "\n<p>")),
         has_role=role is not None,
-        published_at=datetime.fromtimestamp(int(raw["created_at_i"]), UTC),
+        published_at=dt.datetime.fromtimestamp(int(raw["created_at_i"]), dt.UTC),
     )
 
 
@@ -150,18 +169,20 @@ def wants(post: HackerNewsPost) -> bool:
             return False
     elif not _REMOTE.search(post.description):
         return False
-    if not re.search(DEFAULT_KEYWORDS, post.description, re.IGNORECASE):
+    if not re.search(telegram_sources.DEFAULT_KEYWORDS, post.description, re.IGNORECASE):
         return False
     if post.has_role:
-        if not re.search(DEFAULT_TITLE, post.title, re.IGNORECASE):
+        if not re.search(telegram_sources.DEFAULT_TITLE, post.title, re.IGNORECASE):
             return False
-        if re.search(DEFAULT_EXCLUDE_TITLE, post.title, re.IGNORECASE):
+        if re.search(telegram_sources.DEFAULT_EXCLUDE_TITLE, post.title, re.IGNORECASE):
             return False
     return True
 
 
-@dataclass
+@dataclasses.dataclass
 class HackerNewsStats:
+    """Counters of one import, for the sync status line."""
+
     thread: str | None = None
     posts: int = 0
     new: int = 0
@@ -170,24 +191,24 @@ class HackerNewsStats:
     error: str | None = None
 
 
-def latest_thread(data: dict[str, Any]) -> dict[str, Any] | None:
+def latest_thread(data: dict[str, t.Any]) -> dict[str, t.Any] | None:
     hits = [h for h in data.get("hits") or [] if str(h.get("title", "")).startswith(THREAD_TITLE)]
     return max(hits, key=lambda h: int(h.get("created_at_i") or 0), default=None)
 
 
-def _add(session: Session, post: HackerNewsPost) -> None:
-    from .auto_ignore import apply_rules
+def _add(session: sa_orm.Session, post: HackerNewsPost) -> None:
+    import job_radar.auto_ignore as auto_ignore
 
-    score = score_job(post.title, post.location)
-    opportunity = Opportunity(
+    score = scoring.score_job(post.title, post.location)
+    opportunity = models.Opportunity(
         title=post.title[:255],
-        company=get_or_create_company(session, post.company or f"Unknown (HN {post.id})"),
+        company=dedup.get_or_create_company(session, post.company or f"Unknown (HN {post.id})"),
         location=post.location,
         score=score.value,
         score_reasons=[r.as_dict() for r in score.reasons],
     )
-    record = SourceRecord(
-        source_type=SourceType.HACKERNEWS,
+    record = models.SourceRecord(
+        source_type=models.SourceType.HACKERNEWS,
         external_id=str(post.id),
         url=post.url,
         opportunity=opportunity,
@@ -195,12 +216,12 @@ def _add(session: Session, post: HackerNewsPost) -> None:
     session.add(record)
     session.flush()
     if post.description:
-        add_snapshot(session, record, post.description)
+        dedup.add_snapshot(session, record, post.description)
     session.refresh(opportunity)
-    apply_rules(session, opportunity)
+    auto_ignore.apply_rules(session, opportunity)
 
 
-def import_hackernews(session: Session, client: Client) -> HackerNewsStats:
+def import_hackernews(session: sa_orm.Session, client: Client) -> HackerNewsStats:
     stats = HackerNewsStats()
     try:
         thread = latest_thread(client.threads())
@@ -213,24 +234,25 @@ def import_hackernews(session: Session, client: Client) -> HackerNewsStats:
         stats.error = str(e)
         return stats
     for raw in data.get("children") or []:
-        if not raw.get("text"):  # deleted or dead
+        # deleted or dead
+        if not raw.get("text"):
             continue
         post = parse_post(raw)
         stats.posts += 1
         if not wants(post):
             stats.skipped += 1
         elif known := session.scalar(
-            select(SourceRecord.id).where(
-                SourceRecord.source_type == SourceType.HACKERNEWS,
-                SourceRecord.external_id == str(post.id),
+            sa.select(models.SourceRecord.id).where(
+                models.SourceRecord.source_type == models.SourceType.HACKERNEWS,
+                models.SourceRecord.external_id == str(post.id),
             )
         ):
             stats.known += 1
             # Edited on HN, or read by an older version (#243): the new text becomes current,
             # and so does the location from the header (#256).
-            record = session.get(SourceRecord, known)
+            record = session.get(models.SourceRecord, known)
             if post.description:
-                add_snapshot(session, record, post.description)
+                dedup.add_snapshot(session, record, post.description)
             if record.opportunity.location != post.location:
                 record.opportunity.location = post.location
         else:

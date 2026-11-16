@@ -1,18 +1,23 @@
 """An hh.ru vacancy page sent by the bookmarklet: description and work format (#136).
 
 The bookmarklet reads only the page the user opened; nothing is fetched from hh.ru.
-See docs/hh.md#descriptions-the-bookmarklet-136.
+``import_hh_capture`` stores the description on the matching vacancy, or creates one,
+and ``location_for`` turns hh.ru's work formats into a location (remote wins when it is
+one of them). See docs/hh.md#descriptions-the-bookmarklet-136.
+
+Usage:
+    import job_radar.hh.capture as hh_capture
 """
 
-from typing import Any
+import typing as t
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..dedup import add_snapshot, get_or_create_company
-from ..models import Opportunity, SourceRecord, SourceType
-from ..scoring import score_job
-from .notifications import VACANCY_URL
+import job_radar.dedup as dedup
+import job_radar.hh.notifications as hh_notifications
+import job_radar.models as models
+import job_radar.scoring as scoring
 
 MAX_TEXT = 20000
 
@@ -34,8 +39,8 @@ def _city(address: str) -> str:
     return address.split(",")[0].strip()
 
 
-def import_hh_capture(session: Session, payload: dict[str, Any], stats) -> None:
-    from ..auto_ignore import apply_rules
+def import_hh_capture(session: sa_orm.Session, payload: dict[str, t.Any], stats) -> None:
+    import job_radar.auto_ignore as auto_ignore
 
     detail = payload.get("detail") or {}
     vacancy_id = str(detail.get("job_id") or "").strip()
@@ -49,25 +54,26 @@ def import_hh_capture(session: Session, payload: dict[str, Any], stats) -> None:
     )
     salary = " ".join(str(detail.get("salary") or "").split()) or None
     record = session.scalar(
-        select(SourceRecord).where(
-            SourceRecord.source_type == SourceType.HH, SourceRecord.external_id == vacancy_id
+        sa.select(models.SourceRecord).where(
+            models.SourceRecord.source_type == models.SourceType.HH,
+            models.SourceRecord.external_id == vacancy_id,
         )
     )
     outcome = []
     if record is None:
-        score = score_job(title, location or None)
-        opportunity = Opportunity(
+        score = scoring.score_job(title, location or None)
+        opportunity = models.Opportunity(
             title=title[:255],
-            company=get_or_create_company(session, company or f"Unknown (hh {vacancy_id})"),
+            company=dedup.get_or_create_company(session, company or f"Unknown (hh {vacancy_id})"),
             location=location or None,
             salary=salary,
             score=score.value,
             score_reasons=[r.as_dict() for r in score.reasons],
         )
-        record = SourceRecord(
-            source_type=SourceType.HH,
+        record = models.SourceRecord(
+            source_type=models.SourceType.HH,
             external_id=vacancy_id,
-            url=VACANCY_URL.format(id=vacancy_id),
+            url=hh_notifications.VACANCY_URL.format(id=vacancy_id),
             opportunity=opportunity,
         )
         session.add(record)
@@ -77,18 +83,19 @@ def import_hh_capture(session: Session, payload: dict[str, Any], stats) -> None:
     else:
         o = record.opportunity
         if location:
-            o.location = location  # the page knows the work format; the digest did not
+            # the page knows the work format; the digest did not
+            o.location = location
         o.salary = o.salary or salary
     description = str(detail.get("description") or "").strip()[:MAX_TEXT]
     if not description:
         outcome.append("no description found on the page")
     else:
-        _, saved = add_snapshot(session, record, description)
+        _, saved = dedup.add_snapshot(session, record, description)
         stats.descriptions += int(saved)
         outcome.append("description saved" if saved else "description already saved")
     session.flush()
     session.refresh(record.opportunity)
-    apply_rules(session, record.opportunity)
+    auto_ignore.apply_rules(session, record.opportunity)
     o = record.opportunity
     stats.touch(o.id)
     stats.vacancy = f"{o.company.name} — {o.title}: {', '.join(outcome)}"

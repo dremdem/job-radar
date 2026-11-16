@@ -1,23 +1,27 @@
 """Detect rejection emails LinkedIn sends about applications and record them.
 
 These come from jobs-noreply@linkedin.com with a subject like
-"Your application to <role> at <company>" and a body that says the application
-will not move forward. They are already synced with their body stored (same
-sender as the alert digest, see docs/gmail.md), so no extra Gmail query is needed.
-See docs/data-model.md for how a rejection flags the company's opportunities.
+"Your application to <role> at <company>" and a body that says the application will not
+move forward. They are already synced with their body stored (same sender as the alert
+digest, see docs/gmail.md), so no extra Gmail query is needed. ``detect_rejection``
+reads one email and ``import_rejections`` records a ``Rejection`` per email. See
+docs/data-model.md for how a rejection flags the company's vacancies.
+
+Usage:
+    import job_radar.linkedin.rejections as linkedin_rejections
 """
 
+import collections.abc as cabc
+import dataclasses
 import re
-from collections.abc import Callable
-from dataclasses import dataclass
 
-from bs4 import BeautifulSoup
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import bs4
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from ..dedup import get_or_create_company
-from ..models import EmailMessage, Rejection, RejectionSource
-from ..rejections import mark_rejected
+import job_radar.dedup as dedup
+import job_radar.models as models
+import job_radar.rejections as rejections
 
 # LinkedIn application-update emails; distinct from the alert digest (jobalerts-...).
 APPLICATION_SENDER = "jobs-noreply@linkedin.com"
@@ -38,40 +42,49 @@ _REJECTION = re.compile(
     re.IGNORECASE,
 )
 REJECTION_EVENT = "rejection"
-UPDATE_EVENT = "application_update"  # checked, not a rejection
+# checked, not a rejection
+UPDATE_EVENT = "application_update"
 
-GONE_EVENT = "gone"  # the message was deleted from Gmail for good; its body can't be read
+# the message was deleted from Gmail for good; its body can't be read
+GONE_EVENT = "gone"
 
 # Returns (html, text) of a message; used for emails stored without a body.
 # Raises MessageGone when Gmail no longer has the message (404).
-FetchBody = Callable[[str], tuple[str | None, str | None]]
+FetchBody = cabc.Callable[[str], tuple[str | None, str | None]]
 
 
 class MessageGone(Exception):
     """The message is no longer in Gmail (deleted from Trash), so its body can't be fetched."""
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class RejectionInfo:
+    """Role and company of a detected rejection."""
+
     role: str
     company: str
 
 
-@dataclass
+@dataclasses.dataclass
 class RejectionStats:
+    """Counters of one rejection import, for the sync status line."""
+
     emails: int = 0
     detected: int = 0
     new: int = 0
-    fetched: int = 0  # bodies fetched from Gmail for emails stored without one
-    pending: int = 0  # bodyless emails left for a run with Gmail access
-    gone: int = 0  # deleted from Gmail before the body was read
+    # bodies fetched from Gmail for emails stored without one
+    fetched: int = 0
+    # bodyless emails left for a run with Gmail access
+    pending: int = 0
+    # deleted from Gmail before the body was read
+    gone: int = 0
 
 
 def _text(html: str | None, text: str | None) -> str:
     # The plain part of LinkedIn updates is a stub; the sentence that matters is in the HTML.
     parts = []
     if html:
-        parts.append(BeautifulSoup(html, "html.parser").get_text(" ", strip=True))
+        parts.append(bs4.BeautifulSoup(html, "html.parser").get_text(" ", strip=True))
     if text:
         parts.append(text)
     return "\n".join(parts)
@@ -88,7 +101,7 @@ def detect_rejection(subject: str, body: str) -> RejectionInfo | None:
 
 
 def import_rejections(
-    session: Session, fetch_body: FetchBody | None = None, *, recheck: bool = False
+    session: sa_orm.Session, fetch_body: FetchBody | None = None, *, recheck: bool = False
 ) -> RejectionStats:
     """Record a Rejection for every rejection email. Idempotent by email id.
 
@@ -99,12 +112,15 @@ def import_rejections(
     skip = (REJECTION_EVENT, GONE_EVENT) if recheck else (REJECTION_EVENT, UPDATE_EVENT, GONE_EVENT)
     stats = RejectionStats()
     emails = session.scalars(
-        select(EmailMessage).where(EmailMessage.from_addr.contains(APPLICATION_SENDER))
+        sa.select(models.EmailMessage).where(
+            models.EmailMessage.from_addr.contains(APPLICATION_SENDER)
+        )
     ).all()
     for email in emails:
         stats.emails += 1
         if not _SUBJECT.match(email.subject.strip()) or email.hidden_at is not None:
-            continue  # hidden: deleted from the company history (#225)
+            # hidden: deleted from the company history (#225)
+            continue
         html, text = email.body_html, email.body_text
         if html is None and text is None:
             if email.detected_event in skip:
@@ -126,15 +142,17 @@ def import_rejections(
             session.commit()
             continue
         stats.detected += 1
-        already = session.scalar(select(Rejection.id).where(Rejection.email_message_id == email.id))
-        company = get_or_create_company(session, info.company)
+        already = session.scalar(
+            sa.select(models.Rejection.id).where(models.Rejection.email_message_id == email.id)
+        )
+        company = dedup.get_or_create_company(session, info.company)
         email.detected_event = REJECTION_EVENT
         email.company_id = company.id
         email.company_match = "exact"
-        mark_rejected(
+        rejections.mark_rejected(
             session,
             company_id=company.id,
-            source=RejectionSource.GMAIL,
+            source=models.RejectionSource.GMAIL,
             role=info.role,
             rejected_at=email.sent_at,
             email_message_id=email.id,
