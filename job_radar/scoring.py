@@ -1,27 +1,38 @@
-"""Rule-based score from title and location, with a reason for every rule that fired.
+"""Rule-based score of a vacancy from its title and location.
 
-Heuristic only: it ranks the queue, it does not decide anything. See docs/linkedin-alerts.md.
+The score starts at 5. Rules on the title and on the location (worldwide, hybrid or
+on-site, remote only for places that may exclude the user's home) add or take points, and
+every rule that fires leaves a ``Reason`` the queue shows. It only ranks the queue and
+decides nothing. See docs/linkedin-alerts.md.
+
+Usage:
+    import job_radar.scoring as scoring
 """
 
+import dataclasses
 import re
-from dataclasses import dataclass
 
-from .home import Home, current_home
+import job_radar.home as jr_home
 
 BASE = 5.0
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Reason:
-    sign: str  # "+" or "-"
+    """One rule that fired: ``+`` or ``-`` and the text the queue shows."""
+
+    # "+" or "-"
+    sign: str
     text: str
 
     def as_dict(self) -> dict[str, str]:
         return {"sign": self.sign, "text": self.text}
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Score:
+    """A vacancy's score from 0 to 10 with the reasons behind it."""
+
     value: float
     reasons: list[Reason]
 
@@ -60,7 +71,7 @@ def _title_reasons(title: str) -> list[tuple[float, Reason]]:
 
 
 def _location_reasons(
-    location: str | None, remote_known: bool, home: Home
+    location: str | None, remote_known: bool, home: jr_home.Home
 ) -> list[tuple[float, Reason]]:
     if not location:
         return []
@@ -85,11 +96,11 @@ def _location_reasons(
 
 
 def score_job(
-    title: str, location: str | None, *, remote_known: bool = True, home: Home | None = None
+    title: str, location: str | None, *, remote_known: bool = True, home: jr_home.Home | None = None
 ) -> Score:
     """``remote_known=False`` when the source never shows the work format (public search).
     ``home`` defaults to the one in the profile (job_radar/home.py)."""
-    home = current_home() if home is None else home
+    home = jr_home.current_home() if home is None else home
     fired = _title_reasons(title) + _location_reasons(location, remote_known, home)
     value = BASE + sum(points for points, _ in fired)
     return Score(value=round(min(10.0, max(0.0, value)), 1), reasons=[r for _, r in fired])

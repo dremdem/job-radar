@@ -1,22 +1,30 @@
-"""A vacancy you applied to never comes back to the queue (#269, docs/queue.md).
+"""Keep a vacancy you applied to out of the review queue (#269).
 
-The same vacancy is the same company and the same title (case, spaces and punctuation
-ignored). When exactly one such vacancy of the company is applied, a copy from any other
-source joins it: its source, description and the rest move to the applied vacancy, whose
-history says "seen again". Another vacancy of the company stays as it is.
+The same vacancy is the same company and the same title, ignoring case, spaces and
+punctuation. When exactly one such vacancy of the company is applied, a copy that arrives
+from any other source joins it: its source, description and the rest move to the applied
+vacancy, whose history says "seen again". Another vacancy of the same company stays as it
+is.
+
+Main entry points: ``fold_into_applied`` for a newly imported vacancy, and
+``merge_applied_duplicates`` to clean up copies already stored (``job-radar db
+merge-applied-duplicates``). See docs/queue.md.
+
+Usage:
+    import job_radar.applied_duplicates as applied_duplicates
 """
 
+import collections
+import datetime as dt
 import re
-from collections import defaultdict
-from datetime import UTC, datetime
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .dedup import merge_opportunities
-from .models import CompanyEvent, Opportunity, OpportunityState
+import job_radar.dedup as dedup
+import job_radar.models as models
 
-S = OpportunityState
+S = models.OpportunityState
 # Copies the batch merge takes in; "interested" is your own call and stays.
 MERGEABLE = (S.NEW, S.AUTO_IGNORE, S.IGNORE)
 
@@ -25,15 +33,17 @@ def same_title(title: str) -> str:
     return " ".join(re.sub(r"[\W_]+", " ", (title or "").casefold()).split())
 
 
-def applied_original(session: Session, opportunity: Opportunity) -> Opportunity | None:
+def applied_original(
+    session: sa_orm.Session, opportunity: models.Opportunity
+) -> models.Opportunity | None:
     """The one applied vacancy of the company with this title; None if 0 or 2+."""
     found = [
         o
         for o in session.scalars(
-            select(Opportunity).where(
-                Opportunity.company_id == opportunity.company_id,
-                Opportunity.state == S.APPLIED,
-                Opportunity.id != opportunity.id,
+            sa.select(models.Opportunity).where(
+                models.Opportunity.company_id == opportunity.company_id,
+                models.Opportunity.state == S.APPLIED,
+                models.Opportunity.id != opportunity.id,
             )
         )
         if same_title(o.title) == same_title(opportunity.title)
@@ -41,12 +51,14 @@ def applied_original(session: Session, opportunity: Opportunity) -> Opportunity 
     return found[0] if len(found) == 1 else None
 
 
-def _seen_again(session: Session, keep: Opportunity, dup: Opportunity, now: datetime) -> None:
+def _seen_again(
+    session: sa_orm.Session, keep: models.Opportunity, dup: models.Opportunity, now: dt.datetime
+) -> None:
     sources = ", ".join(
         f"{r.source_type.value}{' ' + r.url if r.url else ''}" for r in dup.source_records
     )
     session.add(
-        CompanyEvent(
+        models.CompanyEvent(
             company_id=keep.company_id,
             opportunity_id=keep.id,
             kind="seen again",
@@ -57,26 +69,26 @@ def _seen_again(session: Session, keep: Opportunity, dup: Opportunity, now: date
 
 
 def fold_into_applied(
-    session: Session, opportunity: Opportunity, now: datetime | None = None
-) -> Opportunity | None:
+    session: sa_orm.Session, opportunity: models.Opportunity, now: dt.datetime | None = None
+) -> models.Opportunity | None:
     """Join a new vacancy to the applied one it repeats; the applied one, or None."""
     if opportunity.state is not S.NEW:
         return None
     keep = applied_original(session, opportunity)
     if keep is None:
         return None
-    _seen_again(session, keep, opportunity, now or datetime.now(UTC))
-    merge_opportunities(session, keep, opportunity)
+    _seen_again(session, keep, opportunity, now or dt.datetime.now(dt.UTC))
+    dedup.merge_opportunities(session, keep, opportunity)
     return keep
 
 
 def merge_applied_duplicates(
-    session: Session, *, apply: bool, skip: frozenset[int] = frozenset()
+    session: sa_orm.Session, *, apply: bool, skip: frozenset[int] = frozenset()
 ) -> list[tuple[int, list[int]]]:
     """Copies of applied vacancies already stored: (applied id, copy ids) per group. With
     apply=False nothing changes (a dry run). ``skip``: applied ids whose group stays apart."""
-    groups: dict[tuple[int, str], list[Opportunity]] = defaultdict(list)
-    for o in session.scalars(select(Opportunity).order_by(Opportunity.id)):
+    groups: dict[tuple[int, str], list[models.Opportunity]] = collections.defaultdict(list)
+    for o in session.scalars(sa.select(models.Opportunity).order_by(models.Opportunity.id)):
         groups[(o.company_id, same_title(o.title))].append(o)
     plan = []
     for members in groups.values():
@@ -85,10 +97,10 @@ def merge_applied_duplicates(
         if len(originals) == 1 and copies and originals[0].id not in skip:
             plan.append((originals[0], copies))
     if apply:
-        now = datetime.now(UTC)
+        now = dt.datetime.now(dt.UTC)
         for keep, copies in plan:
             for dup in copies:
                 _seen_again(session, keep, dup, now)
-                merge_opportunities(session, keep, dup)
+                dedup.merge_opportunities(session, keep, dup)
         session.commit()
     return [(keep.id, [d.id for d in copies]) for keep, copies in plan]

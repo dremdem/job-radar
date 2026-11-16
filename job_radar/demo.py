@@ -1,51 +1,44 @@
-"""Demo data for trying the review queue before any source is imported (docs/queue.md#demo).
+"""Demo data for trying the review queue before any source is imported.
 
 Everything here is made up: companies end in "(demo)", links point to example.com, and the
-Claude analyses are written by hand in the shape of a real answer. No model is called.
+Claude and local-model analyses are written by hand in the shape of a real answer. No
+model is called. ``seed_demo`` adds the vacancies that are not there yet and
+``remove_demo`` deletes them with everything attached. See docs/queue.md#demo.
+
+Usage:
+    import job_radar.demo as demo
 """
 
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import Any
+import dataclasses
+import datetime as dt
+import typing as t
 
-from sqlalchemy import delete, select, update
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .claude.analysis import _check_quotes
-from .claude.prompt import PROMPT_VERSION
-from .dedup import add_snapshot, get_or_create_company
-from .models import (
-    Application,
-    ClaudeAnalysis,
-    ClaudeMessage,
-    Company,
-    CompanyEvent,
-    DescriptionAnalysis,
-    EmailMessage,
-    JobSnapshot,
-    Opportunity,
-    OpportunityNote,
-    OpportunityState,
-    Rejection,
-    SourceRecord,
-    SourceType,
-    TelegramPost,
-)
-from .scoring import score_job
+import job_radar.claude.analysis as claude_analysis
+import job_radar.claude.prompt as claude_prompt
+import job_radar.dedup as dedup
+import job_radar.models as models
+import job_radar.scoring as scoring
 
 DEMO_SUFFIX = "(demo)"
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Demo:
+    """One made-up vacancy with its description and hand-written analyses."""
+
     title: str
     company: str
     location: str
     salary: str | None
-    state: OpportunityState
+    state: models.OpportunityState
     description: str
-    claude: dict[str, Any] | None = None  # a finished analysis, as Claude would return it
-    ai: dict[str, Any] = field(default_factory=dict)  # a local model finding (docs/ai.md)
+    # a finished analysis, as Claude would return it
+    claude: dict[str, t.Any] | None = None
+    # a local model finding (docs/ai.md)
+    ai: dict[str, t.Any] = dataclasses.field(default_factory=dict)
 
 
 ACME = """\
@@ -111,7 +104,7 @@ DEMO_OPPORTUNITIES = [
         "Acme Robotics",
         "Worldwide (Remote)",
         "$120k-150k",
-        OpportunityState.NEW,
+        models.OpportunityState.NEW,
         ACME,
         claude={
             "verdict": "apply",
@@ -159,7 +152,7 @@ DEMO_OPPORTUNITIES = [
         "Globex",
         "Remote, USA Only",
         None,
-        OpportunityState.NEW,
+        models.OpportunityState.NEW,
         GLOBEX,
         claude={
             "verdict": "maybe",
@@ -206,7 +199,7 @@ DEMO_OPPORTUNITIES = [
         "Initech",
         "Remote, CET (+/- 3 hours)",
         "€60k-75k",
-        OpportunityState.NEW,
+        models.OpportunityState.NEW,
         INITECH,
         claude={
             "verdict": "maybe",
@@ -239,7 +232,7 @@ DEMO_OPPORTUNITIES = [
         "Umbrella Labs",
         "Remote, Europe",
         None,
-        OpportunityState.INTERESTED,
+        models.OpportunityState.INTERESTED,
         UMBRELLA,
         ai={
             "work_mode": "remote",
@@ -253,17 +246,18 @@ DEMO_OPPORTUNITIES = [
         "Hooli",
         "London (Hybrid)",
         "£85k",
-        OpportunityState.IGNORE,
+        models.OpportunityState.IGNORE,
         HOOLI,
     ),
 ]
 
 
-def _add(session: Session, demo: Demo) -> None:
-    score = score_job(demo.title, demo.location)  # as a real import would give it
-    opportunity = Opportunity(
+def _add(session: sa_orm.Session, demo: Demo) -> None:
+    # as a real import would give it
+    score = scoring.score_job(demo.title, demo.location)
+    opportunity = models.Opportunity(
         title=demo.title,
-        company=get_or_create_company(session, f"{demo.company} {DEMO_SUFFIX}"),
+        company=dedup.get_or_create_company(session, f"{demo.company} {DEMO_SUFFIX}"),
         location=demo.location,
         salary=demo.salary,
         score=score.value,
@@ -271,20 +265,20 @@ def _add(session: Session, demo: Demo) -> None:
         state=demo.state,
     )
     slug = demo.company.lower().replace(" ", "-")
-    record = SourceRecord(
-        source_type=SourceType.MANUAL,
+    record = models.SourceRecord(
+        source_type=models.SourceType.MANUAL,
         external_id=f"demo:{slug}",
         url=f"https://example.com/jobs/{slug}",
         opportunity=opportunity,
     )
     session.add(record)
     session.flush()
-    snapshot, _ = add_snapshot(session, record, demo.description)
+    snapshot, _ = dedup.add_snapshot(session, record, demo.description)
     session.flush()
-    now = datetime.now(UTC)
+    now = dt.datetime.now(dt.UTC)
     if demo.ai:
         session.add(
-            DescriptionAnalysis(
+            models.DescriptionAnalysis(
                 snapshot_id=snapshot.id,
                 opportunity_id=opportunity.id,
                 model="demo",
@@ -294,25 +288,26 @@ def _add(session: Session, demo: Demo) -> None:
         )
     if demo.claude:
         session.add(
-            ClaudeAnalysis(
+            models.ClaudeAnalysis(
                 opportunity_id=opportunity.id,
                 state="done",
                 model="demo",
-                prompt_version=PROMPT_VERSION,
-                finished_at=now,  # never started: it does not count toward the daily cap
-                result=_check_quotes(dict(demo.claude), demo.description),
+                prompt_version=claude_prompt.PROMPT_VERSION,
+                # never started: it does not count toward the daily cap
+                finished_at=now,
+                result=claude_analysis._check_quotes(dict(demo.claude), demo.description),
             )
         )
 
 
-def seed_demo(session: Session) -> int:
+def seed_demo(session: sa_orm.Session) -> int:
     """Add demo opportunities that are not there yet. Returns how many were added."""
     created = 0
     for demo in DEMO_OPPORTUNITIES:
-        company = get_or_create_company(session, f"{demo.company} {DEMO_SUFFIX}")
+        company = dedup.get_or_create_company(session, f"{demo.company} {DEMO_SUFFIX}")
         exists = session.scalar(
-            select(Opportunity).where(
-                Opportunity.company_id == company.id, Opportunity.title == demo.title
+            sa.select(models.Opportunity).where(
+                models.Opportunity.company_id == company.id, models.Opportunity.title == demo.title
             )
         )
         if exists is None:
@@ -322,30 +317,44 @@ def seed_demo(session: Session) -> int:
     return created
 
 
-def remove_demo(session: Session) -> int:
+def remove_demo(session: sa_orm.Session) -> int:
     """Delete demo companies with everything attached to them. Returns how many opportunities
     went. Real data is never touched: every delete is limited to demo companies."""
-    companies = select(Company.id).where(Company.name.endswith(DEMO_SUFFIX))
-    opportunities = select(Opportunity.id).where(Opportunity.company_id.in_(companies))
-    records = select(SourceRecord.id).where(SourceRecord.opportunity_id.in_(opportunities))
-    for model in (DescriptionAnalysis, ClaudeMessage, ClaudeAnalysis, OpportunityNote):
-        session.execute(delete(model).where(model.opportunity_id.in_(opportunities)))
-    for model in (CompanyEvent, Application, Rejection):  # what you logged on a demo vacancy
-        session.execute(delete(model).where(model.company_id.in_(companies)))
-    session.execute(delete(JobSnapshot).where(JobSnapshot.source_record_id.in_(records)))
-    session.execute(delete(SourceRecord).where(SourceRecord.id.in_(records)))
+    companies = sa.select(models.Company.id).where(models.Company.name.endswith(DEMO_SUFFIX))
+    opportunities = sa.select(models.Opportunity.id).where(
+        models.Opportunity.company_id.in_(companies)
+    )
+    records = sa.select(models.SourceRecord.id).where(
+        models.SourceRecord.opportunity_id.in_(opportunities)
+    )
+    for model in (
+        models.DescriptionAnalysis,
+        models.ClaudeMessage,
+        models.ClaudeAnalysis,
+        models.OpportunityNote,
+    ):
+        session.execute(sa.delete(model).where(model.opportunity_id.in_(opportunities)))
+    # what you logged on a demo vacancy
+    for model in (models.CompanyEvent, models.Application, models.Rejection):
+        session.execute(sa.delete(model).where(model.company_id.in_(companies)))
+    session.execute(
+        sa.delete(models.JobSnapshot).where(models.JobSnapshot.source_record_id.in_(records))
+    )
+    session.execute(sa.delete(models.SourceRecord).where(models.SourceRecord.id.in_(records)))
     # Mail and Telegram posts are never deleted, only unlinked from demo data.
     session.execute(
-        update(EmailMessage).where(EmailMessage.company_id.in_(companies)).values(company_id=None)
+        sa.update(models.EmailMessage)
+        .where(models.EmailMessage.company_id.in_(companies))
+        .values(company_id=None)
     )
     session.execute(
-        update(TelegramPost)
-        .where(TelegramPost.opportunity_id.in_(opportunities))
+        sa.update(models.TelegramPost)
+        .where(models.TelegramPost.opportunity_id.in_(opportunities))
         .values(opportunity_id=None)
     )
     removed = session.execute(
-        delete(Opportunity).where(Opportunity.company_id.in_(companies))
+        sa.delete(models.Opportunity).where(models.Opportunity.company_id.in_(companies))
     ).rowcount
-    session.execute(delete(Company).where(Company.name.endswith(DEMO_SUFFIX)))
+    session.execute(sa.delete(models.Company).where(models.Company.name.endswith(DEMO_SUFFIX)))
     session.commit()
     return removed

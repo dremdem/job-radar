@@ -1,17 +1,31 @@
-"""Technologies a vacancy may require and the user's own stack. See docs/ai.md#stack-vs-your-cv."""
+"""Technologies a vacancy may require, and the user's own stack.
 
+The catalogue (``Tech``) has a pattern for each technology. The user's ``Profile``
+(profile.yaml) says what they know, what they can learn quickly and what is a blocker,
+plus where they live. ``unknown_mentions`` lists the technologies a description asks for
+and the profile lacks; ``says_optional`` and ``known_alternative`` soften a mention that
+is a plus or offers a choice. See docs/ai.md#stack-vs-your-cv.
+
+Usage:
+    import job_radar.stack as stack
+"""
+
+import dataclasses
+import pathlib
 import re
-from dataclasses import dataclass, field
-from pathlib import Path
 
 import yaml
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Tech:
+    """A catalogue technology: its name, the regex that finds it and what it is."""
+
     name: str
-    pattern: str  # regex; case-insensitive unless `case` is set
-    what: str  # how the model is told what is meant
+    # regex; case-insensitive unless `case` is set
+    pattern: str
+    # how the model is told what is meant
+    what: str
     case: bool = False
 
     def search(self, text: str) -> re.Match[str] | None:
@@ -81,14 +95,21 @@ LISTS = ("known", "learnable", "blockers", "rules", "home_regions")
 _HEADER = "# Your profile: edit here or on /profile. See docs/ai.md#stack-vs-your-cv.\n"
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Profile:
-    known: list[str] = field(default_factory=list)
-    learnable: list[str] = field(default_factory=list)  # a required one costs less
-    blockers: list[str] = field(default_factory=list)  # a required one is a blocker
-    rules: list[str] = field(default_factory=list)  # free text for Claude (#105)
-    home: str = ""  # the country you live in and work from, see job_radar/home.py
-    home_regions: list[str] = field(default_factory=list)  # areas that include it ("Asia")
+    """The user's profile.yaml: known, learnable and blocking technologies, and home."""
+
+    known: list[str] = dataclasses.field(default_factory=list)
+    # a required one costs less
+    learnable: list[str] = dataclasses.field(default_factory=list)
+    # a required one is a blocker
+    blockers: list[str] = dataclasses.field(default_factory=list)
+    # free text for Claude (#105)
+    rules: list[str] = dataclasses.field(default_factory=list)
+    # the country you live in and work from, see job_radar/home.py
+    home: str = ""
+    # areas that include it ("Asia")
+    home_regions: list[str] = dataclasses.field(default_factory=list)
 
     @property
     def known_set(self) -> set[str]:
@@ -119,7 +140,7 @@ def _items(value) -> list[str]:
     return [str(item).strip() for item in value or [] if str(item).strip()]
 
 
-def load_profile(path: Path) -> Profile | None:
+def load_profile(path: pathlib.Path) -> Profile | None:
     if not path.exists():
         return None
     data = yaml.safe_load(path.read_text()) or {}
@@ -127,17 +148,17 @@ def load_profile(path: Path) -> Profile | None:
     return Profile(**{name: _items(data.get(name)) for name in LISTS}, home=home)
 
 
-def save_profile(path: Path, profile: Profile) -> None:
+def save_profile(path: pathlib.Path, profile: Profile) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     data: dict = {"home": profile.home} if profile.home else {}
     data |= {name: list(getattr(profile, name)) for name in LISTS}
     path.write_text(_HEADER + yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
 
-_cache: dict[Path, tuple[float, Profile | None]] = {}
+_cache: dict[pathlib.Path, tuple[float, Profile | None]] = {}
 
 
-def current_profile(path: Path) -> Profile | None:
+def current_profile(path: pathlib.Path) -> Profile | None:
     """load_profile, re-read only when the file changed (the queue asks for every row)."""
     mtime = path.stat().st_mtime if path.exists() else -1.0
     cached = _cache.get(path)
@@ -146,7 +167,7 @@ def current_profile(path: Path) -> Profile | None:
     return _cache[path][1]
 
 
-def load_known(path: Path) -> set[str] | None:
+def load_known(path: pathlib.Path) -> set[str] | None:
     """Lower-cased technology names from the profile; None when there is no profile."""
     profile = load_profile(path)
     return profile.known_set if profile else None

@@ -1,184 +1,260 @@
-"""SQLAlchemy models. See docs/data-model.md."""
+"""SQLAlchemy models: the whole database schema in one place.
 
+Core tables: ``Company`` and its ``Opportunity`` (vacancy) rows; every place a vacancy was
+seen is a ``SourceRecord`` with ``JobSnapshot`` texts. Mail is stored as ``EmailMessage``;
+``Application`` and ``Rejection`` come from it or are added by hand.
+``OpportunityNote`` and ``CompanyEvent`` hold the user's own notes and events.
+Analyses: ``DescriptionAnalysis`` (local model), ``ClaudeAnalysis`` with its chat in
+``ClaudeMessage``, and Claude's memory in ``ClaudeMemory``. ``SyncCursor``,
+``LinkedInFetch``, ``AppSetting`` and ``TelegramPost`` are bookkeeping. Enums are stored
+as plain strings. Schema changes go through Alembic migrations. See docs/data-model.md.
+
+Usage:
+    import job_radar.models as models
+"""
+
+import datetime as dt
 import enum
-from datetime import UTC, datetime
-from typing import Any, ClassVar
+import typing as t
 
-from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, String, Text, UniqueConstraint
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
 
-class Base(DeclarativeBase):
+def utcnow() -> dt.datetime:
+    return dt.datetime.now(dt.UTC)
+
+
+class Base(sa_orm.DeclarativeBase):
+    """Declarative base of all models; maps ``datetime`` to timezone-aware columns."""
+
     # float stays FLOAT as in the migrations: SQLAlchemy 2.1 maps it to Double by default.
-    type_annotation_map: ClassVar[dict[Any, Any]] = {
-        datetime: DateTime(timezone=True),
-        float: Float(),
+    type_annotation_map: t.ClassVar[dict[t.Any, t.Any]] = {
+        dt.datetime: sa.DateTime(timezone=True),
+        float: sa.Float(),
     }
 
 
-def _enum(cls: type[enum.Enum]) -> Enum:
+def _enum(cls: type[enum.Enum]) -> sa.Enum:
     # Store values ("linkedin_alert"), not member names, and keep it a plain string column.
-    return Enum(cls, values_callable=lambda e: [m.value for m in e], native_enum=False, length=32)
+    return sa.Enum(
+        cls, values_callable=lambda e: [m.value for m in e], native_enum=False, length=32
+    )
 
 
 class SourceType(enum.StrEnum):
+    """Where a vacancy was seen; stored on ``SourceRecord.source_type``."""
+
     LINKEDIN_ALERT = "linkedin_alert"
-    LINKEDIN_SEARCH = "linkedin_search"  # opt-in public guest search, see docs
-    LINKEDIN_CAPTURE = "linkedin_capture"  # page sent by the user's bookmarklet
-    LINKEDIN_LINK = "linkedin_link"  # a LinkedIn job seen as the original link elsewhere
+    # opt-in public guest search, see docs
+    LINKEDIN_SEARCH = "linkedin_search"
+    # page sent by the user's bookmarklet
+    LINKEDIN_CAPTURE = "linkedin_capture"
+    # a LinkedIn job seen as the original link elsewhere
+    LINKEDIN_LINK = "linkedin_link"
     GMAIL = "gmail"
-    HH = "hh"  # hh.ru vacancy, external_id = its id (docs/hh.md)
+    # hh.ru vacancy, external_id = its id (docs/hh.md)
+    HH = "hh"
     HIMALAYAS = "himalayas"
-    REMOTIVE = "remotive"  # small boards, docs/boards.md; external_id = the board's job id
+    # small boards, docs/boards.md; external_id = the board's job id
+    REMOTIVE = "remotive"
     WORKINGNOMADS = "workingnomads"
-    WEWORKREMOTELY = "weworkremotely"  # external_id = the job page URL
-    JOBICY = "jobicy"  # Jobicy API, external_id = its job id
-    REMOTEOK = "remoteok"  # Remote OK feed, external_id = its job id
-    FDETIMES = "fdetimes"  # FDE Times job list, external_id = the role slug
-    HACKERNEWS = "hackernews"  # "Ask HN: Who is hiring?" post, external_id = comment id
+    # external_id = the job page URL
+    WEWORKREMOTELY = "weworkremotely"
+    # Jobicy API, external_id = its job id
+    JOBICY = "jobicy"
+    # Remote OK feed, external_id = its job id
+    REMOTEOK = "remoteok"
+    # FDE Times job list, external_id = the role slug
+    FDETIMES = "fdetimes"
+    # "Ask HN: Who is hiring?" post, external_id = comment id
+    HACKERNEWS = "hackernews"
     TELEGRAM = "telegram"
-    MANUAL = "manual"  # added by hand; external_id = the link, or "manual:<n>" (#182)
+    # added by hand; external_id = the link, or "manual:<n>" (#182)
+    MANUAL = "manual"
 
 
 class OpportunityState(enum.StrEnum):
+    """Where a vacancy is in the queue: To review, Interested, Ignore, Applied, Auto-ignore."""
+
     NEW = "new"
     INTERESTED = "interested"
     IGNORE = "ignore"
     APPLIED = "applied"
-    AUTO_IGNORE = "auto_ignore"  # set only by the rules in docs/settings.md
+    # set only by the rules in docs/settings.md
+    AUTO_IGNORE = "auto_ignore"
 
 
 class EmailDirection(enum.StrEnum):
+    """Whether a stored email was received or sent by the user."""
+
     IN = "in"
     OUT = "out"
 
 
 class RejectionSource(enum.StrEnum):
+    """How a rejection was found: in mail or set by hand."""
+
     MANUAL = "manual"
     GMAIL = "gmail"
 
 
 class ApplicationSource(enum.StrEnum):
+    """How an application was found: LinkedIn, an ATS, hh.ru or by hand."""
+
     LINKEDIN = "linkedin"
     ATS = "ats"
-    HH = "hh"  # inferred from an hh.ru rejection (docs/hh.md)
+    # inferred from an hh.ru rejection (docs/hh.md)
+    HH = "hh"
     MANUAL = "manual"
 
 
 class ApplicationReview(enum.StrEnum):
+    """Whether a detected application is confirmed, waiting for the user or dismissed."""
+
     CONFIRMED = "confirmed"
-    SUGGESTED = "suggested"  # found by heuristics, waits for the user
-    DISMISSED = "dismissed"  # kept so re-imports do not suggest it again
+    # found by heuristics, waits for the user
+    SUGGESTED = "suggested"
+    # kept so re-imports do not suggest it again
+    DISMISSED = "dismissed"
 
 
 class NoteKind(enum.StrEnum):
+    """The kind of a reason to ignore a vacancy, or a free note."""
+
     ONLY_LOCATION = "only_location"
     LANGUAGE = "language"
     STACK = "stack"
     SENIORITY = "seniority"
     SALARY = "salary"
     CONTRACT = "contract"
-    WORK_FORMAT = "work_format"  # hybrid / on-site (#117)
+    # hybrid / on-site (#117)
+    WORK_FORMAT = "work_format"
     OTHER = "other"
-    NOTE = "note"  # a free note, not a reason to ignore
+    # a free note, not a reason to ignore
+    NOTE = "note"
 
 
 class Company(Base):
+    """An employer; vacancies, mail, applications and rejections hang off it."""
+
     __tablename__ = "companies"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(255))
-    normalized_name: Mapped[str] = mapped_column(String(255), unique=True)
-    aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
-    domains: Mapped[list[str]] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    name: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(255))
+    normalized_name: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(255), unique=True)
+    aliases: sa_orm.Mapped[list[str]] = sa_orm.mapped_column(sa.JSON, default=list)
+    domains: sa_orm.Mapped[list[str]] = sa_orm.mapped_column(sa.JSON, default=list)
+    created_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
 
-    opportunities: Mapped[list["Opportunity"]] = relationship(back_populates="company")
-    rejections: Mapped[list["Rejection"]] = relationship(back_populates="company")
+    opportunities: sa_orm.Mapped[list["Opportunity"]] = sa_orm.relationship(
+        back_populates="company"
+    )
+    rejections: sa_orm.Mapped[list["Rejection"]] = sa_orm.relationship(back_populates="company")
 
 
 class Opportunity(Base):
+    """One vacancy in the queue, with its state, score and the data shown in the UI."""
+
     __tablename__ = "opportunities"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str] = mapped_column(String(255))
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    state: Mapped[OpportunityState] = mapped_column(
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    title: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(255))
+    company_id: sa_orm.Mapped[int] = sa_orm.mapped_column(sa.ForeignKey("companies.id"), index=True)
+    state: sa_orm.Mapped[OpportunityState] = sa_orm.mapped_column(
         _enum(OpportunityState), default=OpportunityState.NEW, index=True
     )
-    score: Mapped[float | None]
-    score_reasons: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
-    location: Mapped[str | None] = mapped_column(String(255))
-    salary: Mapped[str | None] = mapped_column(String(64))
-    easy_apply: Mapped[bool | None]
-    auto_ignore_reason: Mapped[str | None] = mapped_column(String(255))
-    unavailable_at: Mapped[datetime | None]  # the site says it is not available to you (#276)
-    not_accepting_at: Mapped[datetime | None]  # LinkedIn: not accepting applications (#278)
-    created_at: Mapped[datetime] = mapped_column(default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
-    state_changed_at: Mapped[datetime | None]  # your last state change, for sorting (#199)
+    score: sa_orm.Mapped[float | None]
+    score_reasons: sa_orm.Mapped[list[dict[str, str]]] = sa_orm.mapped_column(sa.JSON, default=list)
+    location: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
+    salary: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(64))
+    easy_apply: sa_orm.Mapped[bool | None]
+    auto_ignore_reason: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
+    # the site says it is not available to you (#276)
+    unavailable_at: sa_orm.Mapped[dt.datetime | None]
+    # LinkedIn: not accepting applications (#278)
+    not_accepting_at: sa_orm.Mapped[dt.datetime | None]
+    created_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
+    updated_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow, onupdate=utcnow)
+    # your last state change, for sorting (#199)
+    state_changed_at: sa_orm.Mapped[dt.datetime | None]
 
-    company: Mapped[Company] = relationship(back_populates="opportunities")
-    source_records: Mapped[list["SourceRecord"]] = relationship(back_populates="opportunity")
-    analyses: Mapped[list["DescriptionAnalysis"]] = relationship(
+    company: sa_orm.Mapped[Company] = sa_orm.relationship(back_populates="opportunities")
+    source_records: sa_orm.Mapped[list["SourceRecord"]] = sa_orm.relationship(
+        back_populates="opportunity"
+    )
+    analyses: sa_orm.Mapped[list["DescriptionAnalysis"]] = sa_orm.relationship(
         back_populates="opportunity", order_by="DescriptionAnalysis.id"
     )
 
 
 class SourceRecord(Base):
+    """One place a vacancy was seen: an alert email, a board, a pasted link.
+
+    Unique per source type and external id.
+    """
+
     __tablename__ = "source_records"
-    __table_args__ = (UniqueConstraint("source_type", "external_id"),)
+    __table_args__ = (sa.UniqueConstraint("source_type", "external_id"),)
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    source_type: Mapped[SourceType] = mapped_column(_enum(SourceType))
-    external_id: Mapped[str] = mapped_column(String(255))
-    url: Mapped[str | None] = mapped_column(Text)
-    opportunity_id: Mapped[int] = mapped_column(ForeignKey("opportunities.id"), index=True)
-    first_seen_at: Mapped[datetime] = mapped_column(default=utcnow)
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    source_type: sa_orm.Mapped[SourceType] = sa_orm.mapped_column(_enum(SourceType))
+    external_id: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(255))
+    url: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
+    opportunity_id: sa_orm.Mapped[int] = sa_orm.mapped_column(
+        sa.ForeignKey("opportunities.id"), index=True
+    )
+    first_seen_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
 
-    opportunity: Mapped[Opportunity] = relationship(back_populates="source_records")
-    snapshots: Mapped[list["JobSnapshot"]] = relationship(back_populates="source_record")
+    opportunity: sa_orm.Mapped[Opportunity] = sa_orm.relationship(back_populates="source_records")
+    snapshots: sa_orm.Mapped[list["JobSnapshot"]] = sa_orm.relationship(
+        back_populates="source_record"
+    )
 
 
 class JobSnapshot(Base):
+    """A description text of a source record; a new one is stored only when the text changes."""
+
     __tablename__ = "job_snapshots"
-    __table_args__ = (UniqueConstraint("source_record_id", "content_hash"),)
+    __table_args__ = (sa.UniqueConstraint("source_record_id", "content_hash"),)
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    source_record_id: Mapped[int] = mapped_column(ForeignKey("source_records.id"), index=True)
-    raw_text: Mapped[str] = mapped_column(Text)
-    content_hash: Mapped[str] = mapped_column(String(64))
-    retrieved_at: Mapped[datetime] = mapped_column(default=utcnow)
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    source_record_id: sa_orm.Mapped[int] = sa_orm.mapped_column(
+        sa.ForeignKey("source_records.id"), index=True
+    )
+    raw_text: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.Text)
+    content_hash: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(64))
+    retrieved_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
 
-    source_record: Mapped[SourceRecord] = relationship(back_populates="snapshots")
+    source_record: sa_orm.Mapped[SourceRecord] = sa_orm.relationship(back_populates="snapshots")
 
 
 class Application(Base):
+    """The user applied to a company, from confirmation mail or added by hand."""
+
     __tablename__ = "applications"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id"))
-    applied_at: Mapped[datetime]
-    status: Mapped[str] = mapped_column(String(32), default="applied")
-    notes: Mapped[str | None] = mapped_column(Text)
-    role: Mapped[str | None] = mapped_column(String(255))
-    source: Mapped[ApplicationSource] = mapped_column(
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    company_id: sa_orm.Mapped[int] = sa_orm.mapped_column(sa.ForeignKey("companies.id"), index=True)
+    opportunity_id: sa_orm.Mapped[int | None] = sa_orm.mapped_column(
+        sa.ForeignKey("opportunities.id")
+    )
+    applied_at: sa_orm.Mapped[dt.datetime]
+    status: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(32), default="applied")
+    notes: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
+    role: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
+    source: sa_orm.Mapped[ApplicationSource] = sa_orm.mapped_column(
         _enum(ApplicationSource), default=ApplicationSource.MANUAL
     )
-    review: Mapped[ApplicationReview] = mapped_column(
+    review: sa_orm.Mapped[ApplicationReview] = sa_orm.mapped_column(
         _enum(ApplicationReview), default=ApplicationReview.CONFIRMED, index=True
     )
-    email_message_id: Mapped[int | None] = mapped_column(
-        ForeignKey("email_messages.id"), unique=True
+    email_message_id: sa_orm.Mapped[int | None] = sa_orm.mapped_column(
+        sa.ForeignKey("email_messages.id"), unique=True
     )
-    linkedin_job_id: Mapped[str | None] = mapped_column(String(32))
+    linkedin_job_id: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(32))
 
-    company: Mapped[Company] = relationship()
+    company: sa_orm.Mapped[Company] = sa_orm.relationship()
 
 
 class Rejection(Base):
@@ -188,51 +264,60 @@ class Rejection(Base):
 
     __tablename__ = "rejections"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id"))
-    # One rejection per source email; NULLs (manual rejections) stay distinct in SQLite.
-    email_message_id: Mapped[int | None] = mapped_column(
-        ForeignKey("email_messages.id"), unique=True
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    company_id: sa_orm.Mapped[int] = sa_orm.mapped_column(sa.ForeignKey("companies.id"), index=True)
+    opportunity_id: sa_orm.Mapped[int | None] = sa_orm.mapped_column(
+        sa.ForeignKey("opportunities.id")
     )
-    source: Mapped[RejectionSource] = mapped_column(_enum(RejectionSource))
-    role: Mapped[str | None] = mapped_column(String(255))
-    rejected_at: Mapped[datetime]
-    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    # One rejection per source email; NULLs (manual rejections) stay distinct in SQLite.
+    email_message_id: sa_orm.Mapped[int | None] = sa_orm.mapped_column(
+        sa.ForeignKey("email_messages.id"), unique=True
+    )
+    source: sa_orm.Mapped[RejectionSource] = sa_orm.mapped_column(_enum(RejectionSource))
+    role: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
+    rejected_at: sa_orm.Mapped[dt.datetime]
+    created_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
 
-    company: Mapped[Company] = relationship(back_populates="rejections")
+    company: sa_orm.Mapped[Company] = sa_orm.relationship(back_populates="rejections")
 
 
 class EmailMessage(Base):
+    """One Gmail message read by the app (metadata and text), linked to a company when known."""
+
     __tablename__ = "email_messages"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    gmail_message_id: Mapped[str] = mapped_column(String(64), unique=True)
-    gmail_thread_id: Mapped[str] = mapped_column(String(64), index=True)
-    direction: Mapped[EmailDirection] = mapped_column(_enum(EmailDirection))
-    sent_at: Mapped[datetime]
-    from_addr: Mapped[str] = mapped_column(String(320))
-    to_addr: Mapped[str] = mapped_column(Text)
-    subject: Mapped[str] = mapped_column(Text, default="")
-    snippet: Mapped[str] = mapped_column(Text, default="")
-    label_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
-    categories: Mapped[list[str]] = mapped_column(JSON, default=list)
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    gmail_message_id: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(64), unique=True)
+    gmail_thread_id: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(64), index=True)
+    direction: sa_orm.Mapped[EmailDirection] = sa_orm.mapped_column(_enum(EmailDirection))
+    sent_at: sa_orm.Mapped[dt.datetime]
+    from_addr: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(320))
+    to_addr: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.Text)
+    subject: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.Text, default="")
+    snippet: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.Text, default="")
+    label_ids: sa_orm.Mapped[list[str]] = sa_orm.mapped_column(sa.JSON, default=list)
+    categories: sa_orm.Mapped[list[str]] = sa_orm.mapped_column(sa.JSON, default=list)
     # Full bodies only for generated mailings (LinkedIn alerts), see docs/gmail.md.
-    body_html: Mapped[str | None] = mapped_column(Text)
-    body_text: Mapped[str | None] = mapped_column(Text)
-    detected_event: Mapped[str | None] = mapped_column(String(32))
-    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
-    company_match: Mapped[str | None] = mapped_column(String(16))  # exact / probable
+    body_html: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
+    body_text: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
+    detected_event: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(32))
+    company_id: sa_orm.Mapped[int | None] = sa_orm.mapped_column(
+        sa.ForeignKey("companies.id"), index=True
+    )
+    # exact / probable
+    company_match: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(16))
     # Deleted from the company history (#225): kept so a sync does not bring it back.
-    hidden_at: Mapped[datetime | None]
+    hidden_at: sa_orm.Mapped[dt.datetime | None]
 
 
 class SyncCursor(Base):
+    """Where an incremental import stopped, so the next run reads only new items."""
+
     __tablename__ = "sync_cursors"
 
-    name: Mapped[str] = mapped_column(String(64), primary_key=True)
-    last_message_at: Mapped[datetime | None]
-    last_run_at: Mapped[datetime | None]
+    name: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(64), primary_key=True)
+    last_message_at: sa_orm.Mapped[dt.datetime | None]
+    last_run_at: sa_orm.Mapped[dt.datetime | None]
 
 
 class LinkedInFetch(Base):
@@ -240,24 +325,26 @@ class LinkedInFetch(Base):
 
     __tablename__ = "linkedin_fetches"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
-    email_message_id: Mapped[int | None] = mapped_column(
-        ForeignKey("email_messages.id"), index=True
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow, index=True)
+    email_message_id: sa_orm.Mapped[int | None] = sa_orm.mapped_column(
+        sa.ForeignKey("email_messages.id"), index=True
     )
-    kind: Mapped[str] = mapped_column(String(16), default="search")  # search / description
-    keywords: Mapped[str] = mapped_column(String(255), default="")
-    geo_id: Mapped[str | None] = mapped_column(String(32))
-    job_id: Mapped[str | None] = mapped_column(String(32))
-    start: Mapped[int]
-    http_status: Mapped[int | None]
-    status: Mapped[str] = mapped_column(String(16))  # ok / blocked / error / stopped
-    jobs: Mapped[int] = mapped_column(default=0)
+    # search / description
+    kind: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16), default="search")
+    keywords: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(255), default="")
+    geo_id: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(32))
+    job_id: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(32))
+    start: sa_orm.Mapped[int]
+    http_status: sa_orm.Mapped[int | None]
+    # ok / blocked / error / stopped
+    status: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    jobs: sa_orm.Mapped[int] = sa_orm.mapped_column(default=0)
     # Why it was not ok: "HTTP 429", "redirected to login", "stopped by you"... (#205)
-    detail: Mapped[str | None] = mapped_column(String(255))
+    detail: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
     # The vacancy a description was fetched for; no foreign key, so merging vacancies
     # never trips over the log.
-    opportunity_id: Mapped[int | None] = mapped_column(index=True)
+    opportunity_id: sa_orm.Mapped[int | None] = sa_orm.mapped_column(index=True)
 
 
 class OpportunityNote(Base):
@@ -265,15 +352,17 @@ class OpportunityNote(Base):
 
     __tablename__ = "opportunity_notes"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    opportunity_id: Mapped[int] = mapped_column(ForeignKey("opportunities.id"), index=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    kind: Mapped[NoteKind] = mapped_column(_enum(NoteKind))
-    detail: Mapped[str | None] = mapped_column(String(255))
-    comment: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    opportunity_id: sa_orm.Mapped[int] = sa_orm.mapped_column(
+        sa.ForeignKey("opportunities.id"), index=True
+    )
+    company_id: sa_orm.Mapped[int] = sa_orm.mapped_column(sa.ForeignKey("companies.id"), index=True)
+    kind: sa_orm.Mapped[NoteKind] = sa_orm.mapped_column(_enum(NoteKind))
+    detail: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
+    comment: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
+    created_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
 
-    company: Mapped[Company] = relationship()
+    company: sa_orm.Mapped[Company] = sa_orm.relationship()
 
 
 # The mark the Chrome fill leaves in a vacancy's history (#272). Not a contact, not your action.
@@ -288,13 +377,16 @@ class CompanyEvent(Base):
 
     __tablename__ = "company_events"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id"), index=True)
-    kind: Mapped[str] = mapped_column(String(32))  # see manual.EVENT_KINDS
-    at: Mapped[datetime]
-    comment: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    company_id: sa_orm.Mapped[int] = sa_orm.mapped_column(sa.ForeignKey("companies.id"), index=True)
+    opportunity_id: sa_orm.Mapped[int | None] = sa_orm.mapped_column(
+        sa.ForeignKey("opportunities.id"), index=True
+    )
+    # see manual.EVENT_KINDS
+    kind: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(32))
+    at: sa_orm.Mapped[dt.datetime]
+    comment: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
+    created_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
 
 
 class AppSetting(Base):
@@ -302,26 +394,29 @@ class AppSetting(Base):
 
     __tablename__ = "app_settings"
 
-    key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    value: Mapped[dict | list | str | int | bool | None] = mapped_column(JSON)
+    key: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(64), primary_key=True)
+    value: sa_orm.Mapped[dict | list | str | int | bool | None] = sa_orm.mapped_column(sa.JSON)
 
 
 class TelegramPost(Base):
     """Every post read from an allowlisted Telegram channel, once. See docs/telegram.md."""
 
     __tablename__ = "telegram_posts"
-    __table_args__ = (UniqueConstraint("chat", "message_id"),)
+    __table_args__ = (sa.UniqueConstraint("chat", "message_id"),)
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    source: Mapped[str] = mapped_column(String(64), index=True)
-    chat: Mapped[str] = mapped_column(String(64))
-    topic_id: Mapped[int | None]
-    message_id: Mapped[int]
-    posted_at: Mapped[datetime]
-    text: Mapped[str] = mapped_column(Text, default="")
-    forwarded_from: Mapped[str | None] = mapped_column(String(255))
-    status: Mapped[str] = mapped_column(String(16))  # vacancy / skipped
-    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id"))
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    source: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(64), index=True)
+    chat: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(64))
+    topic_id: sa_orm.Mapped[int | None]
+    message_id: sa_orm.Mapped[int]
+    posted_at: sa_orm.Mapped[dt.datetime]
+    text: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.Text, default="")
+    forwarded_from: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
+    # vacancy / skipped
+    status: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    opportunity_id: sa_orm.Mapped[int | None] = sa_orm.mapped_column(
+        sa.ForeignKey("opportunities.id")
+    )
 
 
 class DescriptionAnalysis(Base):
@@ -329,22 +424,28 @@ class DescriptionAnalysis(Base):
 
     __tablename__ = "description_analyses"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    snapshot_id: Mapped[int] = mapped_column(ForeignKey("job_snapshots.id"), unique=True)
-    opportunity_id: Mapped[int] = mapped_column(ForeignKey("opportunities.id"), index=True)
-    model: Mapped[str] = mapped_column(String(64))
-    analyzed_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    snapshot_id: sa_orm.Mapped[int] = sa_orm.mapped_column(
+        sa.ForeignKey("job_snapshots.id"), unique=True
+    )
+    opportunity_id: sa_orm.Mapped[int] = sa_orm.mapped_column(
+        sa.ForeignKey("opportunities.id"), index=True
+    )
+    model: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(64))
+    analyzed_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(
+        default=lambda: dt.datetime.now(dt.UTC)
+    )
     # Only facts whose quote is literally in the description; the rest is "unknown" / empty.
-    work_mode: Mapped[str] = mapped_column(String(16), default="unknown")
-    work_mode_quote: Mapped[str] = mapped_column(Text, default="")
-    residence: Mapped[list[str]] = mapped_column(JSON, default=list)
-    residence_quote: Mapped[str] = mapped_column(Text, default="")
+    work_mode: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16), default="unknown")
+    work_mode_quote: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.Text, default="")
+    residence: sa_orm.Mapped[list[str]] = sa_orm.mapped_column(sa.JSON, default=list)
+    residence_quote: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.Text, default="")
     # Unknown technologies: [{skill, status, quote}]; None = not checked yet (docs/ai.md).
-    stack: Mapped[list[dict[str, str]] | None] = mapped_column(JSON, default=None)
+    stack: sa_orm.Mapped[list[dict[str, str]] | None] = sa_orm.mapped_column(sa.JSON, default=None)
     # The model's answers as is, to see what was dropped and why.
-    raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    raw: sa_orm.Mapped[dict[str, t.Any]] = sa_orm.mapped_column(sa.JSON, default=dict)
 
-    opportunity: Mapped["Opportunity"] = relationship(back_populates="analyses")
+    opportunity: sa_orm.Mapped["Opportunity"] = sa_orm.relationship(back_populates="analyses")
 
 
 class ClaudeAnalysis(Base):
@@ -352,22 +453,28 @@ class ClaudeAnalysis(Base):
 
     __tablename__ = "claude_analyses"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    opportunity_id: Mapped[int] = mapped_column(ForeignKey("opportunities.id"), index=True)
-    state: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    opportunity_id: sa_orm.Mapped[int] = sa_orm.mapped_column(
+        sa.ForeignKey("opportunities.id"), index=True
+    )
+    state: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16), default="queued", index=True)
     # queued / running / done / failed
-    model: Mapped[str] = mapped_column(String(32))
-    prompt_version: Mapped[str] = mapped_column(String(16))
-    session_id: Mapped[str | None] = mapped_column(String(64))
-    requested_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
-    started_at: Mapped[datetime | None]
-    finished_at: Mapped[datetime | None]
-    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    error: Mapped[str | None] = mapped_column(Text)
-    cost_usd: Mapped[float | None]  # as reported by Claude Code; notional on a subscription
-    attempts: Mapped[int] = mapped_column(default=0)  # transient errors are retried (#113)
+    model: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(32))
+    prompt_version: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    session_id: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(64))
+    requested_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(
+        default=lambda: dt.datetime.now(dt.UTC)
+    )
+    started_at: sa_orm.Mapped[dt.datetime | None]
+    finished_at: sa_orm.Mapped[dt.datetime | None]
+    result: sa_orm.Mapped[dict[str, t.Any] | None] = sa_orm.mapped_column(sa.JSON)
+    error: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
+    # as reported by Claude Code; notional on a subscription
+    cost_usd: sa_orm.Mapped[float | None]
+    # transient errors are retried (#113)
+    attempts: sa_orm.Mapped[int] = sa_orm.mapped_column(default=0)
 
-    opportunity: Mapped["Opportunity"] = relationship()
+    opportunity: sa_orm.Mapped["Opportunity"] = sa_orm.relationship()
 
 
 class ClaudeMessage(Base):
@@ -375,18 +482,24 @@ class ClaudeMessage(Base):
 
     __tablename__ = "claude_messages"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    opportunity_id: Mapped[int] = mapped_column(ForeignKey("opportunities.id"), index=True)
-    analysis_id: Mapped[int] = mapped_column(ForeignKey("claude_analyses.id"))
-    role: Mapped[str] = mapped_column(String(16))  # user / assistant
-    text: Mapped[str] = mapped_column(Text, default="")
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    opportunity_id: sa_orm.Mapped[int] = sa_orm.mapped_column(
+        sa.ForeignKey("opportunities.id"), index=True
+    )
+    analysis_id: sa_orm.Mapped[int] = sa_orm.mapped_column(sa.ForeignKey("claude_analyses.id"))
+    # user / assistant
+    role: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    text: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.Text, default="")
     # For a user message: queued / running / done / failed (with error).
-    state: Mapped[str] = mapped_column(String(16), default="done", index=True)
-    error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
-    memory_note: Mapped[str | None] = mapped_column(Text)  # what this answer changed (#215)
+    state: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16), default="done", index=True)
+    error: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
+    created_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(
+        default=lambda: dt.datetime.now(dt.UTC)
+    )
+    # what this answer changed (#215)
+    memory_note: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
 
-    analysis: Mapped[ClaudeAnalysis] = relationship()
+    analysis: sa_orm.Mapped[ClaudeAnalysis] = sa_orm.relationship()
 
 
 class ClaudeMemory(Base):
@@ -394,13 +507,17 @@ class ClaudeMemory(Base):
 
     __tablename__ = "claude_memory"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    kind: Mapped[str] = mapped_column(String(16))  # fact / skill
-    name: Mapped[str] = mapped_column(String(64), unique=True)
-    description: Mapped[str] = mapped_column(String(255), default="")
-    body: Mapped[str] = mapped_column(Text, default="")
-    opportunity_id: Mapped[int | None]  # whose chat changed it last; no FK, like the log
-    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    # fact / skill
+    kind: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    name: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(64), unique=True)
+    description: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(255), default="")
+    body: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.Text, default="")
+    # whose chat changed it last; no FK, like the log
+    opportunity_id: sa_orm.Mapped[int | None]
+    updated_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(
+        default=lambda: dt.datetime.now(dt.UTC)
+    )
 
 
 class ClaudeMemoryChange(Base):
@@ -408,11 +525,15 @@ class ClaudeMemoryChange(Base):
 
     __tablename__ = "claude_memory_changes"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(64))
-    op: Mapped[str] = mapped_column(String(16))  # added / updated / deleted
-    by: Mapped[str] = mapped_column(String(16))  # claude / you
-    before: Mapped[str | None] = mapped_column(Text)
-    after: Mapped[str | None] = mapped_column(Text)
-    opportunity_id: Mapped[int | None]
-    at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), index=True)
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    name: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(64))
+    # added / updated / deleted
+    op: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    # claude / you
+    by: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    before: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
+    after: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.Text)
+    opportunity_id: sa_orm.Mapped[int | None]
+    at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(
+        default=lambda: dt.datetime.now(dt.UTC), index=True
+    )

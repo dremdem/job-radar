@@ -1,45 +1,62 @@
-"""Reasons to ignore a vacancy and free notes; a location reason lowers the score of the
-company's other vacancies. See docs/applications.md#reasons-and-notes.
+"""Reasons to ignore a vacancy, and free notes.
+
+A reason has a kind (location, language, stack, salary and so on), a detail and a
+comment; ``ignore_with_reason`` stores it and moves the vacancy to Ignore. A location
+reason ("only India") also lowers the score of the company's other vacancies through
+``location_penalty``. ``describe`` gives the short text shown in the history. See
+docs/applications.md#reasons-and-notes.
+
+Usage:
+    import job_radar.notes as notes
 """
 
+import datetime as dt
 import re
-from datetime import UTC, datetime
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import sqlalchemy as sa
+import sqlalchemy.orm as sa_orm
 
-from .models import NoteKind, Opportunity, OpportunityNote, OpportunityState
-from .scoring import Reason
+import job_radar.models as models
+import job_radar.scoring as scoring
 
 OTHER_COUNTRY_PENALTY = -1.5
 SAME_COUNTRY_PENALTY = -3.0
 REASON_LABELS = {
-    NoteKind.ONLY_LOCATION: "only",
-    NoteKind.LANGUAGE: "language",
-    NoteKind.STACK: "stack",
-    NoteKind.SENIORITY: "seniority",
-    NoteKind.SALARY: "salary",
-    NoteKind.CONTRACT: "contract",
-    NoteKind.WORK_FORMAT: "hybrid / on-site",
-    NoteKind.OTHER: "other",
+    models.NoteKind.ONLY_LOCATION: "only",
+    models.NoteKind.LANGUAGE: "language",
+    models.NoteKind.STACK: "stack",
+    models.NoteKind.SENIORITY: "seniority",
+    models.NoteKind.SALARY: "salary",
+    models.NoteKind.CONTRACT: "contract",
+    models.NoteKind.WORK_FORMAT: "hybrid / on-site",
+    models.NoteKind.OTHER: "other",
 }
 # A picture per reason, so a list of ignores reads at a glance (#195).
 REASON_ICONS = {
-    NoteKind.ONLY_LOCATION: "\u2708\ufe0f",  # airplane: you would have to move
-    NoteKind.LANGUAGE: "\U0001f5e3\ufe0f",  # speaking head
-    NoteKind.STACK: "\U0001f9f0",  # toolbox
-    NoteKind.WORK_FORMAT: "\U0001f3e2",  # office building
-    NoteKind.SENIORITY: "\U0001f393",  # graduation cap
-    NoteKind.SALARY: "\U0001f4b0",  # money bag
-    NoteKind.CONTRACT: "\U0001f4dd",  # memo
-    NoteKind.OTHER: "\U0001f937",  # shrug
-    NoteKind.NOTE: "\U0001f5d2\ufe0f",  # spiral notepad
+    # airplane: you would have to move
+    models.NoteKind.ONLY_LOCATION: "\u2708\ufe0f",
+    # speaking head
+    models.NoteKind.LANGUAGE: "\U0001f5e3\ufe0f",
+    # toolbox
+    models.NoteKind.STACK: "\U0001f9f0",
+    # office building
+    models.NoteKind.WORK_FORMAT: "\U0001f3e2",
+    # graduation cap
+    models.NoteKind.SENIORITY: "\U0001f393",
+    # money bag
+    models.NoteKind.SALARY: "\U0001f4b0",
+    # memo
+    models.NoteKind.CONTRACT: "\U0001f4dd",
+    # shrug
+    models.NoteKind.OTHER: "\U0001f937",
+    # spiral notepad
+    models.NoteKind.NOTE: "\U0001f5d2\ufe0f",
 }
 
 
-def reason_icon(kind: NoteKind | str) -> str:
+def reason_icon(kind: models.NoteKind | str) -> str:
     try:
-        return REASON_ICONS[NoteKind(kind)]
+        return REASON_ICONS[models.NoteKind(kind)]
     except ValueError:
         return ""
 
@@ -54,24 +71,24 @@ def country_from_location(location: str | None) -> str | None:
 
 
 def add_note(
-    session: Session,
-    opportunity: Opportunity,
-    kind: NoteKind,
+    session: sa_orm.Session,
+    opportunity: models.Opportunity,
+    kind: models.NoteKind,
     detail: str | None = None,
     comment: str | None = None,
-) -> OpportunityNote:
+) -> models.OpportunityNote:
     detail = (detail or "").strip() or None
     comment = (comment or "").strip() or None
-    if kind is NoteKind.NOTE and not comment:
+    if kind is models.NoteKind.NOTE and not comment:
         raise ValueError("A note needs text")
-    if kind is NoteKind.ONLY_LOCATION and not detail:
+    if kind is models.NoteKind.ONLY_LOCATION and not detail:
         raise ValueError("Say which country or region")
-    note = OpportunityNote(
+    note = models.OpportunityNote(
         opportunity_id=opportunity.id,
         company_id=opportunity.company_id,
         kind=kind,
         detail=detail
-        if kind in (NoteKind.ONLY_LOCATION, NoteKind.LANGUAGE, NoteKind.STACK)
+        if kind in (models.NoteKind.ONLY_LOCATION, models.NoteKind.LANGUAGE, models.NoteKind.STACK)
         else None,
         comment=comment,
     )
@@ -81,21 +98,21 @@ def add_note(
 
 
 def ignore_with_reason(
-    session: Session,
-    opportunity: Opportunity,
-    kind: NoteKind,
+    session: sa_orm.Session,
+    opportunity: models.Opportunity,
+    kind: models.NoteKind,
     detail: str | None = None,
     comment: str | None = None,
-) -> OpportunityNote:
-    if kind is NoteKind.NOTE:
+) -> models.OpportunityNote:
+    if kind is models.NoteKind.NOTE:
         raise ValueError("Pick a reason")
-    opportunity.state = OpportunityState.IGNORE
-    opportunity.state_changed_at = datetime.now(UTC)
+    opportunity.state = models.OpportunityState.IGNORE
+    opportunity.state_changed_at = dt.datetime.now(dt.UTC)
     return add_note(session, opportunity, kind, detail, comment)
 
 
-def delete_note(session: Session, note_id: int) -> bool:
-    note = session.get(OpportunityNote, note_id)
+def delete_note(session: sa_orm.Session, note_id: int) -> bool:
+    note = session.get(models.OpportunityNote, note_id)
     if note is None:
         return False
     session.delete(note)
@@ -103,32 +120,34 @@ def delete_note(session: Session, note_id: int) -> bool:
     return True
 
 
-def describe(note: OpportunityNote) -> str:
+def describe(note: models.OpportunityNote) -> str:
     """History text: "only India · residents only", "salary · too low", "ask about EOR"."""
-    if note.kind is NoteKind.NOTE:
+    if note.kind is models.NoteKind.NOTE:
         return note.comment or ""
     head = REASON_LABELS[note.kind]
-    if note.kind is NoteKind.ONLY_LOCATION:
+    if note.kind is models.NoteKind.ONLY_LOCATION:
         head = f"only {note.detail}"
-    elif note.kind in (NoteKind.LANGUAGE, NoteKind.STACK) and note.detail:
+    elif note.kind in (models.NoteKind.LANGUAGE, models.NoteKind.STACK) and note.detail:
         head = f"{REASON_LABELS[note.kind]}: {note.detail}"
     return " · ".join(part for part in (head, note.comment) if part)
 
 
-def _as_utc(value: datetime) -> datetime:
-    return value if value.tzinfo else value.replace(tzinfo=UTC)
+def _as_utc(value: dt.datetime) -> dt.datetime:
+    return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
 
 
-def location_penalty(session: Session, opportunity: Opportunity) -> tuple[float, Reason] | None:
+def location_penalty(
+    session: sa_orm.Session, opportunity: models.Opportunity
+) -> tuple[float, scoring.Reason] | None:
     """Risk from the latest "only <country>" reason on another vacancy of the same company."""
     note = session.scalar(
-        select(OpportunityNote)
+        sa.select(models.OpportunityNote)
         .where(
-            OpportunityNote.company_id == opportunity.company_id,
-            OpportunityNote.kind == NoteKind.ONLY_LOCATION,
-            OpportunityNote.opportunity_id != opportunity.id,
+            models.OpportunityNote.company_id == opportunity.company_id,
+            models.OpportunityNote.kind == models.NoteKind.ONLY_LOCATION,
+            models.OpportunityNote.opportunity_id != opportunity.id,
         )
-        .order_by(OpportunityNote.created_at.desc(), OpportunityNote.id.desc())
+        .order_by(models.OpportunityNote.created_at.desc(), models.OpportunityNote.id.desc())
         .limit(1)
     )
     if note is None:
@@ -137,4 +156,4 @@ def location_penalty(session: Session, opportunity: Opportunity) -> tuple[float,
     points = SAME_COUNTRY_PENALTY if here and here == note.detail.lower() else OTHER_COUNTRY_PENALTY
     company = opportunity.company.name
     text = f"Last time {company} hired only in {note.detail} ({_as_utc(note.created_at):%Y-%m-%d})"
-    return points, Reason("-", text)
+    return points, scoring.Reason("-", text)

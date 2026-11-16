@@ -1,17 +1,32 @@
-from datetime import date
-from functools import lru_cache
-from pathlib import Path
+"""Application settings read from the environment and ``.env``.
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+``Settings`` is a pydantic-settings model: every field can be set with a ``JOB_RADAR_``
+variable (``JOB_RADAR_DATABASE_URL``, ``JOB_RADAR_FDETIMES`` and so on). Opt-in sources
+are off by default. ``get_settings`` returns one cached instance for the web app; the CLI
+creates its own. See .env.example and docs/usage.md.
+
+Usage:
+    import job_radar.config as config
+"""
+
+import datetime as dt
+import functools
+import pathlib
+
+import pydantic
+import pydantic_settings
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="JOB_RADAR_", env_file=".env", extra="ignore")
+class Settings(pydantic_settings.BaseSettings):
+    """All settings of the app; each field comes from a ``JOB_RADAR_<FIELD>`` variable."""
+
+    model_config = pydantic_settings.SettingsConfigDict(
+        env_prefix="JOB_RADAR_", env_file=".env", extra="ignore"
+    )
 
     database_url: str = "sqlite:///data/job_radar.db"
-    gmail_client_secret: Path = Path("secrets/gmail_client_secret.json")
-    gmail_token: Path = Path("secrets/gmail_token.json")
+    gmail_client_secret: pathlib.Path = pathlib.Path("secrets/gmail_client_secret.json")
+    gmail_token: pathlib.Path = pathlib.Path("secrets/gmail_token.json")
     # Opt-in public LinkedIn guest search, see docs/linkedin-public-search.md.
     linkedin_public_search: bool = False
     linkedin_public_max_searches_per_day: int = 5
@@ -23,12 +38,12 @@ class Settings(BaseSettings):
     linkedin_chrome_command: str = "npx -y @playwright/mcp@0.0.84 --extension"
     linkedin_chrome_max_per_run: int = 50
     # Shown by the Playwright extension; without it every run asks you to allow the connection.
-    playwright_mcp_extension_token: str | None = Field(
+    playwright_mcp_extension_token: str | None = pydantic.Field(
         default=None, validation_alias="PLAYWRIGHT_MCP_EXTENSION_TOKEN"
     )
     # Telegram via the existing telegram-mcp server (docs/telegram.md); off without a command.
     telegram_mcp_command: str | None = None
-    telegram_sources: Path = Path("data/telegram.yaml")
+    telegram_sources: pathlib.Path = pathlib.Path("data/telegram.yaml")
     telegram_first_run_days: int = 14
     # Himalayas public API (docs/himalayas.md): official, no key; the first run looks back a day.
     himalayas: bool = True
@@ -43,28 +58,34 @@ class Settings(BaseSettings):
     # descriptions come from the role pages in the Descriptions job.
     fdetimes: bool = True
     fdetimes_first_run_days: float = 7
-    fdetimes_related: bool = False  # also the related AI roles, not only FDE ones
-    fdetimes_regions: str = ""  # e.g. "remote,apac"; empty: every region
-    fdetimes_max_descriptions: int = 50  # role pages per Descriptions run
+    # also the related AI roles, not only FDE ones
+    fdetimes_related: bool = False
+    # e.g. "remote,apac"; empty: every region
+    fdetimes_regions: str = ""
+    # role pages per Descriptions run
+    fdetimes_max_descriptions: int = 50
     # Remotive, Working Nomads, We Work Remotely public feeds (docs/boards.md).
     boards: bool = True
     # hh.ru digests from the remote saved search, received on or after this date (docs/hh.md).
-    hh_digests_since: date | None = None
+    hh_digests_since: dt.date | None = None
     # Description analysis with a local model through Ollama (docs/ai.md); opt-in since #223.
     ai_analysis: bool = False
     ollama_url: str = "http://localhost:11434"
     ai_model: str = "gemma3:4b"
     ai_max_per_sync: int = 150
-    profile: Path = Path("data/profile.yaml")  # your stack from the CV
+    # your stack from the CV
+    profile: pathlib.Path = pathlib.Path("data/profile.yaml")
     # Deep analysis with Claude Code in print mode, on the subscription (docs/claude.md).
-    cv_path: Path | None = None
+    cv_path: pathlib.Path | None = None
     claude_command: str = "claude"
-    claude_worker: bool = True  # false on test servers over a DB copy: never spend limits twice
-    claude_workdir: Path = Path("data/claude")  # its sessions, apart from your own
+    # false on test servers over a DB copy: never spend limits twice
+    claude_worker: bool = True
+    # its sessions, apart from your own
+    claude_workdir: pathlib.Path = pathlib.Path("data/claude")
     # Local-only diagnostics of bookmarklet captures (git-ignored), see docs/linkedin-capture.md.
-    capture_debug_dir: Path = Path("data/capture_debug")
+    capture_debug_dir: pathlib.Path = pathlib.Path("data/capture_debug")
 
 
-@lru_cache
+@functools.lru_cache
 def get_settings() -> Settings:
     return Settings()

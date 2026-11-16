@@ -1,22 +1,31 @@
-"""Where the user lives: Profile ``home`` and ``home_regions`` (docs/ai.md#stack-vs-your-cv).
+"""Where the user lives: the profile's ``home`` and ``home_regions``.
 
-Scoring, the local model's residence check and Claude's prompt read it from here, so no
-country is written into the code.
+Scoring, the local model's residence check and Claude's prompt read the home country and
+the regions that include it from here, so no country is written into the code.
+``current_home`` re-reads the profile only when the file changes and returns an empty
+``Home`` without a profile. See docs/ai.md#stack-vs-your-cv.
+
+Usage:
+    import job_radar.home as home
 """
 
+import dataclasses
+import functools
+import pathlib
 import re
-from dataclasses import dataclass
-from functools import lru_cache
-from pathlib import Path
 
-from .config import Settings
-from .stack import current_profile
+import job_radar.config as config
+import job_radar.stack as stack
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Home:
-    country: str = ""  # e.g. "Thailand"; empty = not stated
-    regions: tuple[str, ...] = ()  # wider areas that include it, e.g. ("Asia", "APAC")
+    """The user's home country and the regions that include it; empty without a profile."""
+
+    # e.g. "Thailand"; empty = not stated
+    country: str = ""
+    # wider areas that include it, e.g. ("Asia", "APAC")
+    regions: tuple[str, ...] = ()
 
     @property
     def places(self) -> tuple[str, ...]:
@@ -35,14 +44,14 @@ class Home:
         return self.country or "your country"
 
 
-@lru_cache(maxsize=1)
-def _profile_path() -> Path:
-    return Settings().profile
+@functools.lru_cache(maxsize=1)
+def _profile_path() -> pathlib.Path:
+    return config.Settings().profile
 
 
 def current_home() -> Home:
     """Home from the profile file, re-read when it changes; empty without a profile."""
-    profile = current_profile(_profile_path())
+    profile = stack.current_profile(_profile_path())
     if profile is None:
         return Home()
     return Home(profile.home, tuple(profile.home_regions))
