@@ -403,29 +403,29 @@ def test_unknown_vacancy_page(client):
 
 
 def test_chat_markup_is_safe():
-    import job_radar.web.app as web_app
+    import job_radar.web.templating as web_templating
 
-    html = str(web_app.chat_markup("**Да** <script>x</script>\n> Speak fluent Dutch"))
+    html = str(web_templating.chat_markup("**Да** <script>x</script>\n> Speak fluent Dutch"))
     assert "<b>Да</b>" in html and "&lt;script&gt;" in html
     assert '<span class="quote">Speak fluent Dutch</span>' in html
 
 
 def test_chat_links_are_clickable():
     # #241: links in answers had to be copied by hand.
-    import job_radar.web.app as web_app
+    import job_radar.web.templating as web_templating
 
     a = '<a href="{0}" target="_blank" rel="noopener noreferrer">{1}</a>'
     url = "https://job-boards.greenhouse.io/planetscale/jobs/4251150009"
-    html = str(web_app.chat_markup(f"- **Direct link:** {url}."))
+    html = str(web_templating.chat_markup(f"- **Direct link:** {url}."))
     assert a.format(url, url) + "." in html
-    html = str(web_app.chat_markup(f"- [PlanetScale Greenhouse posting]({url})"))
+    html = str(web_templating.chat_markup(f"- [PlanetScale Greenhouse posting]({url})"))
     assert a.format(url, "PlanetScale Greenhouse posting") in html
-    html = str(web_app.chat_markup("(see https://example.com/a?x=1&y=2)"))
+    html = str(web_templating.chat_markup("(see https://example.com/a?x=1&y=2)"))
     assert (
         a.format("https://example.com/a?x=1&amp;y=2", "https://example.com/a?x=1&amp;y=2") + ")"
         in html
     )
-    html = str(web_app.chat_markup('[x](javascript:alert(1)) https://e.com/"onmouseover=x'))
+    html = str(web_templating.chat_markup('[x](javascript:alert(1)) https://e.com/"onmouseover=x'))
     assert "javascript:" not in html.replace("[x](javascript:alert(1))", "")
     assert 'href="javascript' not in html and '"onmouseover' not in html
 

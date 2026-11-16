@@ -91,9 +91,9 @@ def test_capture_endpoint_accepts_hh(client, session):
 
 
 def test_bookmarklet_knows_hh():
-    import job_radar.web.app as web_app
+    import job_radar.web.routes.capture as routes_capture
 
-    code = web_app.bookmarklet("http://127.0.0.1:8000")
+    code = routes_capture.bookmarklet("http://127.0.0.1:8000")
     assert "hh\\.(ru|kz|by|uz)" in code and 'data-qa="vacancy-description"' in code
 
 
