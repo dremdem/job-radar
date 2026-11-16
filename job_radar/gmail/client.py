@@ -19,6 +19,8 @@ import google.oauth2.credentials as oauth2_credentials
 import googleapiclient.discovery as googleapiclient_discovery
 import googleapiclient.errors as googleapiclient_errors
 
+import job_radar.mail as mail
+
 # Gmail enforces a per-user, per-minute query-cost quota. Pace requests evenly and, when the
 # quota is still hit, wait for the next minute instead of backing off at random.
 MIN_INTERVAL = 0.5
@@ -127,7 +129,6 @@ class MessageSource(t.Protocol):
 def body_fetcher(client: MessageSource) -> cabc.Callable[[str], tuple[str | None, str | None]]:
     """(html, text) of a message by id, for callers that must not persist the body."""
     import job_radar.gmail.parse as gmail_parse
-    import job_radar.linkedin.rejections as linkedin_rejections
 
     def fetch(gmail_message_id: str) -> tuple[str | None, str | None]:
         try:
@@ -135,7 +136,7 @@ def body_fetcher(client: MessageSource) -> cabc.Callable[[str], tuple[str | None
         except googleapiclient_errors.HttpError as e:
             # deleted from Gmail for good (e.g. emptied Trash)
             if e.resp.status == 404:
-                raise linkedin_rejections.MessageGone(gmail_message_id) from e
+                raise mail.MessageGone(gmail_message_id) from e
             raise
         parsed = gmail_parse.parse_message(message)
         return parsed.body_html, parsed.body_text

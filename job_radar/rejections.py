@@ -11,6 +11,7 @@ Usage:
 """
 
 import datetime as dt
+import re
 
 import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
@@ -19,6 +20,22 @@ import job_radar.models as models
 
 # Big enough to visibly sink the score; the queue also sorts rejected to the bottom.
 REJECTION_PENALTY = 5.0
+
+# Body wording that marks an actual rejection (not "your application was viewed" etc.).
+# Seen in real mail: "we will not be moving forward with your application",
+# "<company> did not select your application to move forward",
+# "we have not selected your application to move forward"; employers' own texts add
+# "we regret to inform you", "proceed with another candidate", and Russian wording.
+WORDING = re.compile(
+    r"(will not|won't|not) be (moving|progressing|proceeding)"
+    r"|not moving forward with your application"
+    r"|decided not to move forward"
+    r"|(did not|have not|has not) select(ed)? your application"
+    r"|regret to inform"
+    r"|(proceed|move forward|moving forward|go) with (an)?other candidates?"
+    r"|решили не рассматривать|не готовы продолжить|к сожалению",
+    re.IGNORECASE,
+)
 
 
 def effective_score(score: float | None, *, rejected: bool) -> float | None:

@@ -98,13 +98,13 @@ def test_body_fetcher_returns_html_and_text():
 
 
 def test_body_fetcher_turns_404_into_message_gone():
-    import job_radar.linkedin.rejections as linkedin_rejections
+    import job_radar.mail as mail
 
     class Client:
         def get_message(self, gmail_message_id):
             raise http_error(404, "notFound")
 
-    with pytest.raises(linkedin_rejections.MessageGone):
+    with pytest.raises(mail.MessageGone):
         gmail_client.body_fetcher(Client())("m1")
 
 

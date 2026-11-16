@@ -23,8 +23,9 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
-import job_radar.linkedin.rejections as linkedin_rejections
+import job_radar.mail as mail
 import job_radar.models as models
+import job_radar.rejections as rejections
 
 CONFIRMATION_EVENT = "application_confirmation"
 # One application usually produces a LinkedIn and an ATS email a day or two apart.
@@ -221,7 +222,7 @@ def detect_application(
     if (
         _STATUS_UPDATE.search(subject)
         or not _CONFIRMATION.search(probe)
-        or linkedin_rejections.detect_rejection("Your application to x at y", probe)
+        or rejections.WORDING.search(probe)
     ):
         return None
     company = _ats_company(display, domain, subject)
@@ -319,7 +320,7 @@ def _fdetimes_vacancy(session: sa_orm.Session, company_id: int, role: str) -> mo
 
 
 def import_applications(
-    session: sa_orm.Session, fetch_body: linkedin_rejections.FetchBody | None = None
+    session: sa_orm.Session, fetch_body: mail.FetchBody | None = None
 ) -> ImportStats:
     """Create applications from confirmation emails. Idempotent by email id.
 
@@ -354,7 +355,7 @@ def import_applications(
         if found.needs_body and fetch_body is not None:
             try:
                 html, text = fetch_body(email.gmail_message_id)
-            except linkedin_rejections.MessageGone:
+            except mail.MessageGone:
                 gone = True
                 stats.gone += 1
             else:
@@ -404,7 +405,7 @@ def import_applications(
             # revisited on a run with Gmail access
             stats.pending += 1
         else:
-            email.detected_event = linkedin_rejections.GONE_EVENT if gone else CONFIRMATION_EVENT
+            email.detected_event = mail.GONE_EVENT if gone else CONFIRMATION_EVENT
         session.commit()
     return stats
 

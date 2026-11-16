@@ -102,7 +102,7 @@ says how many emails are waiting.
 
 **Emails deleted from Gmail.** A message stored earlier may be gone from Gmail by the time
 its body is needed (deleted, Trash emptied): Gmail answers `404`. The fetch raises
-`MessageGone`, the email gets `detected_event` = `gone` and is not fetched again, and the
+`MessageGone` (`job_radar/mail.py`, the port the importers take and the Gmail client implements), the email gets `detected_event` = `gone` and is not fetched again, and the
 rest of the mail is processed as usual; Sync reports "N gone from Gmail". A LinkedIn
 confirmation that is gone keeps the application found from its headers, with the role unknown.
 

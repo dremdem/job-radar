@@ -434,14 +434,14 @@ def test_ats_name_wrappers_are_removed(from_addr, subject, company):
 
 
 def test_linkedin_confirmation_deleted_from_gmail_keeps_company_and_is_not_refetched(session):
-    import job_radar.linkedin.rejections as linkedin_rejections
+    import job_radar.mail as mail
 
     email = add_email(session, "gone1", from_addr=LINKEDIN, subject=SENT_SUBJECT)
     calls = []
 
     def fetch(gmail_message_id):
         calls.append(gmail_message_id)
-        raise linkedin_rejections.MessageGone(gmail_message_id)
+        raise mail.MessageGone(gmail_message_id)
 
     stats = applications.import_applications(session, fetch_body=fetch)
     assert (stats.new, stats.gone, stats.pending) == (1, 1, 0)

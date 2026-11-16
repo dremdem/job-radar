@@ -18,7 +18,7 @@ import sqlalchemy as sa
 import sqlalchemy.orm as sa_orm
 
 import job_radar.dedup as dedup
-import job_radar.linkedin.rejections as linkedin_rejections
+import job_radar.mail as mail
 import job_radar.models as models
 import job_radar.rejections as rejections
 
@@ -220,9 +220,7 @@ def _application(
     )
 
 
-def import_hh_notifications(
-    session: sa_orm.Session, fetch_body: linkedin_rejections.FetchBody | None
-) -> HhStats:
+def import_hh_notifications(session: sa_orm.Session, fetch_body: mail.FetchBody | None) -> HhStats:
     """hh.ru mail not handled yet (or only marked as a rejection without a company)."""
     stats = HhStats()
     emails = session.scalars(
@@ -250,8 +248,8 @@ def import_hh_notifications(
             continue
         try:
             html, _ = fetch_body(email.gmail_message_id)
-        except linkedin_rejections.MessageGone:
-            email.detected_event = linkedin_rejections.GONE_EVENT
+        except mail.MessageGone:
+            email.detected_event = mail.GONE_EVENT
             stats.gone += 1
             session.commit()
             continue
@@ -264,7 +262,7 @@ def import_hh_notifications(
         session.flush()
         email.company_id, email.company_match = company.id, "exact"
         rejected = notice.kind in ("rejection", "closed") or bool(
-            linkedin_rejections._REJECTION.search(notice.text)
+            rejections.WORDING.search(notice.text)
         )
         if not rejected:
             email.detected_event = OUTREACH_EVENT
