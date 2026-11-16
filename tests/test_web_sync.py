@@ -1,15 +1,21 @@
+"""Tests for the Sync button: one sync at a time, its status and step list
+(docs/queue.md#sync).
+"""
+
 import threading
 import time
 
-from fastapi.testclient import TestClient
+import fastapi.testclient as fastapi_testclient
 
-from job_radar.config import Settings
-from job_radar.gmail.auth import GmailAuthError
-from job_radar.web.app import create_app
+import job_radar.config as config
+import job_radar.gmail.auth as gmail_auth
+import job_radar.web.app as web_app
 
 
 def make_client(database_url, runner):
-    return TestClient(create_app(Settings(database_url=database_url), sync_runner=runner))
+    return fastapi_testclient.TestClient(
+        web_app.create_app(config.Settings(database_url=database_url), sync_runner=runner)
+    )
 
 
 def wait_done(client, timeout=5.0):
@@ -29,10 +35,14 @@ def test_header_has_sync_button(client):
 
 
 def test_status_lists_steps(engine, database_url):
-    from job_radar.pipeline import Step
+    import job_radar.pipeline as pipeline
 
     def runner(echo, on_steps):
-        steps = [Step("gmail", "Gmail"), Step("telegram", "Telegram"), Step("ai", "AI analysis")]
+        steps = [
+            pipeline.Step("gmail", "Gmail"),
+            pipeline.Step("telegram", "Telegram"),
+            pipeline.Step("ai", "AI analysis"),
+        ]
         steps[0].state, steps[0].summary = (
             "failed",
             "Gmail access expired or revoked: run `./jr auth`",
@@ -61,7 +71,8 @@ def test_sync_runs_pipeline_and_reports_output(engine, database_url):
         assert client.post("/sync").status_code == 200
         text = wait_done(client)
     assert "3 new" in text and "job_proposal: 7 threads" in text
-    assert 'href="/"' in text  # reload link
+    # reload link
+    assert 'href="/"' in text
 
 
 def test_only_one_sync_at_a_time(engine, database_url):
@@ -83,7 +94,7 @@ def test_only_one_sync_at_a_time(engine, database_url):
 
 def test_sync_error_is_shown(engine, database_url):
     def runner(echo, on_steps):
-        raise GmailAuthError("No Gmail token. Run `job-radar gmail auth` first.")
+        raise gmail_auth.GmailAuthError("No Gmail token. Run `job-radar gmail auth` first.")
 
     with make_client(database_url, runner) as client:
         client.post("/sync")
@@ -103,5 +114,6 @@ def test_finished_status_folds_and_can_be_dismissed(engine, database_url):
         client.post("/sync")
         text = wait_done(client)
     assert "data-finished=" in text and 'class="link sync-dismiss"' in text
-    assert '<details class="sync-log">' in text  # folded, not open
+    # folded, not open
+    assert '<details class="sync-log">' in text
     assert "jr-sync-dismissed" in client.get("/").text

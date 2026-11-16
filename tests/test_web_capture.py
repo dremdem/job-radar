@@ -1,6 +1,10 @@
-from sqlalchemy import select
+"""Tests for the bookmarklet page and the capture API of the web UI
+(docs/linkedin-capture.md).
+"""
 
-from job_radar.models import Opportunity
+import sqlalchemy as sa
+
+import job_radar.models as models
 
 CARD = "Staff Software Engineer (AI Backend Services)\nPfizer\nSofia\nBe an early applicant"
 
@@ -9,7 +13,8 @@ def test_capture_page_offers_the_bookmarklet(client):
     text = client.get("/capture").text
     assert 'href="javascript:' in text
     assert "→ Job Radar" in text
-    assert "http://testserver&#39;" in text and "/capture#" in text  # base URL of this server
+    # base URL of this server
+    assert "http://testserver&#39;" in text and "/capture#" in text
     assert "/api/capture" in text
 
 
@@ -29,10 +34,11 @@ def test_api_capture(client, session):
         "skipped": 0,
         "descriptions": 0,
         "vacancy": "",
-        "opportunity_ids": [session.scalar(select(Opportunity.id))],
+        "opportunity_ids": [session.scalar(sa.select(models.Opportunity.id))],
     }
     assert (
-        session.scalar(select(Opportunity.title)) == "Staff Software Engineer (AI Backend Services)"
+        session.scalar(sa.select(models.Opportunity.title))
+        == "Staff Software Engineer (AI Backend Services)"
     )
 
 
@@ -45,13 +51,13 @@ def test_nav_links_to_capture(client):
 
 
 def debug_client(tmp_path, database_url):
-    from fastapi.testclient import TestClient
+    import fastapi.testclient as fastapi_testclient
 
-    from job_radar.config import Settings
-    from job_radar.web.app import create_app
+    import job_radar.config as config
+    import job_radar.web.app as web_app
 
-    settings = Settings(database_url=database_url, capture_debug_dir=tmp_path / "debug")
-    return TestClient(create_app(settings)), tmp_path / "debug"
+    settings = config.Settings(database_url=database_url, capture_debug_dir=tmp_path / "debug")
+    return fastapi_testclient.TestClient(web_app.create_app(settings)), tmp_path / "debug"
 
 
 def test_debug_capture_saves_page_locally(tmp_path, engine, database_url):
@@ -87,4 +93,5 @@ def test_capture_page_offers_debug_bookmarklet(client):
 
 def test_capture_page_shows_the_vacancy_result(client):
     text = client.get("/capture").text
-    assert "s.vacancy" in text  # the vacancy line is rendered from the API answer
+    # the vacancy line is rendered from the API answer
+    assert "s.vacancy" in text

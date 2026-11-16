@@ -1,7 +1,7 @@
 """Builders for Gmail API payloads and a fake client, shaped like users.threads.get(format=full)."""
 
 import base64
-from datetime import datetime
+import datetime as dt
 
 
 def b64(text: str) -> str:
@@ -12,7 +12,7 @@ def message(
     msg_id: str,
     thread_id: str,
     *,
-    sent_at: datetime,
+    sent_at: dt.datetime,
     from_addr: str = "Recruiter <jane@acme.example>",
     to_addr: str = "me@example.com",
     subject: str = "Senior Python Engineer",

@@ -1,16 +1,20 @@
-from datetime import UTC, date, datetime
-from pathlib import Path
+"""Tests for job_radar.hh.digests: parsing hh.ru subscription digests and importing
+their developer vacancies once (docs/hh.md#digests).
+"""
 
-from sqlalchemy import select
+import datetime as dt
+import pathlib
 
-from job_radar.hh.digests import import_hh_digests, parse_digest
-from job_radar.models import EmailDirection, EmailMessage, Opportunity, SourceRecord, SourceType
+import sqlalchemy as sa
 
-DIGEST = (Path(__file__).parent / "fixtures" / "hh" / "digest.html").read_text()
+import job_radar.hh.digests as hh_digests
+import job_radar.models as models
+
+DIGEST = (pathlib.Path(__file__).parent / "fixtures" / "hh" / "digest.html").read_text()
 
 
 def test_parse_digest():
-    items = parse_digest(DIGEST)
+    items = hh_digests.parse_digest(DIGEST)
     assert len(items) == 8
     first = items[0]
     assert first.title == "Computer science IGCSE / International A-Level / SAT / IB"
@@ -23,11 +27,11 @@ def test_parse_digest():
     assert all(not (i.city or "").startswith("м.") for i in items)
 
 
-def add_digest(session, gmail_id: str, at: datetime, event="hh_digest") -> EmailMessage:
-    email = EmailMessage(
+def add_digest(session, gmail_id: str, at: dt.datetime, event="hh_digest") -> models.EmailMessage:
+    email = models.EmailMessage(
         gmail_message_id=gmail_id,
         gmail_thread_id=gmail_id,
-        direction=EmailDirection.IN,
+        direction=models.EmailDirection.IN,
         sent_at=at,
         from_addr='"hh.ru" <noreply@hh.ru>',
         to_addr="user@example.com",
@@ -44,23 +48,26 @@ def fetch(gmail_id):
     return DIGEST, None
 
 
-SINCE = date(2026, 10, 5)
+SINCE = dt.date(2026, 10, 5)
 
 
 def test_import_only_developer_roles_from_new_digests(session):
-    old = add_digest(session, "old", datetime(2026, 10, 3, tzinfo=UTC))
-    new = add_digest(session, "new", datetime(2026, 10, 5, 9, tzinfo=UTC))
-    stats = import_hh_digests(session, fetch, since=SINCE)
+    old = add_digest(session, "old", dt.datetime(2026, 10, 3, tzinfo=dt.UTC))
+    new = add_digest(session, "new", dt.datetime(2026, 10, 5, 9, tzinfo=dt.UTC))
+    stats = hh_digests.import_hh_digests(session, fetch, since=SINCE)
     assert (stats.digests, stats.fetched) == (1, 1)
-    titles = sorted(session.scalars(select(Opportunity.title)))
+    titles = sorted(session.scalars(sa.select(models.Opportunity.title)))
     assert "ML Engineer (Senior)" in titles and "Backend-разработчик (Python/JS)" in titles
     assert not any("IGCSE" in t or "Mathematician" in t or "Автор" in t for t in titles)
     assert stats.vacancies == len(titles) and stats.skipped == 8 - len(titles)
 
     record = session.scalars(
-        select(SourceRecord).where(SourceRecord.external_id == "138030671")
+        sa.select(models.SourceRecord).where(models.SourceRecord.external_id == "138030671")
     ).one()
-    assert record.source_type is SourceType.HH and record.url == "https://hh.ru/vacancy/138030671"
+    assert (
+        record.source_type is models.SourceType.HH
+        and record.url == "https://hh.ru/vacancy/138030671"
+    )
     assert record.opportunity.location == "Remote (Алматы)"
     assert record.opportunity.company.name == "Agile Soft"
     session.refresh(old)
@@ -69,30 +76,32 @@ def test_import_only_developer_roles_from_new_digests(session):
 
 
 def test_import_is_idempotent_and_shares_ids_with_notices(session):
-    add_digest(session, "a", datetime(2026, 10, 5, tzinfo=UTC))
-    add_digest(session, "b", datetime(2026, 10, 6, tzinfo=UTC))  # the same vacancies again
-    import_hh_digests(session, fetch, since=SINCE)
-    count = session.query(Opportunity).count()
-    assert session.query(SourceRecord).count() == count  # one record per vacancy
-    assert import_hh_digests(session, fetch, since=SINCE).digests == 0
+    add_digest(session, "a", dt.datetime(2026, 10, 5, tzinfo=dt.UTC))
+    # the same vacancies again
+    add_digest(session, "b", dt.datetime(2026, 10, 6, tzinfo=dt.UTC))
+    hh_digests.import_hh_digests(session, fetch, since=SINCE)
+    count = session.query(models.Opportunity).count()
+    # one record per vacancy
+    assert session.query(models.SourceRecord).count() == count
+    assert hh_digests.import_hh_digests(session, fetch, since=SINCE).digests == 0
 
 
 def test_without_a_date_or_gmail_nothing_is_imported(session):
-    add_digest(session, "a", datetime(2026, 10, 5, tzinfo=UTC))
-    assert import_hh_digests(session, fetch, since=None).digests == 0
-    stats = import_hh_digests(session, None, since=SINCE)
-    assert stats.pending == 1 and session.query(Opportunity).count() == 0
+    add_digest(session, "a", dt.datetime(2026, 10, 5, tzinfo=dt.UTC))
+    assert hh_digests.import_hh_digests(session, fetch, since=None).digests == 0
+    stats = hh_digests.import_hh_digests(session, None, since=SINCE)
+    assert stats.pending == 1 and session.query(models.Opportunity).count() == 0
 
 
 def test_pipeline_reports_digests(session, tmp_path):
-    from job_radar import pipeline
-    from job_radar.config import Settings
+    import job_radar.config as config
+    import job_radar.pipeline as pipeline
 
     lines: list[str] = []
-    pipeline.import_hh(session, Settings(), lines.append, use_gmail=False)
+    pipeline.import_hh(session, config.Settings(), lines.append, use_gmail=False)
     assert lines[-1].startswith("hh digests: off")
     lines.clear()
-    settings = Settings(hh_digests_since=SINCE)
+    settings = config.Settings(hh_digests_since=SINCE)
     pipeline.import_hh(session, settings, lines.append, use_gmail=False)
     assert lines[-1] == (
         "hh digests: 0 digests, 0 new vacancies, 0 already known, 0 skipped as noise"
@@ -100,15 +109,14 @@ def test_pipeline_reports_digests(session, tmp_path):
 
 
 def test_last_vacancy_does_not_take_the_footer():
-    last = parse_digest(DIGEST)[-1]
+    last = hh_digests.parse_digest(DIGEST)[-1]
     assert "HeadHunter" not in last.company and "2000" not in (last.city or "")
 
 
 def test_noise_titles_are_skipped():
-    from job_radar.hh.digests import wanted
 
-    assert wanted("Ведущий Python разработчик")
-    assert wanted("Senior ML-инженер")
+    assert hh_digests.wanted("Ведущий Python разработчик")
+    assert hh_digests.wanted("Senior ML-инженер")
     noise = [
         "Инженер по информационной безопасности AI",
         "Tech Lead/Senior CV Engineer (офис)",
@@ -116,26 +124,26 @@ def test_noise_titles_are_skipped():
         "Security Engineer",
     ]
     for title in noise:
-        assert not wanted(title), title
+        assert not hh_digests.wanted(title), title
 
 
 def test_digest_deleted_from_gmail_is_marked_and_the_rest_goes_on(session):
-    from job_radar.linkedin.rejections import MessageGone
+    import job_radar.linkedin.rejections as linkedin_rejections
 
     calls = []
 
     def fetch_some(gmail_id):
         calls.append(gmail_id)
         if gmail_id == "d-gone":
-            raise MessageGone(gmail_id)
+            raise linkedin_rejections.MessageGone(gmail_id)
         return fetch(gmail_id)
 
-    gone = add_digest(session, "d-gone", datetime(2026, 10, 6, tzinfo=UTC))
-    add_digest(session, "d-ok", datetime(2026, 10, 7, tzinfo=UTC))
-    stats = import_hh_digests(session, fetch_some, since=SINCE)
+    gone = add_digest(session, "d-gone", dt.datetime(2026, 10, 6, tzinfo=dt.UTC))
+    add_digest(session, "d-ok", dt.datetime(2026, 10, 7, tzinfo=dt.UTC))
+    stats = hh_digests.import_hh_digests(session, fetch_some, since=SINCE)
     assert (stats.gone, stats.digests) == (1, 1)
     session.refresh(gone)
     assert gone.detected_event == "gone"
 
-    import_hh_digests(session, fetch_some, since=SINCE)
+    hh_digests.import_hh_digests(session, fetch_some, since=SINCE)
     assert calls == ["d-gone", "d-ok"]

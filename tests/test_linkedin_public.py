@@ -1,31 +1,23 @@
+"""Tests for job_radar.linkedin.public: the opt-in guest search behind alert emails,
+its limits and stops on blocking (docs/linkedin-public-search.md).
+"""
+
+import datetime as dt
+import pathlib
 import re
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select
+import sqlalchemy as sa
 
-from job_radar.linkedin.alerts import import_alerts
-from job_radar.linkedin.public import (
-    Blocked,
-    PublicSearchClient,
-    Search,
-    import_public_search,
-    parse_search_page,
-    search_from_alert,
-)
-from job_radar.models import (
-    EmailDirection,
-    EmailMessage,
-    LinkedInFetch,
-    Opportunity,
-    SourceRecord,
-    SourceType,
-)
-from job_radar.scoring import score_job
+import job_radar.linkedin.alerts as linkedin_alerts
+import job_radar.linkedin.public as linkedin_public
+import job_radar.models as models
+import job_radar.scoring as scoring
 
-FIXTURE = (Path(__file__).parent / "fixtures" / "linkedin_public" / "search_page.html").read_text()
-NOW = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
+FIXTURE = (
+    pathlib.Path(__file__).parent / "fixtures" / "linkedin_public" / "search_page.html"
+).read_text()
+NOW = dt.datetime(2026, 9, 25, 12, 0, tzinfo=dt.UTC)
 ALERT_LINK = (
     "https://www.linkedin.com/comm/jobs/search-results/?keywords=Python%20Developer%20Remote"
     "&f_TPR=a{ts}-&geoId=100506914&origin=SEMANTIC_SEARCH_JOB_ALERT_EMAIL"
@@ -47,7 +39,7 @@ def test_fixture_has_no_tracking_or_personal_data():
 
 
 def test_parse_search_page():
-    jobs = parse_search_page(FIXTURE)
+    jobs = linkedin_public.parse_search_page(FIXTURE)
     assert len(jobs) == 10
     first = jobs[0]
     assert first.job_id == "4470085725"
@@ -59,9 +51,9 @@ def test_parse_search_page():
 
 
 def test_search_from_alert_takes_only_search_parameters():
-    ts = int((NOW - timedelta(hours=5)).timestamp())
-    search = search_from_alert(alert_html(ts), now=NOW)
-    assert search == Search(
+    ts = int((NOW - dt.timedelta(hours=5)).timestamp())
+    search = linkedin_public.search_from_alert(alert_html(ts), now=NOW)
+    assert search == linkedin_public.Search(
         keywords="Python Developer Remote", geo_id="100506914", time_range="r18000"
     )
     url = search.url(start=10)
@@ -72,12 +64,12 @@ def test_search_from_alert_takes_only_search_parameters():
 
 @pytest.mark.parametrize(("hours", "expected"), [(0.1, "r3600"), (24 * 30, "r604800")])
 def test_time_range_is_clamped(hours, expected):
-    ts = int((NOW - timedelta(hours=hours)).timestamp())
-    assert search_from_alert(alert_html(ts), now=NOW).time_range == expected
+    ts = int((NOW - dt.timedelta(hours=hours)).timestamp())
+    assert linkedin_public.search_from_alert(alert_html(ts), now=NOW).time_range == expected
 
 
 def test_alert_without_search_link():
-    assert search_from_alert("<p>no links</p>", now=NOW) is None
+    assert linkedin_public.search_from_alert("<p>no links</p>", now=NOW) is None
 
 
 class FakeHttp:
@@ -99,7 +91,7 @@ def page_with_ids(offset: int) -> str:
 
 
 def client(pages, sleeps=None):
-    return PublicSearchClient(
+    return linkedin_public.PublicSearchClient(
         http_get=FakeHttp(pages),
         sleep=(sleeps.append if sleeps is not None else lambda _: None),
         pause=(3, 3),
@@ -116,15 +108,15 @@ def client(pages, sleeps=None):
     ],
 )
 def test_client_detects_blocking(response):
-    with pytest.raises(Blocked):
-        client({0: response}).fetch(Search("k", "1", "r3600"), start=0)
+    with pytest.raises(linkedin_public.Blocked):
+        client({0: response}).fetch(linkedin_public.Search("k", "1", "r3600"), start=0)
 
 
 def test_client_pauses_between_requests():
     sleeps = []
     c = client({0: (200, "u", FIXTURE), 10: (200, "u", FIXTURE)}, sleeps)
-    c.fetch(Search("k", "1", "r3600"), start=0)
-    c.fetch(Search("k", "1", "r3600"), start=10)
+    c.fetch(linkedin_public.Search("k", "1", "r3600"), start=0)
+    c.fetch(linkedin_public.Search("k", "1", "r3600"), start=10)
     assert sleeps == [3]
 
 
@@ -135,22 +127,22 @@ def test_pause_is_random_within_the_range():
         ranges.append((low, high))
         return 17.5
 
-    c = PublicSearchClient(
+    c = linkedin_public.PublicSearchClient(
         http_get=FakeHttp({0: (200, "u", FIXTURE), 10: (200, "u", FIXTURE)}),
         sleep=sleeps.append,
         pause=(10, 40),
         rand=rand,
     )
-    c.fetch(Search("k", "1", "r3600"), start=0)
-    c.fetch(Search("k", "1", "r3600"), start=10)
+    c.fetch(linkedin_public.Search("k", "1", "r3600"), start=0)
+    c.fetch(linkedin_public.Search("k", "1", "r3600"), start=10)
     assert (ranges, sleeps) == ([(10, 40)], [17.5])
 
 
 def add_alert(session, msg_id, sent_at, html):
-    email = EmailMessage(
+    email = models.EmailMessage(
         gmail_message_id=msg_id,
         gmail_thread_id=msg_id,
-        direction=EmailDirection.IN,
+        direction=models.EmailDirection.IN,
         sent_at=sent_at,
         from_addr="LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>",
         to_addr="user@example.com",
@@ -167,60 +159,76 @@ PAGES = {0: (200, "u", FIXTURE), 10: (200, "u", page_with_ids(1)), 20: (200, "u"
 
 
 def count(session, model) -> int:
-    return session.scalar(select(func.count()).select_from(model))
+    return session.scalar(sa.select(sa.func.count()).select_from(model))
 
 
 def test_import_takes_first_25_once_per_alert(session):
     add_alert(
         session,
         "a1",
-        NOW - timedelta(hours=2),
-        alert_html(int((NOW - timedelta(hours=26)).timestamp())),
+        NOW - dt.timedelta(hours=2),
+        alert_html(int((NOW - dt.timedelta(hours=26)).timestamp())),
     )
     c = client(dict(PAGES))
-    stats = import_public_search(session, c, now=NOW, max_searches=5, max_jobs=25)
+    stats = linkedin_public.import_public_search(session, c, now=NOW, max_searches=5, max_jobs=25)
     assert (stats.searches, stats.requests, stats.new) == (1, 3, 25)
-    assert count(session, Opportunity) == 25
-    assert import_public_search(session, c, now=NOW, max_searches=5, max_jobs=25).searches == 0
-    assert count(session, LinkedInFetch) == 3
+    assert count(session, models.Opportunity) == 25
+    assert (
+        linkedin_public.import_public_search(
+            session, c, now=NOW, max_searches=5, max_jobs=25
+        ).searches
+        == 0
+    )
+    assert count(session, models.LinkedInFetch) == 3
 
 
 def test_search_jobs_have_no_remote_penalty_and_unknown_easy_apply(session):
-    add_alert(session, "a1", NOW - timedelta(hours=2), alert_html(int(NOW.timestamp()) - 7200))
-    import_public_search(session, client(dict(PAGES)), now=NOW, max_searches=5, max_jobs=25)
-    o = session.scalar(select(Opportunity).where(Opportunity.title.like("Food Traceability%")))
+    add_alert(session, "a1", NOW - dt.timedelta(hours=2), alert_html(int(NOW.timestamp()) - 7200))
+    linkedin_public.import_public_search(
+        session, client(dict(PAGES)), now=NOW, max_searches=5, max_jobs=25
+    )
+    o = session.scalar(
+        sa.select(models.Opportunity).where(models.Opportunity.title.like("Food Traceability%"))
+    )
     assert o.easy_apply is None
     assert all(r["text"] != "No remote marker in location" for r in o.score_reasons)
 
 
 def test_job_seen_in_alert_and_search_is_one_opportunity(session):
-    add_alert(session, "a1", NOW - timedelta(hours=2), alert_html(int(NOW.timestamp()) - 7200))
-    import_alerts(session)
-    import_public_search(session, client(dict(PAGES)), now=NOW, max_searches=5, max_jobs=25)
+    add_alert(session, "a1", NOW - dt.timedelta(hours=2), alert_html(int(NOW.timestamp()) - 7200))
+    linkedin_alerts.import_alerts(session)
+    linkedin_public.import_public_search(
+        session, client(dict(PAGES)), now=NOW, max_searches=5, max_jobs=25
+    )
     records = session.scalars(
-        select(SourceRecord).where(SourceRecord.external_id == "4470085725")
+        sa.select(models.SourceRecord).where(models.SourceRecord.external_id == "4470085725")
     ).all()
-    assert [r.source_type for r in records] == [SourceType.LINKEDIN_ALERT]
-    assert count(session, Opportunity) == 25
+    assert [r.source_type for r in records] == [models.SourceType.LINKEDIN_ALERT]
+    assert count(session, models.Opportunity) == 25
 
 
 def test_daily_search_limit(session):
     for i in range(3):
         add_alert(
-            session, f"a{i}", NOW - timedelta(hours=i + 1), alert_html(int(NOW.timestamp()) - 7200)
+            session,
+            f"a{i}",
+            NOW - dt.timedelta(hours=i + 1),
+            alert_html(int(NOW.timestamp()) - 7200),
         )
-    stats = import_public_search(session, client(dict(PAGES)), now=NOW, max_searches=2, max_jobs=25)
+    stats = linkedin_public.import_public_search(
+        session, client(dict(PAGES)), now=NOW, max_searches=2, max_jobs=25
+    )
     assert stats.searches == 2
-    later = import_public_search(
-        session, client(dict(PAGES)), now=NOW + timedelta(hours=1), max_searches=2, max_jobs=25
+    later = linkedin_public.import_public_search(
+        session, client(dict(PAGES)), now=NOW + dt.timedelta(hours=1), max_searches=2, max_jobs=25
     )
     assert later.searches == 0
 
 
 def test_old_alerts_are_not_searched(session):
-    add_alert(session, "old", NOW - timedelta(days=4), alert_html(int(NOW.timestamp()) - 7200))
+    add_alert(session, "old", NOW - dt.timedelta(days=4), alert_html(int(NOW.timestamp()) - 7200))
     assert (
-        import_public_search(
+        linkedin_public.import_public_search(
             session, client(dict(PAGES)), now=NOW, max_searches=5, max_jobs=25
         ).searches
         == 0
@@ -228,26 +236,26 @@ def test_old_alerts_are_not_searched(session):
 
 
 def test_blocked_stops_until_next_day(session):
-    add_alert(session, "a1", NOW - timedelta(hours=1), alert_html(int(NOW.timestamp()) - 7200))
-    add_alert(session, "a2", NOW - timedelta(hours=2), alert_html(int(NOW.timestamp()) - 7200))
-    stats = import_public_search(
+    add_alert(session, "a1", NOW - dt.timedelta(hours=1), alert_html(int(NOW.timestamp()) - 7200))
+    add_alert(session, "a2", NOW - dt.timedelta(hours=2), alert_html(int(NOW.timestamp()) - 7200))
+    stats = linkedin_public.import_public_search(
         session, client({0: (429, "u", "")}), now=NOW, max_searches=5, max_jobs=25
     )
     assert stats.blocked and stats.requests == 1
-    assert session.scalar(select(LinkedInFetch.status)) == "blocked"
-    again = import_public_search(
-        session, client(dict(PAGES)), now=NOW + timedelta(hours=2), max_searches=5, max_jobs=25
+    assert session.scalar(sa.select(models.LinkedInFetch.status)) == "blocked"
+    again = linkedin_public.import_public_search(
+        session, client(dict(PAGES)), now=NOW + dt.timedelta(hours=2), max_searches=5, max_jobs=25
     )
     assert again.blocked and again.requests == 0
-    tomorrow = import_public_search(
-        session, client(dict(PAGES)), now=NOW + timedelta(days=1), max_searches=5, max_jobs=25
+    tomorrow = linkedin_public.import_public_search(
+        session, client(dict(PAGES)), now=NOW + dt.timedelta(days=1), max_searches=5, max_jobs=25
     )
     assert tomorrow.requests > 0
 
 
 def test_score_without_known_work_format(thailand):
-    known = score_job("Python Developer", "Porto, Portugal")
-    unknown = score_job("Python Developer", "Porto, Portugal", remote_known=False)
+    known = scoring.score_job("Python Developer", "Porto, Portugal")
+    unknown = scoring.score_job("Python Developer", "Porto, Portugal", remote_known=False)
     assert "No remote marker in location" in [r.text for r in known.reasons]
     texts = [r.text for r in unknown.reasons]
     assert "No remote marker in location" not in texts

@@ -1,18 +1,21 @@
+"""Tests for job_radar.claude: the prompt, the analysis queue and its workers, quote
+checks and the chat, with a fake Claude runner (docs/claude.md).
+"""
+
+import datetime as dt
 import json
 import stat
 import sys
 import threading
 import time
-from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from job_radar.claude import analysis as claude
-from job_radar.claude.analysis import ClaudeSettings
-from job_radar.claude.prompt import FACTS, SCHEMA, analysis_prompt
-from job_radar.claude.runner import ClaudeCli, ClaudeError, Reply
-from job_radar.models import ClaudeAnalysis
-from job_radar.stack import Profile
+import job_radar.claude.analysis as claude_analysis
+import job_radar.claude.prompt as claude_prompt
+import job_radar.claude.runner as claude_runner
+import job_radar.models as models
+import job_radar.stack as jr_stack
 
 DESCRIPTION = (
     "We are a fintech startup.\nRequirements:\n- 5+ years of Python and FastAPI.\n"
@@ -44,6 +47,8 @@ RESULT = {
 
 
 class FakeRunner:
+    """A Claude runner that returns the given replies in order and records prompts."""
+
     def __init__(self, replies):
         self.replies = list(replies)
         self.calls = []
@@ -58,28 +63,37 @@ class FakeRunner:
 
 
 def vacancy(session, title="Senior Python Engineer", text=DESCRIPTION):
-    from test_ai_analysis import add_vacancy
+    import test_ai_analysis
 
-    return add_vacancy(session, title=title, text=text)
+    return test_ai_analysis.add_vacancy(session, title=title, text=text)
 
 
 def worker(session, runner, tmp_path, cv=True):
-    from sqlalchemy.orm import sessionmaker
+    import sqlalchemy.orm as sa_orm
 
     cv_path = tmp_path / "cv.md"
     if cv:
         cv_path.write_text("# Alex\nSenior Python developer, FastAPI, Django.")
-    factory = sessionmaker(bind=session.get_bind(), expire_on_commit=False)
-    return claude.Worker(factory, runner, profile_path=tmp_path / "profile.yaml", cv_path=cv_path)
+    factory = sa_orm.sessionmaker(bind=session.get_bind(), expire_on_commit=False)
+    return claude_analysis.Worker(
+        factory, runner, profile_path=tmp_path / "profile.yaml", cv_path=cv_path
+    )
 
 
 def test_prompt_has_facts_profile_cv_and_vacancy():
-    profile = Profile(known=["Python"], learnable=["RabbitMQ"], blockers=["TensorFlow"],
+    profile = jr_stack.Profile(known=["Python"], learnable=["RabbitMQ"], blockers=["TensorFlow"],
                       rules=["Only full remote."])  # fmt: skip
-    text = analysis_prompt(cv="CV TEXT", profile=profile, title="Python Dev", company="Acme",
-                           location=None, salary=None, description=DESCRIPTION)  # fmt: skip
+    text = claude_prompt.analysis_prompt(
+        cv="CV TEXT",
+        profile=profile,
+        title="Python Dev",
+        company="Acme",
+        location=None,
+        salary=None,
+        description=DESCRIPTION,
+    )
     for part in [
-        *FACTS,
+        *claude_prompt.FACTS,
         "Only full remote.",
         "RabbitMQ",
         "TensorFlow",
@@ -89,103 +103,117 @@ def test_prompt_has_facts_profile_cv_and_vacancy():
     ]:
         assert part in text
     assert "Location: unknown" in text
-    assert "will not relocate" not in text and "fully remote?" in text  # no home in the profile
+    # no home in the profile
+    assert "will not relocate" not in text and "fully remote?" in text
 
 
 def test_prompt_and_quick_prompts_take_home_from_the_profile():
-    from job_radar.claude.prompt import quick_prompts
 
-    profile = Profile(home="Thailand")
-    text = analysis_prompt(cv=None, profile=profile, title="Python Dev", company="Acme",
-                           location=None, salary=None, description=DESCRIPTION)  # fmt: skip
+    profile = jr_stack.Profile(home="Thailand")
+    text = claude_prompt.analysis_prompt(
+        cv=None,
+        profile=profile,
+        title="Python Dev",
+        company="Acme",
+        location=None,
+        salary=None,
+        description=DESCRIPTION,
+    )
     assert "I live in Thailand and will not relocate." in text
     assert "fully remote from Thailand?" in text
-    prompts = dict(quick_prompts(profile))
+    prompts = dict(claude_prompt.quick_prompts(profile))
     assert "fully remote from Thailand" in prompts["Cover letter (EN)"]
     assert "(живу: Thailand)" in prompts["Сопроводительное (RU)"]
-    assert "Thailand" not in " ".join(dict(quick_prompts(None)).values())
+    assert "Thailand" not in " ".join(dict(claude_prompt.quick_prompts(None)).values())
 
 
 def test_enqueue_skips_pending_and_unknown(session):
     o = vacancy(session)
-    assert claude.enqueue(session, [o.id, o.id, 999]) == 1
-    assert claude.enqueue(session, [o.id]) == 0  # already queued
-    status = claude.status(session)
+    assert claude_analysis.enqueue(session, [o.id, o.id, 999]) == 1
+    # already queued
+    assert claude_analysis.enqueue(session, [o.id]) == 0
+    status = claude_analysis.status(session)
     assert (status.queued, status.running, status.pending) == (1, 0, 1)
 
 
 def test_worker_runs_one_and_checks_quotes(session, tmp_path):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
-    runner = FakeRunner([Reply("{}", dict(RESULT), "sess-1", 0.05)])
+    claude_analysis.enqueue(session, [o.id])
+    runner = FakeRunner([claude_runner.Reply("{}", dict(RESULT), "sess-1", 0.05)])
     assert worker(session, runner, tmp_path).run_once() is True
     session.expire_all()
-    job = claude.latest(session, o.id)
+    job = claude_analysis.latest(session, o.id)
     assert job.state == "done" and job.session_id == "sess-1" and job.cost_usd == 0.05
     assert job.result["location"]["quote_ok"] is True
     assert job.result["gaps"][0]["quote_ok"] is True
-    assert job.result["red_flags"][0]["quote_ok"] is False  # not in the description
+    # not in the description
+    assert job.result["red_flags"][0]["quote_ok"] is False
     call = runner.calls[0]
-    assert call["schema"] == SCHEMA and call["model"] == "sonnet" and call["session_id"]
-    assert call["web"] is False  # an analysis never goes online (#213)
-    assert "Senior Python developer, FastAPI" in call["prompt"]  # the CV
+    assert (
+        call["schema"] == claude_prompt.SCHEMA and call["model"] == "sonnet" and call["session_id"]
+    )
+    # an analysis never goes online (#213)
+    assert call["web"] is False
+    # the CV
+    assert "Senior Python developer, FastAPI" in call["prompt"]
     assert "Russian" in call["system"]
-    assert claude.status(session).recent == [o.id]
+    assert claude_analysis.status(session).recent == [o.id]
     # Nothing left to run.
     assert worker(session, FakeRunner([]), tmp_path).run_once() is False
 
 
 def test_worker_failure_is_stored(session, tmp_path):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
-    worker(session, FakeRunner([ClaudeError("not logged in")]), tmp_path).run_once()
+    claude_analysis.enqueue(session, [o.id])
+    worker(session, FakeRunner([claude_runner.ClaudeError("not logged in")]), tmp_path).run_once()
     session.expire_all()
-    job = claude.latest(session, o.id)
+    job = claude_analysis.latest(session, o.id)
     assert job.state == "failed" and job.error == "not logged in"
     # A failed one can be queued again.
-    assert claude.enqueue(session, [o.id]) == 1
+    assert claude_analysis.enqueue(session, [o.id]) == 1
 
 
 def test_vacancy_without_description_is_never_sent_to_claude(session, tmp_path):
     o = vacancy(session, text=None)
-    assert claude.enqueue(session, [o.id]) == 0
+    assert claude_analysis.enqueue(session, [o.id]) == 0
     runner = FakeRunner([])
     assert worker(session, runner, tmp_path).run_once() is False
     assert runner.calls == []
 
 
 def test_daily_cap_keeps_the_rest_queued(session, tmp_path):
-    claude.save_claude_settings(session, claude.ClaudeSettings(daily_cap=1))
+    claude_analysis.save_claude_settings(session, claude_analysis.ClaudeSettings(daily_cap=1))
     a, b = vacancy(session, title="A"), vacancy(session, title="B")
-    claude.enqueue(session, [a.id, b.id])
-    w = worker(session, FakeRunner([Reply("{}", dict(RESULT), "s", None)]), tmp_path)
+    claude_analysis.enqueue(session, [a.id, b.id])
+    w = worker(session, FakeRunner([claude_runner.Reply("{}", dict(RESULT), "s", None)]), tmp_path)
     assert w.run_once() is True
     assert w.run_once() is False
-    status = claude.status(session)
+    status = claude_analysis.status(session)
     assert status.queued == 1 and status.capped
     # Tomorrow it runs.
-    tomorrow = datetime.now(UTC) + timedelta(days=1)
-    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s2", None)])
+    tomorrow = dt.datetime.now(dt.UTC) + dt.timedelta(days=1)
+    w.runner = FakeRunner([claude_runner.Reply("{}", dict(RESULT), "s2", None)])
     assert w.run_once(now=tomorrow) is True
 
 
 def test_restart_requeues_running_with_a_new_session(session, tmp_path):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
-    job = claude.latest(session, o.id)
+    claude_analysis.enqueue(session, [o.id])
+    job = claude_analysis.latest(session, o.id)
     job.state, job.session_id = "running", "old"
     session.commit()
     w = worker(session, FakeRunner([]), tmp_path)
     w.idle_wait = 0.01
     w.start()
 
-    def settled():  # a pool thread may already have picked it up again
+    # a pool thread may already have picked it up again
+    def settled():
         session.expire_all()
-        return session.get(ClaudeAnalysis, job.id).state in ("queued", "failed")
+        return session.get(models.ClaudeAnalysis, job.id).state in ("queued", "failed")
 
     assert wait_until(settled)
     w.stop()
-    assert session.get(ClaudeAnalysis, job.id).session_id != "old"
+    assert session.get(models.ClaudeAnalysis, job.id).session_id != "old"
 
 
 @pytest.fixture
@@ -209,10 +237,10 @@ print(json.dumps({{"type": "result", "is_error": False, "result": "ok", "session
 def test_cli_runner_uses_print_mode_without_tools_or_api_key(fake_claude, tmp_path):
     script, log = fake_claude
     workdir = tmp_path / "work"
-    reply = ClaudeCli(str(script), workdir).run(
+    reply = claude_runner.ClaudeCli(str(script), workdir).run(
         "the prompt", system="SYS", model="sonnet", schema={"type": "object"}, session_id="abc"
     )
-    assert reply == Reply("ok", {"verdict": "apply"}, "s-9", 0.01)
+    assert reply == claude_runner.Reply("ok", {"verdict": "apply"}, "s-9", 0.01)
     call = json.loads(log.read_text())
     argv = call["argv"]
     assert argv[:3] == ["-p", "--output-format", "json"]
@@ -221,12 +249,15 @@ def test_cli_runner_uses_print_mode_without_tools_or_api_key(fake_claude, tmp_pa
     assert argv[argv.index("--session-id") + 1] == "abc"
     assert json.loads(argv[argv.index("--json-schema") + 1]) == {"type": "object"}
     assert call["prompt"] == "the prompt" and call["cwd"] == str(workdir)
-    assert call["key"] is None  # never paid API billing
+    # never paid API billing
+    assert call["key"] is None
 
 
 def test_cli_runner_web_allows_search_but_not_linkedin_or_hh(fake_claude, tmp_path):
     script, log = fake_claude
-    ClaudeCli(str(script), tmp_path).run("q", system="s", model="sonnet", resume="r", web=True)
+    claude_runner.ClaudeCli(str(script), tmp_path).run(
+        "q", system="s", model="sonnet", resume="r", web=True
+    )
     argv = json.loads(log.read_text())["argv"]
     assert argv[argv.index("--tools") + 1] == "WebSearch,WebFetch"
     assert argv[argv.index("--allowedTools") + 1] == "WebSearch,WebFetch"
@@ -237,16 +268,18 @@ def test_cli_runner_web_allows_search_but_not_linkedin_or_hh(fake_claude, tmp_pa
 
 def test_chat_without_internet_when_switched_off(session, tmp_path):
     o = analyzed(session, tmp_path)
-    claude.save_claude_settings(session, ClaudeSettings(chat_web=False))
-    claude.ask(session, o.id, "Что за компания?")
-    runner = FakeRunner([Reply("Не знаю.", None, "sess-1", None)])
+    claude_analysis.save_claude_settings(session, claude_analysis.ClaudeSettings(chat_web=False))
+    claude_analysis.ask(session, o.id, "Что за компания?")
+    runner = FakeRunner([claude_runner.Reply("Не знаю.", None, "sess-1", None)])
     worker(session, runner, tmp_path).run_once()
     assert runner.calls[0]["web"] is False
 
 
 def test_cli_runner_reports_missing_command(tmp_path):
-    with pytest.raises(ClaudeError, match="not found"):
-        ClaudeCli(str(tmp_path / "nope"), tmp_path).run("x", system="s", model="sonnet")
+    with pytest.raises(claude_runner.ClaudeError, match="not found"):
+        claude_runner.ClaudeCli(str(tmp_path / "nope"), tmp_path).run(
+            "x", system="s", model="sonnet"
+        )
 
 
 def test_queue_button_and_row_badges(client, session):
@@ -257,7 +290,9 @@ def test_queue_button_and_row_badges(client, session):
     assert "1 queued" in status and 'hx-trigger="every 3s"' in status
     assert "Claude: queued" in client.get(f"/opportunities/{o.id}/row").text
 
-    client.app.state.claude_worker.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
+    client.app.state.claude_worker.runner = FakeRunner(
+        [claude_runner.Reply("{}", dict(RESULT), "s", None)]
+    )
     client.app.state.claude_worker.run_once()
     row = client.get(f"/opportunities/{o.id}/row").text
     assert "Claude: maybe · 70%" in row and 'data-claude="done"' in row
@@ -271,57 +306,65 @@ def test_claude_settings(client, session):
     client.post("/settings/claude", data={"model": "opus", "daily_cap": "5", "language": "English"})
     # An unchecked box is not sent: the chat goes offline (#213), and new descriptions are no
     # longer queued by themselves (#264).
-    off = claude.ClaudeSettings("opus", 5, "English", chat_web=False, auto_analyze=False)
-    assert claude.load_claude_settings(session) == off
+    off = claude_analysis.ClaudeSettings("opus", 5, "English", chat_web=False, auto_analyze=False)
+    assert claude_analysis.load_claude_settings(session) == off
     client.post("/settings/claude", data={"model": "opus", "chat_web": "on"})
-    assert claude.load_claude_settings(session).chat_web is True
+    assert claude_analysis.load_claude_settings(session).chat_web is True
     assert 'name="chat_web" checked' in client.get("/settings").text
     assert client.post("/settings/claude", data={"model": "gpt"}).status_code == 422
 
 
 def analyzed(session, tmp_path):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
-    worker(session, FakeRunner([Reply("{}", dict(RESULT), "sess-1", None)]), tmp_path).run_once()
+    claude_analysis.enqueue(session, [o.id])
+    worker(
+        session, FakeRunner([claude_runner.Reply("{}", dict(RESULT), "sess-1", None)]), tmp_path
+    ).run_once()
     session.expire_all()
     return o
 
 
 def test_chat_needs_a_finished_analysis(session):
     o = vacancy(session)
-    assert claude.ask(session, o.id, "Hi?") is None
+    assert claude_analysis.ask(session, o.id, "Hi?") is None
 
 
 def test_chat_continues_the_analysis_session_and_goes_first(session, tmp_path):
     o = analyzed(session, tmp_path)
     other = vacancy(session, title="Other")
-    claude.enqueue(session, [other.id])  # an analysis waits in the queue
-    claude.ask(session, o.id, "Как ответить про TensorFlow?")
-    assert claude.chat_pending(session, o.id)
+    # an analysis waits in the queue
+    claude_analysis.enqueue(session, [other.id])
+    claude_analysis.ask(session, o.id, "Как ответить про TensorFlow?")
+    assert claude_analysis.chat_pending(session, o.id)
 
-    runner = FakeRunner([Reply("Честно скажите, что опыта нет.", None, "sess-1", None)])
+    runner = FakeRunner(
+        [claude_runner.Reply("Честно скажите, что опыта нет.", None, "sess-1", None)]
+    )
     worker(session, runner, tmp_path).run_once()
     call = runner.calls[0]
     assert call["resume"] == "sess-1" and call["schema"] is None
-    assert call["web"] is True  # the chat may search the web (#213)
-    assert "LinkedIn" in call["system"]  # and is told what it may not open
+    # the chat may search the web (#213)
+    assert call["web"] is True
+    # and is told what it may not open
+    assert "LinkedIn" in call["system"]
     assert call["prompt"] == "Как ответить про TensorFlow?"
     assert "Answer in Russian" in call["system"]
     session.expire_all()
-    roles = [(m.role, m.state, m.text) for m in claude.messages(session, o.id)]
+    roles = [(m.role, m.state, m.text) for m in claude_analysis.messages(session, o.id)]
     assert roles == [
         ("user", "done", "Как ответить про TensorFlow?"),
         ("assistant", "done", "Честно скажите, что опыта нет."),
     ]
-    assert claude.latest(session, other.id).state == "queued"  # the analysis waited
+    # the analysis waited
+    assert claude_analysis.latest(session, other.id).state == "queued"
 
 
 def test_chat_failure_is_shown(session, tmp_path):
     o = analyzed(session, tmp_path)
-    claude.ask(session, o.id, "Q?")
-    worker(session, FakeRunner([ClaudeError("rate limited")]), tmp_path).run_once()
+    claude_analysis.ask(session, o.id, "Q?")
+    worker(session, FakeRunner([claude_runner.ClaudeError("rate limited")]), tmp_path).run_once()
     session.expire_all()
-    [m] = claude.messages(session, o.id)
+    [m] = claude_analysis.messages(session, o.id)
     assert m.state == "failed" and m.error == "rate limited"
 
 
@@ -330,12 +373,13 @@ def test_vacancy_page_and_chat(client, session):
     page = client.get(f"/opportunities/{o.id}").text
     assert "Senior Python Engineer" in page and "Professional TensorFlow" in page
     assert "Analyze with Claude" in page and "Ask Claude" not in page
-    assert f'href="/opportunities/{o.id}"' in client.get("/").text  # page link in the queue
+    # page link in the queue
+    assert f'href="/opportunities/{o.id}"' in client.get("/").text
 
     section = client.post(f"/opportunities/{o.id}/claude").text
     assert "Claude: queued" in section and 'hx-trigger="every 3s"' in section
     w = client.app.state.claude_worker
-    w.runner = FakeRunner([Reply("{}", dict(RESULT), "sess-1", None)])
+    w.runner = FakeRunner([claude_runner.Reply("{}", dict(RESULT), "sess-1", None)])
     w.run_once()
     section = client.get(f"/opportunities/{o.id}/claude").text
     assert "Claude: maybe · 70%" in section and "Ask Claude" in section
@@ -343,7 +387,7 @@ def test_vacancy_page_and_chat(client, session):
 
     asked = client.post(f"/opportunities/{o.id}/chat", data={"text": "Что спросить?"}).text
     assert "thinking…" in asked and "every 3s" in asked
-    w.runner = FakeRunner([Reply("Спросите про контракт.", None, "sess-1", None)])
+    w.runner = FakeRunner([claude_runner.Reply("Спросите про контракт.", None, "sess-1", None)])
     w.run_once()
     page = client.get(f"/opportunities/{o.id}").text
     assert "Что спросить?" in page and "Спросите про контракт." in page
@@ -355,39 +399,39 @@ def test_unknown_vacancy_page(client):
 
 
 def test_chat_markup_is_safe():
-    from job_radar.web.app import chat_markup
+    import job_radar.web.app as web_app
 
-    html = str(chat_markup("**Да** <script>x</script>\n> Speak fluent Dutch"))
+    html = str(web_app.chat_markup("**Да** <script>x</script>\n> Speak fluent Dutch"))
     assert "<b>Да</b>" in html and "&lt;script&gt;" in html
     assert '<span class="quote">Speak fluent Dutch</span>' in html
 
 
 def test_chat_links_are_clickable():
     # #241: links in answers had to be copied by hand.
-    from job_radar.web.app import chat_markup
+    import job_radar.web.app as web_app
 
     a = '<a href="{0}" target="_blank" rel="noopener noreferrer">{1}</a>'
     url = "https://job-boards.greenhouse.io/planetscale/jobs/4251150009"
-    html = str(chat_markup(f"- **Direct link:** {url}."))
+    html = str(web_app.chat_markup(f"- **Direct link:** {url}."))
     assert a.format(url, url) + "." in html
-    html = str(chat_markup(f"- [PlanetScale Greenhouse posting]({url})"))
+    html = str(web_app.chat_markup(f"- [PlanetScale Greenhouse posting]({url})"))
     assert a.format(url, "PlanetScale Greenhouse posting") in html
-    html = str(chat_markup("(see https://example.com/a?x=1&y=2)"))
+    html = str(web_app.chat_markup("(see https://example.com/a?x=1&y=2)"))
     assert (
         a.format("https://example.com/a?x=1&amp;y=2", "https://example.com/a?x=1&amp;y=2") + ")"
         in html
     )
-    html = str(chat_markup('[x](javascript:alert(1)) https://e.com/"onmouseover=x'))
+    html = str(web_app.chat_markup('[x](javascript:alert(1)) https://e.com/"onmouseover=x'))
     assert "javascript:" not in html.replace("[x](javascript:alert(1))", "")
     assert 'href="javascript' not in html and '"onmouseover' not in html
 
 
 def test_description_links_are_clickable_and_python_still_marked():
     # #243: the way to apply is often a link in the description.
-    from job_radar.description import highlight_python
+    import job_radar.description as description
 
     url = "https://jobs.lever.co/python-co/1"
-    html = str(highlight_python(f"Python role. Apply: {url}. <b>"))
+    html = str(description.highlight_python(f"Python role. Apply: {url}. <b>"))
     assert "<mark>Python</mark> role" in html
     assert f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>.' in html
     assert "&lt;b&gt;" in html
@@ -395,18 +439,18 @@ def test_description_links_are_clickable_and_python_still_marked():
 
 def test_transient_errors_are_retried(session, tmp_path):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
+    claude_analysis.enqueue(session, [o.id])
     runner = FakeRunner(
         [
-            ClaudeError("error_max_structured_output_retries", transient=True),
-            Reply("{}", dict(RESULT), "s", None),
+            claude_runner.ClaudeError("error_max_structured_output_retries", transient=True),
+            claude_runner.Reply("{}", dict(RESULT), "s", None),
         ]
     )
     w = worker(session, runner, tmp_path)
     w.retry_waits = (0, 0)
     w.run_once()
     session.expire_all()
-    job = claude.latest(session, o.id)
+    job = claude_analysis.latest(session, o.id)
     assert job.state == "done" and job.attempts == 2
     # Each attempt gets its own session id.
     assert runner.calls[0]["session_id"] != runner.calls[1]["session_id"]
@@ -414,27 +458,26 @@ def test_transient_errors_are_retried(session, tmp_path):
 
 def test_retries_stop_after_three_attempts(session, tmp_path):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
-    flaky = [ClaudeError("overloaded", transient=True)] * 3
+    claude_analysis.enqueue(session, [o.id])
+    flaky = [claude_runner.ClaudeError("overloaded", transient=True)] * 3
     w = worker(session, FakeRunner(flaky), tmp_path)
     w.retry_waits = (0, 0)
     w.run_once()
     session.expire_all()
-    job = claude.latest(session, o.id)
+    job = claude_analysis.latest(session, o.id)
     assert job.state == "failed" and job.attempts == 3 and job.error == "overloaded"
 
 
 def test_final_errors_are_not_retried(session, tmp_path):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
-    runner = FakeRunner([ClaudeError("Not logged in")])
+    claude_analysis.enqueue(session, [o.id])
+    runner = FakeRunner([claude_runner.ClaudeError("Not logged in")])
     worker(session, runner, tmp_path).run_once()
     session.expire_all()
-    assert claude.latest(session, o.id).attempts == 1 and len(runner.calls) == 1
+    assert claude_analysis.latest(session, o.id).attempts == 1 and len(runner.calls) == 1
 
 
 def test_transient_classification():
-    from job_radar.claude.runner import is_transient
 
     transient = [
         "error_max_structured_output_retries",
@@ -444,15 +487,15 @@ def test_transient_classification():
         "no answer in 600 s",
     ]
     for text in transient:
-        assert is_transient(text), text
+        assert claude_runner.is_transient(text), text
     for text in ("Not logged in · Please run /login", "`claude` not found"):
-        assert not is_transient(text), text
+        assert not claude_runner.is_transient(text), text
 
 
 def test_failed_row_has_a_retry_button(client, session):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
-    client.app.state.claude_worker.runner = FakeRunner([ClaudeError("Not logged in")])
+    claude_analysis.enqueue(session, [o.id])
+    client.app.state.claude_worker.runner = FakeRunner([claude_runner.ClaudeError("Not logged in")])
     client.app.state.claude_worker.run_once()
     panel = client.get(f"/opportunities/{o.id}/panel").text
     assert "Claude failed" in panel and "1 attempt" in panel
@@ -461,9 +504,9 @@ def test_failed_row_has_a_retry_button(client, session):
 
 def test_row_links_to_the_chat(client, session):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
+    claude_analysis.enqueue(session, [o.id])
     w = client.app.state.claude_worker
-    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
+    w.runner = FakeRunner([claude_runner.Reply("{}", dict(RESULT), "s", None)])
     w.run_once()
     # The chat lives right in the panel and on the vacancy page.
     assert 'id="chat"' in client.get(f"/opportunities/{o.id}/panel").text
@@ -476,31 +519,32 @@ def test_card_button_and_select_toggle(client, session):
     assert f'hx-post="/opportunities/{o.id}/claude"' in panel and ">Analyze with Claude<" in panel
     # The panel button queues this one vacancy.
     client.post(f"/opportunities/{o.id}/claude")
-    assert claude.latest(session, o.id).state == "queued"
+    assert claude_analysis.latest(session, o.id).state == "queued"
     row = client.get(f"/opportunities/{o.id}/row").text
     assert "Claude: queued" in row
 
 
 def test_worker_can_be_switched_off(engine, database_url, tmp_path):
-    from fastapi.testclient import TestClient
+    import fastapi.testclient as fastapi_testclient
 
-    from job_radar.config import Settings
-    from job_radar.web.app import create_app
+    import job_radar.config as config
+    import job_radar.web.app as web_app
 
-    settings = Settings(database_url=database_url, profile=tmp_path / "p.yaml", claude_worker=False)
-    with TestClient(create_app(settings)) as client:
+    settings = config.Settings(
+        database_url=database_url, profile=tmp_path / "p.yaml", claude_worker=False
+    )
+    with fastapi_testclient.TestClient(web_app.create_app(settings)) as client:
         assert client.app.state.claude_worker_on is False
         assert "Claude worker is off" in client.get("/claude/status").text
 
 
 def test_chat_has_quick_prompts(client, session):
-    from job_radar.claude.prompt import quick_prompts
 
-    QUICK_PROMPTS = quick_prompts(None)
+    QUICK_PROMPTS = claude_prompt.quick_prompts(None)
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
+    claude_analysis.enqueue(session, [o.id])
     w = client.app.state.claude_worker
-    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
+    w.runner = FakeRunner([claude_runner.Reply("{}", dict(RESULT), "s", None)])
     w.run_once()
     page = client.get(f"/opportunities/{o.id}").text
     labels = [label for label, _ in QUICK_PROMPTS]
@@ -515,19 +559,19 @@ def test_chat_has_quick_prompts(client, session):
 
 def test_find_original_posting_prompt():
     # #239: boards like We Work Remotely hide the apply link behind a paywall.
-    from job_radar.claude.prompt import quick_prompts
 
-    text = dict(quick_prompts(None))["Find original posting"].lower()
+    text = dict(claude_prompt.quick_prompts(None))["Find original posting"].lower()
     for rule in ("careers page", "greenhouse", "lever", "ashby", "not found", "do not apply"):
         assert rule in text, rule
-    assert "linkedin" in text and "hh.ru" in text  # never opened
+    # never opened
+    assert "linkedin" in text and "hh.ru" in text
 
 
 def test_vacancies_without_description_are_not_queued(client, session):
     with_text = vacancy(session, title="With text")
     without = vacancy(session, title="No text", text=None)
-    assert claude.enqueue(session, [with_text.id, without.id]) == 1
-    assert claude.latest(session, without.id) is None
+    assert claude_analysis.enqueue(session, [with_text.id, without.id]) == 1
+    assert claude_analysis.latest(session, without.id) is None
     status = client.post("/claude/analyze", data={"ids": [without.id]}).text
     assert "1 skipped: no description" in status
     row = client.get(f"/opportunities/{without.id}/row").text
@@ -537,9 +581,9 @@ def test_vacancies_without_description_are_not_queued(client, session):
 
 def test_finished_row_can_run_again(client, session):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
+    claude_analysis.enqueue(session, [o.id])
     w = client.app.state.claude_worker
-    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
+    w.runner = FakeRunner([claude_runner.Reply("{}", dict(RESULT), "s", None)])
     w.run_once()
     panel = client.get(f"/opportunities/{o.id}/panel").text
     assert ">Analyze again<" in panel and f'hx-post="/opportunities/{o.id}/claude"' in panel
@@ -547,17 +591,18 @@ def test_finished_row_can_run_again(client, session):
 
 def test_answers_have_a_copy_button(client, session):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
+    claude_analysis.enqueue(session, [o.id])
     w = client.app.state.claude_worker
-    w.runner = FakeRunner([Reply("{}", dict(RESULT), "s", None)])
+    w.runner = FakeRunner([claude_runner.Reply("{}", dict(RESULT), "s", None)])
     w.run_once()
-    claude.ask(session, o.id, "Cover letter please")
-    w.runner = FakeRunner([Reply("Dear team,\n<b>Alex</b>", None, "s", None)])
+    claude_analysis.ask(session, o.id, "Cover letter please")
+    w.runner = FakeRunner([claude_runner.Reply("Dear team,\n<b>Alex</b>", None, "s", None)])
     w.run_once()
     page = client.get(f"/opportunities/{o.id}").text
     assert (
         page.count('class="btn btn-sm btn-outline-secondary mt-1 copy-answer"') == 1
-    )  # answers only
+        # answers only
+    )
     assert '<textarea class="msg-raw" hidden>Dear team,\n&lt;b&gt;Alex&lt;/b&gt;</textarea>' in page
 
 
@@ -570,7 +615,8 @@ def test_analyze_says_what_it_queued(client, session):
     assert '<option value="1.0">' in text and '<option value="6.5" selected>' in text
     assert '<option value="10.0">' in text and '<option value="7.0">' in text
     assert "jr-analyze-min" in text and 'id="analyze-start"' in text
-    assert 'document.querySelector("dialog[open]")' in text  # no I/X/A behind the dialog
+    # no I/X/A behind the dialog
+    assert 'document.querySelector("dialog[open]")' in text
     assert 'id="analyze-skipped"' in text and "already analysed or with a chat" in text
     assert "without a description" in text and '" queued"' in text and "setTimeout" in text
 
@@ -613,53 +659,57 @@ def wait_until(check, timeout=5.0):
 
 def test_analyses_run_in_parallel_up_to_the_setting(session, tmp_path):
     ids = [vacancy(session, title=f"Python Engineer {n}").id for n in range(5)]
-    claude.enqueue(session, ids)
-    claude.save_claude_settings(session, ClaudeSettings(parallel=3))
-    runner = SlowRunner(Reply("{}", dict(RESULT), "s", None))
+    claude_analysis.enqueue(session, ids)
+    claude_analysis.save_claude_settings(session, claude_analysis.ClaudeSettings(parallel=3))
+    runner = SlowRunner(claude_runner.Reply("{}", dict(RESULT), "s", None))
     w = worker(session, runner, tmp_path)
     w.idle_wait = 0.02
     w.start()
     try:
         assert wait_until(lambda: runner.active == 3)
         time.sleep(0.2)
-        assert runner.peak == 3  # never more than the setting
+        # never more than the setting
+        assert runner.peak == 3
         runner.release.set()
         assert wait_until(lambda: runner.calls == 5)
 
         def all_done():
             session.expire_all()
-            return all(claude.latest(session, i).state == "done" for i in ids)
+            return all(claude_analysis.latest(session, i).state == "done" for i in ids)
 
         assert wait_until(all_done)
     finally:
         w.stop()
-    assert runner.calls == 5  # each vacancy exactly once: no double claim
+    # each vacancy exactly once: no double claim
+    assert runner.calls == 5
 
 
 def test_chat_is_answered_while_analyses_run(session, tmp_path):
     o = analyzed(session, tmp_path)
     other = vacancy(session, title="Python Engineer 2")
-    claude.enqueue(session, [other.id])
-    claude.save_claude_settings(session, ClaudeSettings(parallel=1))
+    claude_analysis.enqueue(session, [other.id])
+    claude_analysis.save_claude_settings(session, claude_analysis.ClaudeSettings(parallel=1))
 
     class Mixed(SlowRunner):
         def run(self, prompt, **kw):
-            if kw.get("resume"):  # the chat
-                return Reply("Ответ", None, "s", None)
+            # the chat
+            if kw.get("resume"):
+                return claude_runner.Reply("Ответ", None, "s", None)
             return super().run(prompt, **kw)
 
-    runner = Mixed(Reply("{}", dict(RESULT), "s", None))
+    runner = Mixed(claude_runner.Reply("{}", dict(RESULT), "s", None))
     w = worker(session, runner, tmp_path)
     w.idle_wait = 0.02
     w.start()
     try:
-        assert wait_until(lambda: runner.active == 1)  # the only analysis slot is busy
-        claude.ask(session, o.id, "Q?")
+        # the only analysis slot is busy
+        assert wait_until(lambda: runner.active == 1)
+        claude_analysis.ask(session, o.id, "Q?")
         w.wake()
 
         def answered():
             session.expire_all()
-            return any(m.text == "Ответ" for m in claude.messages(session, o.id))
+            return any(m.text == "Ответ" for m in claude_analysis.messages(session, o.id))
 
         assert wait_until(answered)
     finally:
@@ -669,33 +719,38 @@ def test_chat_is_answered_while_analyses_run(session, tmp_path):
 
 def test_usage_limit_requeues_and_pauses(session, tmp_path):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
-    limit = ClaudeError("Claude AI usage limit reached|1760000000", transient=True)
-    w = worker(session, FakeRunner([limit, Reply("{}", dict(RESULT), "s", None)]), tmp_path)
+    claude_analysis.enqueue(session, [o.id])
+    limit = claude_runner.ClaudeError("Claude AI usage limit reached|1760000000", transient=True)
+    w = worker(
+        session, FakeRunner([limit, claude_runner.Reply("{}", dict(RESULT), "s", None)]), tmp_path
+    )
     assert w.run_once() is True
     session.expire_all()
-    job = claude.latest(session, o.id)
-    assert job.state == "queued" and job.attempts == 1  # back in the queue, not retried now
+    job = claude_analysis.latest(session, o.id)
+    # back in the queue, not retried now
+    assert job.state == "queued" and job.attempts == 1
     assert w.paused_until is not None and "usage limit" in job.error
-    assert w.run_once() is False  # paused: nothing starts
-    assert w.run_once(now=w.paused_until + timedelta(seconds=1)) is True  # the pause is over
+    # paused: nothing starts
+    assert w.run_once() is False
+    # the pause is over
+    assert w.run_once(now=w.paused_until + dt.timedelta(seconds=1)) is True
     session.expire_all()
-    assert claude.latest(session, o.id).state == "done"
+    assert claude_analysis.latest(session, o.id).state == "done"
 
 
 def test_parallel_setting_on_the_settings_page(client, session):
     assert 'name="parallel"' in client.get("/settings").text
     client.post("/settings/claude", data={"model": "sonnet", "daily_cap": 30,
                                           "language": "Russian", "parallel": 6})  # fmt: skip
-    assert claude.load_claude_settings(session).parallel == 6
-    assert ClaudeSettings().parallel == 4
+    assert claude_analysis.load_claude_settings(session).parallel == 6
+    assert claude_analysis.ClaudeSettings().parallel == 4
 
 
 def test_status_says_when_the_pause_ends(client, session):
     o = vacancy(session)
-    claude.enqueue(session, [o.id])
+    claude_analysis.enqueue(session, [o.id])
     w = client.app.state.claude_worker
-    w.paused_until = datetime.now(UTC) + timedelta(minutes=10)
+    w.paused_until = dt.datetime.now(dt.UTC) + dt.timedelta(minutes=10)
     text = client.get("/claude/status").text
     assert "subscription limit: paused until" in text
     w.paused_until = None
@@ -703,92 +758,107 @@ def test_status_says_when_the_pause_ends(client, session):
 
 
 def test_no_browser_notifications(client):
-    assert "Notification" not in client.get("/").text  # #217
+    # #217
+    assert "Notification" not in client.get("/").text
 
 
 def test_finished_skip_auto_ignores_when_the_reason_is_chosen(session, tmp_path):
-    from job_radar.auto_ignore import Rules, save_rules
-    from job_radar.models import OpportunityState
+    import job_radar.auto_ignore as auto_ignore
 
-    save_rules(session, Rules(countries=(), claude_kinds=("location",)))
+    auto_ignore.save_rules(session, auto_ignore.Rules(countries=(), claude_kinds=("location",)))
     eu, stack = vacancy(session, title="EU job"), vacancy(session, title="Stack job")
-    claude.enqueue(session, [eu.id, stack.id])
+    claude_analysis.enqueue(session, [eu.id, stack.id])
     skip = dict(RESULT, verdict="skip")
     w = worker(
         session,
         FakeRunner(
             [
-                Reply("{}", skip | {"ignore_reason": {"kind": "location", "detail": "EU only"}},
-                      "s1", None),
-                Reply("{}", skip | {"ignore_reason": {"kind": "stack", "detail": "TensorFlow"}},
-                      "s2", None),
+                claude_runner.Reply(
+                    "{}",
+                    skip | {"ignore_reason": {"kind": "location", "detail": "EU only"}},
+                    "s1",
+                    None,
+                ),
+                claude_runner.Reply(
+                    "{}",
+                    skip | {"ignore_reason": {"kind": "stack", "detail": "TensorFlow"}},
+                    "s2",
+                    None,
+                ),
             ]
         ),
         tmp_path,
-    )  # fmt: skip
+    )
     assert w.run_once() and w.run_once()
     session.expire_all()
     assert (eu.state, eu.auto_ignore_reason) == (
-        OpportunityState.AUTO_IGNORE,
+        models.OpportunityState.AUTO_IGNORE,
         "Claude: location: EU only",
     )
-    assert (stack.state, stack.auto_ignore_reason) == (OpportunityState.NEW, None)
+    assert (stack.state, stack.auto_ignore_reason) == (models.OpportunityState.NEW, None)
 
 
 # --- new descriptions are analyzed by themselves (#264) ------------------------
 
 
 def test_new_descriptions_are_queued_by_the_worker(session, tmp_path):
-    from job_radar.models import OpportunityState
 
     fresh = vacancy(session, title="Fresh")
-    vacancy(session, title="No text", text=None)  # nothing to analyze yet
-    vacancy(session, title="Ignored").state = OpportunityState.IGNORE
+    # nothing to analyze yet
+    vacancy(session, title="No text", text=None)
+    vacancy(session, title="Ignored").state = models.OpportunityState.IGNORE
     done = vacancy(session, title="Done before")
-    session.add(ClaudeAnalysis(opportunity_id=done.id, model="sonnet", prompt_version="3",
+    session.add(models.ClaudeAnalysis(opportunity_id=done.id, model="sonnet", prompt_version="3",
                                   state="failed"))  # fmt: skip
     session.commit()
-    runner = FakeRunner([Reply("{}", dict(RESULT), "s1", None)])
+    runner = FakeRunner([claude_runner.Reply("{}", dict(RESULT), "s1", None)])
     w = worker(session, runner, tmp_path)
-    assert w.run_once() is True  # queued and run, no Analyze button pressed
+    # queued and run, no Analyze button pressed
+    assert w.run_once() is True
     assert len(runner.calls) == 1 and "Fresh" in runner.calls[0]["prompt"]
-    assert w.run_once() is False  # never twice, and not the others
+    # never twice, and not the others
+    assert w.run_once() is False
     session.expire_all()
-    assert claude.latest(session, fresh.id).state == "done"
+    assert claude_analysis.latest(session, fresh.id).state == "done"
 
 
 def test_a_description_arriving_later_is_queued_then(session, tmp_path):
-    from job_radar.dedup import add_snapshot
+    import job_radar.dedup as dedup
 
     o = vacancy(session, text=None)
-    w = worker(session, FakeRunner([Reply("{}", dict(RESULT), "s1", None)]), tmp_path)
+    w = worker(session, FakeRunner([claude_runner.Reply("{}", dict(RESULT), "s1", None)]), tmp_path)
     assert w.run_once() is False
-    add_snapshot(session, o.source_records[0], DESCRIPTION)  # Descriptions, Chrome fill, …
+    # Descriptions, Chrome fill, …
+    dedup.add_snapshot(session, o.source_records[0], DESCRIPTION)
     session.commit()
     assert w.run_once() is True
 
 
 def test_auto_analysis_can_be_switched_off(session, tmp_path):
-    claude.save_claude_settings(session, ClaudeSettings(auto_analyze=False))
+    claude_analysis.save_claude_settings(
+        session, claude_analysis.ClaudeSettings(auto_analyze=False)
+    )
     vacancy(session)
     runner = FakeRunner([])
     assert worker(session, runner, tmp_path).run_once() is False
-    assert runner.calls == [] and claude.status(session).queued == 0
+    assert runner.calls == [] and claude_analysis.status(session).queued == 0
 
 
 def test_auto_analysis_is_on_by_default_and_on_the_settings_page(client, session):
-    assert claude.load_claude_settings(session).auto_analyze is True
+    assert claude_analysis.load_claude_settings(session).auto_analyze is True
     assert 'name="auto_analyze" checked' in client.get("/settings").text
-    client.post("/settings/claude", data={"model": "sonnet"})  # the box unticked
-    assert claude.load_claude_settings(session).auto_analyze is False
+    # the box unticked
+    client.post("/settings/claude", data={"model": "sonnet"})
+    assert claude_analysis.load_claude_settings(session).auto_analyze is False
     client.post("/settings/claude", data={"model": "sonnet", "auto_analyze": "on"})
-    assert claude.load_claude_settings(session).auto_analyze is True
+    assert claude_analysis.load_claude_settings(session).auto_analyze is True
 
 
 def test_auto_queue_respects_the_daily_cap(session, tmp_path):
-    claude.save_claude_settings(session, ClaudeSettings(daily_cap=1))
+    claude_analysis.save_claude_settings(session, claude_analysis.ClaudeSettings(daily_cap=1))
     vacancy(session, title="A"), vacancy(session, title="B")
-    w = worker(session, FakeRunner([Reply("{}", dict(RESULT), "s", None)]), tmp_path)
+    w = worker(session, FakeRunner([claude_runner.Reply("{}", dict(RESULT), "s", None)]), tmp_path)
     assert w.run_once() is True and w.run_once() is False
-    status = claude.status(session)
-    assert status.queued == 1 and status.capped  # waits for tomorrow, like the button's
+    status = claude_analysis.status(session)
+    # waits for tomorrow, like the button's
+    assert status.queued == 1 and status.capped

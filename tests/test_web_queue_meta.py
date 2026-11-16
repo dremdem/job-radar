@@ -1,14 +1,14 @@
 """The company · location line never takes the screen, whatever the data (#267)."""
 
-from job_radar.dedup import get_or_create_company
-from job_radar.models import Opportunity
+import job_radar.dedup as dedup
+import job_radar.models as models
 
 RUN_ON = "100% Remote (Global) · Full-Time MixRank processes petabytes of data " * 20
 
 
 def test_long_location_is_capped_with_the_full_text_in_the_tooltip(client, session):
-    o = Opportunity(title="Software Engineers", location=RUN_ON.strip(),
-                    company=get_or_create_company(session, "MixRank (YC S11)"))  # fmt: skip
+    o = models.Opportunity(title="Software Engineers", location=RUN_ON.strip(),
+                    company=dedup.get_or_create_company(session, "MixRank (YC S11)"))  # fmt: skip
     session.add(o)
     session.commit()
     row = client.get("/").text

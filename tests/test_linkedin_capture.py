@@ -1,9 +1,13 @@
-from sqlalchemy import func, select
+"""Tests for job_radar.linkedin.capture: search cards and vacancy pages sent by the
+bookmarklet (docs/linkedin-capture.md).
+"""
 
-from job_radar.auto_ignore import NOT_ACCEPTING_REASON, Rules, clear_unavailable, save_rules
-from job_radar.linkedin.alerts import AlertJob, add_linkedin_job
-from job_radar.linkedin.capture import import_capture, parse_card_text
-from job_radar.models import JobSnapshot, Opportunity, OpportunityState, SourceRecord, SourceType
+import sqlalchemy as sa
+
+import job_radar.auto_ignore as auto_ignore
+import job_radar.linkedin.alerts as linkedin_alerts
+import job_radar.linkedin.capture as linkedin_capture
+import job_radar.models as models
 
 # Card texts as LinkedIn's logged-in search page shows them (innerText), from the user's screen.
 PFIZER = """Staff Software Engineer (AI Backend Services)
@@ -36,7 +40,7 @@ Promoted by hirer"""
 
 
 def test_parse_card_pfizer():
-    job = parse_card_text("4471000001", PFIZER)
+    job = linkedin_capture.parse_card_text("4471000001", PFIZER)
     assert (job.title, job.company, job.location) == (
         "Staff Software Engineer (AI Backend Services)",
         "Pfizer",
@@ -46,13 +50,13 @@ def test_parse_card_pfizer():
 
 
 def test_parse_card_easy_apply_and_noise():
-    job = parse_card_text("1", FUSE)
+    job = linkedin_capture.parse_card_text("1", FUSE)
     assert (job.company, job.location, job.easy_apply) == (
         "Fuse Energy",
         "Switzerland (Remote)",
         True,
     )
-    job = parse_card_text("2", GLOBALLOGIC)
+    job = linkedin_capture.parse_card_text("2", GLOBALLOGIC)
     assert (job.title, job.company, job.location) == (
         "Middle Python Engineer with AI Expertise IRC305232",
         "GlobalLogic",
@@ -61,18 +65,18 @@ def test_parse_card_easy_apply_and_noise():
 
 
 def test_parse_card_salary():
-    job = parse_card_text("3", SALARY)
+    job = linkedin_capture.parse_card_text("3", SALARY)
     assert job.salary == "£69.3K/yr - £84.9K/yr"
     assert job.location == "United Kingdom (Remote)"
 
 
 def test_unreadable_card_is_skipped():
-    assert parse_card_text("4", "") is None
-    assert parse_card_text("5", "Promoted\n1 day ago") is None
+    assert linkedin_capture.parse_card_text("4", "") is None
+    assert linkedin_capture.parse_card_text("5", "Promoted\n1 day ago") is None
 
 
 def count(session, model) -> int:
-    return session.scalar(select(func.count()).select_from(model))
+    return session.scalar(sa.select(sa.func.count()).select_from(model))
 
 
 def payload(cards, detail=None):
@@ -84,12 +88,14 @@ def payload(cards, detail=None):
 
 
 def test_import_capture_creates_new_and_skips_known(session):
-    add_linkedin_job(
+    linkedin_alerts.add_linkedin_job(
         session,
-        AlertJob("1", "Senior/Lead Backend Engineer (Remote)", "Fuse Energy", None, None, True),
-        SourceType.LINKEDIN_ALERT,
+        linkedin_alerts.AlertJob(
+            "1", "Senior/Lead Backend Engineer (Remote)", "Fuse Energy", None, None, True
+        ),
+        models.SourceType.LINKEDIN_ALERT,
     )
-    stats = import_capture(
+    stats = linkedin_capture.import_capture(
         session,
         payload(
             [
@@ -100,16 +106,23 @@ def test_import_capture_creates_new_and_skips_known(session):
         ),
     )
     assert (stats.cards, stats.new, stats.known, stats.skipped) == (3, 1, 1, 1)
-    pfizer = session.scalar(select(Opportunity).where(Opportunity.title.like("Staff Software%")))
+    pfizer = session.scalar(
+        sa.select(models.Opportunity).where(models.Opportunity.title.like("Staff Software%"))
+    )
     assert pfizer.company.name == "Pfizer"
     record = pfizer.source_records[0]
-    assert record.source_type is SourceType.LINKEDIN_CAPTURE
+    assert record.source_type is models.SourceType.LINKEDIN_CAPTURE
     assert record.url == "https://www.linkedin.com/jobs/view/4471000001/"
-    assert import_capture(session, payload([{"job_id": "4471000001", "text": PFIZER}])).new == 0
+    assert (
+        linkedin_capture.import_capture(
+            session, payload([{"job_id": "4471000001", "text": PFIZER}])
+        ).new
+        == 0
+    )
 
 
 def test_detail_saves_description_for_new_or_known_job(session):
-    stats = import_capture(
+    stats = linkedin_capture.import_capture(
         session,
         payload(
             [],
@@ -123,10 +136,10 @@ def test_detail_saves_description_for_new_or_known_job(session):
         ),
     )
     assert (stats.new, stats.descriptions) == (1, 1)
-    snapshot = session.scalar(select(JobSnapshot))
+    snapshot = session.scalar(sa.select(models.JobSnapshot))
     assert "EV charging" in snapshot.raw_text
     # Sending the same page again does not duplicate the description.
-    import_capture(
+    linkedin_capture.import_capture(
         session,
         payload(
             [],
@@ -138,12 +151,12 @@ def test_detail_saves_description_for_new_or_known_job(session):
             },
         ),
     )
-    assert count(session, JobSnapshot) == 1
-    assert count(session, SourceRecord) == 1
+    assert count(session, models.JobSnapshot) == 1
+    assert count(session, models.SourceRecord) == 1
 
 
 def test_detail_for_a_card_on_the_same_page(session):
-    stats = import_capture(
+    stats = linkedin_capture.import_capture(
         session,
         payload(
             [{"job_id": "4471000001", "text": PFIZER}],
@@ -165,7 +178,7 @@ SEMANTIC = __import__("json").loads(
 
 
 def test_semantic_page_all_cards_parse():
-    jobs = [parse_card_text(c["job_id"], c["text"]) for c in SEMANTIC["cards"]]
+    jobs = [linkedin_capture.parse_card_text(c["job_id"], c["text"]) for c in SEMANTIC["cards"]]
     assert len(jobs) == 25 and all(jobs)
     first = jobs[0]
     assert (first.title, first.company, first.location) == (
@@ -178,26 +191,33 @@ def test_semantic_page_all_cards_parse():
 
 
 def test_semantic_page_salary_easy_apply_and_badges():
-    by_id = {c["job_id"]: parse_card_text(c["job_id"], c["text"]) for c in SEMANTIC["cards"]}
+    by_id = {
+        c["job_id"]: linkedin_capture.parse_card_text(c["job_id"], c["text"])
+        for c in SEMANTIC["cards"]
+    }
     infused = by_id["4469742675"]
     assert (infused.company, infused.location) == ("Infused Solutions", "London (Hybrid)")
     assert infused.salary == "65K GBP/yr - 75K GBP/yr" and infused.easy_apply is True
-    avenga = by_id["4471680406"]  # "1 connection works here", "Saved"
+    # "1 connection works here", "Saved"
+    avenga = by_id["4471680406"]
     assert (avenga.company, avenga.location) == ("Avenga", "Bratislava (Remote)")
 
 
 def test_semantic_page_import_with_detail_from_page_title(session):
-    stats = import_capture(session, payload(SEMANTIC["cards"], SEMANTIC["detail"]))
+    stats = linkedin_capture.import_capture(session, payload(SEMANTIC["cards"], SEMANTIC["detail"]))
     # The open vacancy's own card is covered by the detail, not counted twice.
     assert (stats.cards, stats.new, stats.skipped, stats.descriptions) == (24, 25, 0, 1)
     assert stats.vacancy == "Empat — Python Developer: new, description saved"
-    record = session.scalar(select(SourceRecord).where(SourceRecord.external_id == "4471482895"))
-    assert record.opportunity.location == "Ukraine (Remote)"  # from its own card
+    record = session.scalar(
+        sa.select(models.SourceRecord).where(models.SourceRecord.external_id == "4471482895")
+    )
+    # from its own card
+    assert record.opportunity.location == "Ukraine (Remote)"
     assert "conversational AI agents" in record.snapshots[0].raw_text
 
 
 def test_detail_title_and_company_from_page_title(session):
-    stats = import_capture(
+    stats = linkedin_capture.import_capture(
         session,
         payload(
             [],
@@ -209,7 +229,7 @@ def test_detail_title_and_company_from_page_title(session):
         ),
     )
     assert stats.new == 1
-    o = session.scalar(select(Opportunity))
+    o = session.scalar(sa.select(models.Opportunity))
     assert (o.title, o.company.name) == ("Senior Backend Engineer (Python)", "ev.energy")
 
 
@@ -228,17 +248,19 @@ VACANCY_PAGE = {
 
 
 def test_vacancy_page_is_not_reported_unreadable(session):
-    stats = import_capture(session, VACANCY_PAGE)
+    stats = linkedin_capture.import_capture(session, VACANCY_PAGE)
     assert (stats.cards, stats.skipped, stats.new, stats.descriptions) == (0, 0, 1, 1)
     assert stats.vacancy == "ScorePlay — Senior Back-end Engineer: new, description saved"
-    again = import_capture(session, VACANCY_PAGE)
+    again = linkedin_capture.import_capture(session, VACANCY_PAGE)
     assert (again.cards, again.skipped, again.new) == (0, 0, 0)
     assert again.vacancy == "ScorePlay — Senior Back-end Engineer: description already saved"
 
 
 def test_vacancy_page_without_description(session):
     page = {**VACANCY_PAGE, "detail": {**VACANCY_PAGE["detail"], "description": ""}}
-    assert import_capture(session, page).vacancy.endswith("no description found on the page")
+    assert linkedin_capture.import_capture(session, page).vacancy.endswith(
+        "no description found on the page"
+    )
 
 
 def not_accepting_payload(flag):
@@ -247,50 +269,53 @@ def not_accepting_payload(flag):
 
 
 def captured(session):
-    return session.scalar(select(Opportunity))
+    return session.scalar(sa.select(models.Opportunity))
 
 
 def test_not_accepting_page_keeps_the_description_and_is_auto_ignored(session):
-    stats = import_capture(session, not_accepting_payload(True))
+    stats = linkedin_capture.import_capture(session, not_accepting_payload(True))
     o = captured(session)
     assert stats.descriptions == 1 and "not accepting" in stats.vacancy
     assert o.not_accepting_at is not None
     assert (o.state, o.auto_ignore_reason) == (
-        OpportunityState.AUTO_IGNORE,
-        NOT_ACCEPTING_REASON,
+        models.OpportunityState.AUTO_IGNORE,
+        auto_ignore.NOT_ACCEPTING_REASON,
     )
 
 
 def test_not_accepting_stays_in_review_when_the_rule_is_off(session):
-    save_rules(session, Rules(unavailable=False))
-    import_capture(session, not_accepting_payload(True))
+    auto_ignore.save_rules(session, auto_ignore.Rules(unavailable=False))
+    linkedin_capture.import_capture(session, not_accepting_payload(True))
     o = captured(session)
     assert o.not_accepting_at is not None
-    assert (o.state, o.auto_ignore_reason) == (OpportunityState.NEW, None)
+    assert (o.state, o.auto_ignore_reason) == (models.OpportunityState.NEW, None)
 
 
 def test_a_page_without_the_line_is_not_marked(session):
-    import_capture(session, not_accepting_payload(False))
+    linkedin_capture.import_capture(session, not_accepting_payload(False))
     o = captured(session)
-    assert o.not_accepting_at is None and o.state is OpportunityState.NEW
+    assert o.not_accepting_at is None and o.state is models.OpportunityState.NEW
 
 
 def test_clearing_undoes_only_this_rule(session):
-    import_capture(session, not_accepting_payload(True))
+    linkedin_capture.import_capture(session, not_accepting_payload(True))
     o = captured(session)
-    clear_unavailable(o)
+    auto_ignore.clear_unavailable(o)
     assert (o.not_accepting_at, o.state, o.auto_ignore_reason) == (
         None,
-        OpportunityState.NEW,
+        models.OpportunityState.NEW,
         None,
     )
 
 
 def test_card_text_cleanup_is_linear_on_long_runs_of_spaces():
     # CodeQL py/polynomial-redos (#11): these regexes were quadratic on runs of whitespace.
-    job = parse_card_text("1", "Python Developer   (Verified job)  \nAcme\nRemote\n·  Easy Apply ")
+    job = linkedin_capture.parse_card_text(
+        "1", "Python Developer   (Verified job)  \nAcme\nRemote\n·  Easy Apply "
+    )
     assert job is not None and job.title == "Python Developer" and job.easy_apply
-    other = parse_card_text("2", "Python Developer\nAcme\nRemote\nnot easy apply")
+    other = linkedin_capture.parse_card_text("2", "Python Developer\nAcme\nRemote\nnot easy apply")
     assert other is not None and other.easy_apply is False
     spaces = " " * 50_000
-    parse_card_text("3", f"Python Developer{spaces}x\nAcme\n{spaces}\n")  # returns promptly
+    # returns promptly
+    linkedin_capture.parse_card_text("3", f"Python Developer{spaces}x\nAcme\n{spaces}\n")

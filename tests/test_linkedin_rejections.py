@@ -1,16 +1,20 @@
+"""Tests for job_radar.linkedin.rejections: detecting rejection emails and recording
+them on the company (docs/data-model.md).
+"""
+
+import datetime as dt
+import pathlib
 import re
-from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select
+import sqlalchemy as sa
 
-from job_radar.linkedin.alerts import import_alerts
-from job_radar.linkedin.rejections import detect_rejection, import_rejections
-from job_radar.models import EmailDirection, EmailMessage, Opportunity, Rejection
-from job_radar.rejections import latest_rejections
+import job_radar.linkedin.alerts as linkedin_alerts
+import job_radar.linkedin.rejections as linkedin_rejections
+import job_radar.models as models
+import job_radar.rejections as rejections
 
-FIXTURES = Path(__file__).parent / "fixtures" / "rejections"
+FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "rejections"
 
 
 def fixture(name: str, ext: str = "html") -> str:
@@ -28,11 +32,11 @@ def add_email(
     sent_at=None,
     categories=("linkedin_alerts",),
 ):
-    email = EmailMessage(
+    email = models.EmailMessage(
         gmail_message_id=msg_id,
         gmail_thread_id=msg_id,
-        direction=EmailDirection.IN,
-        sent_at=sent_at or datetime(2026, 9, 24, tzinfo=UTC),
+        direction=models.EmailDirection.IN,
+        sent_at=sent_at or dt.datetime(2026, 9, 24, tzinfo=dt.UTC),
         from_addr=f"LinkedIn <{sender}>",
         to_addr="user@example.com",
         subject=subject,
@@ -46,7 +50,7 @@ def add_email(
 
 
 def count(session, model) -> int:
-    return session.scalar(select(func.count()).select_from(model))
+    return session.scalar(sa.select(sa.func.count()).select_from(model))
 
 
 def test_fixtures_contain_no_personal_data():
@@ -56,7 +60,7 @@ def test_fixtures_contain_no_personal_data():
 
 
 def test_detect_rejection_reads_subject_and_body():
-    info = detect_rejection(
+    info = linkedin_rejections.detect_rejection(
         "Your application to AI Python Engineer at ThoughtLabs Belgium",
         "Unfortunately, we will not be moving forward with your application.",
     )
@@ -68,7 +72,7 @@ def test_detect_rejection_reads_subject_and_body():
 def test_detect_rejection_needs_the_rejection_phrase():
     # Same subject shape, but the body is not a rejection.
     assert (
-        detect_rejection(
+        linkedin_rejections.detect_rejection(
             "Your application to Python engineer at SCUBE",
             "Good news — your application was viewed by the recruiter.",
         )
@@ -77,36 +81,41 @@ def test_detect_rejection_needs_the_rejection_phrase():
 
 
 def test_detect_rejection_ignores_unrelated_subjects():
-    assert detect_rejection("You have a new job alert", "we will not be moving forward") is None
+    assert (
+        linkedin_rejections.detect_rejection(
+            "You have a new job alert", "we will not be moving forward"
+        )
+        is None
+    )
 
 
 def test_import_records_rejection_and_links_company(session):
     email = add_email(
         session, "m1", subject="Your application to Python engineer at SCUBE", html=fixture("scube")
     )
-    stats = import_rejections(session)
+    stats = linkedin_rejections.import_rejections(session)
     assert (stats.emails, stats.detected, stats.new) == (1, 1, 1)
 
-    rejection = session.scalar(select(Rejection))
+    rejection = session.scalar(sa.select(models.Rejection))
     assert rejection.company.name == "SCUBE"
     assert rejection.role == "Python engineer"
-    assert rejection.rejected_at.replace(tzinfo=UTC) == email.sent_at
+    assert rejection.rejected_at.replace(tzinfo=dt.UTC) == email.sent_at
     assert rejection.email_message_id == email.id
     # The source email is annotated for provenance.
     session.refresh(email)
     assert email.detected_event == "rejection"
     assert email.company_id == rejection.company_id
     # The company is flagged for the queue.
-    assert rejection.company_id in latest_rejections(session)
+    assert rejection.company_id in rejections.latest_rejections(session)
 
 
 def test_import_rejections_is_idempotent(session):
     add_email(
         session, "m1", subject="Your application to Python engineer at SCUBE", html=fixture("scube")
     )
-    import_rejections(session)
-    assert import_rejections(session).new == 0
-    assert count(session, Rejection) == 1
+    linkedin_rejections.import_rejections(session)
+    assert linkedin_rejections.import_rejections(session).new == 0
+    assert count(session, models.Rejection) == 1
 
 
 def test_rejection_email_does_not_create_opportunities(session):
@@ -114,10 +123,11 @@ def test_rejection_email_does_not_create_opportunities(session):
     add_email(
         session, "m1", subject="Your application to Python engineer at SCUBE", html=fixture("scube")
     )
-    import_alerts(session)  # ignores jobs-noreply sender
-    import_rejections(session)
-    assert count(session, Opportunity) == 0
-    assert count(session, Rejection) == 1
+    # ignores jobs-noreply sender
+    linkedin_alerts.import_alerts(session)
+    linkedin_rejections.import_rejections(session)
+    assert count(session, models.Opportunity) == 0
+    assert count(session, models.Rejection) == 1
 
 
 QUBIKA = "Your application to Senior Python / Rust Developer at Qubika"
@@ -129,8 +139,8 @@ def test_real_email_with_stub_plain_text_is_detected(session):
     # the rejection sentence is only in the HTML part.
     assert "moving forward" not in fixture("qubika", "txt")
     add_email(session, "m1", subject=QUBIKA, html=fixture("qubika"), text=fixture("qubika", "txt"))
-    assert import_rejections(session).new == 1
-    assert session.scalar(select(Rejection)).company.name == "Qubika"
+    assert linkedin_rejections.import_rejections(session).new == 1
+    assert session.scalar(sa.select(models.Rejection)).company.name == "Qubika"
 
 
 def test_did_not_select_wording_is_detected(session):
@@ -141,15 +151,19 @@ def test_did_not_select_wording_is_detected(session):
         html=fixture("origindata"),
         text=fixture("origindata", "txt"),
     )
-    assert import_rejections(session).new == 1
+    assert linkedin_rejections.import_rejections(session).new == 1
 
 
 def test_have_not_selected_wording_is_detected():
     body = "Unfortunately, we have not selected your application to move forward."
-    assert detect_rejection("Your application to Python Developer at DevelGuru", body)
+    assert linkedin_rejections.detect_rejection(
+        "Your application to Python Developer at DevelGuru", body
+    )
 
 
 class FakeFetch:
+    """Returns stored message bodies by id and records the calls."""
+
     def __init__(self, bodies):
         self.bodies = bodies
         self.calls = []
@@ -173,23 +187,24 @@ def test_bodyless_emails_are_fetched_once_and_body_not_stored(session):
             "old2": ("<p>Your application was viewed by Acme</p>", None),
         }
     )
-    stats = import_rejections(session, fetch_body=fetch)
+    stats = linkedin_rejections.import_rejections(session, fetch_body=fetch)
     assert (stats.fetched, stats.new) == (2, 1)
 
     session.refresh(email)
     session.refresh(viewed)
     assert email.detected_event == "rejection"
     assert viewed.detected_event == "application_update"
-    assert email.body_html is None and email.body_text is None  # never persisted
+    # never persisted
+    assert email.body_html is None and email.body_text is None
 
-    import_rejections(session, fetch_body=fetch)
+    linkedin_rejections.import_rejections(session, fetch_body=fetch)
     assert fetch.calls == ["old1", "old2"]
-    assert count(session, Rejection) == 1
+    assert count(session, models.Rejection) == 1
 
 
 def test_bodyless_emails_wait_without_gmail(session):
     add_bodyless(session, "old1", QUBIKA)
-    stats = import_rejections(session)
+    stats = linkedin_rejections.import_rejections(session)
     assert (stats.pending, stats.new) == (1, 0)
 
 
@@ -204,33 +219,40 @@ def test_bodyless_emails_wait_without_gmail(session):
     ],
 )
 def test_custom_employer_wording_is_detected(body):
-    assert detect_rejection("Your application to Python Developer at Acme", body)
+    assert linkedin_rejections.detect_rejection(
+        "Your application to Python Developer at Acme", body
+    )
 
 
 def test_positive_update_is_not_a_rejection():
     body = "Congratulations! We would like to move forward with your application and invite you."
-    assert detect_rejection("Your application to Python Developer at Acme", body) is None
+    assert (
+        linkedin_rejections.detect_rejection("Your application to Python Developer at Acme", body)
+        is None
+    )
 
 
 def test_recheck_revisits_emails_checked_before(session):
     email = add_bodyless(session, "old1", "Your application to Python Developer at Acme")
-    email.detected_event = "application_update"  # checked by older, narrower rules
+    # checked by older, narrower rules
+    email.detected_event = "application_update"
     session.commit()
     fetch = FakeFetch(
         {"old1": ("<p>we regret to inform you that we chose another candidate</p>", None)}
     )
 
-    assert import_rejections(session, fetch_body=fetch).fetched == 0
-    assert import_rejections(session, fetch_body=fetch, recheck=True).new == 1
+    assert linkedin_rejections.import_rejections(session, fetch_body=fetch).fetched == 0
+    assert linkedin_rejections.import_rejections(session, fetch_body=fetch, recheck=True).new == 1
 
 
 class GoneFetch(FakeFetch):
+    """Like FakeFetch, but a missing body means the message is gone from Gmail."""
+
     def __call__(self, gmail_message_id):
-        from job_radar.linkedin.rejections import MessageGone
 
         if self.bodies[gmail_message_id] is None:
             self.calls.append(gmail_message_id)
-            raise MessageGone(gmail_message_id)
+            raise linkedin_rejections.MessageGone(gmail_message_id)
         return super().__call__(gmail_message_id)
 
 
@@ -239,10 +261,10 @@ def test_email_deleted_from_gmail_is_marked_and_the_rest_goes_on(session, rechec
     gone = add_bodyless(session, "gone1", "Your application to Python Developer at Acme")
     add_bodyless(session, "old1", QUBIKA)
     fetch = GoneFetch({"gone1": None, "old1": (fixture("qubika"), fixture("qubika", "txt"))})
-    stats = import_rejections(session, fetch_body=fetch)
+    stats = linkedin_rejections.import_rejections(session, fetch_body=fetch)
     assert (stats.gone, stats.new) == (1, 1)
     session.refresh(gone)
     assert gone.detected_event == "gone"
 
-    import_rejections(session, fetch_body=fetch, recheck=recheck)
+    linkedin_rejections.import_rejections(session, fetch_body=fetch, recheck=recheck)
     assert fetch.calls == ["gone1", "old1"]

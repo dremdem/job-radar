@@ -2,22 +2,22 @@
 
 import time
 
-from fastapi.testclient import TestClient
+import fastapi.testclient as fastapi_testclient
 
-from job_radar.config import Settings
-from job_radar.web.app import create_app
+import job_radar.config as config
+import job_radar.web.app as web_app
 
 TRIGGER = "jr-refresh-queue"
 
 
 def app(database_url, tmp_path, **kw):
-    settings = Settings(
+    settings = config.Settings(
         database_url=database_url,
         profile=tmp_path / "p.yaml",
         linkedin_public_search=True,
         linkedin_chrome=True,
     )
-    return TestClient(create_app(settings, start_worker=False, **kw))
+    return fastapi_testclient.TestClient(web_app.create_app(settings, start_worker=False, **kw))
 
 
 def finish(client, start, status, timeout=5.0):
@@ -90,11 +90,13 @@ def test_sync_end_redraws_the_queue(engine, database_url, tmp_path):
 
 
 def test_queue_page_listens_for_the_redraw(client, session):
-    from job_radar.dedup import get_or_create_company
-    from job_radar.models import Opportunity
+    import job_radar.dedup as dedup
+    import job_radar.models as models
 
     session.add(
-        Opportunity(title="Python Engineer", company=get_or_create_company(session, "Acme"))
+        models.Opportunity(
+            title="Python Engineer", company=dedup.get_or_create_company(session, "Acme")
+        )
     )
     session.commit()
     text = client.get("/").text

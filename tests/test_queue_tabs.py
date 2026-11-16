@@ -1,9 +1,15 @@
-from job_radar.dedup import get_or_create_company
-from job_radar.models import Opportunity, OpportunityState
+"""Tests for the queue tabs in the web UI: each state has its tab and a processed row
+leaves it at once (docs/queue.md).
+"""
+
+import job_radar.dedup as dedup
+import job_radar.models as models
 
 
-def add(session, title, state=OpportunityState.NEW, company="Acme"):
-    o = Opportunity(title=title, company=get_or_create_company(session, company), state=state)
+def add(session, title, state=models.OpportunityState.NEW, company="Acme"):
+    o = models.Opportunity(
+        title=title, company=dedup.get_or_create_company(session, company), state=state
+    )
     session.add(o)
     session.commit()
     return o
@@ -12,9 +18,9 @@ def add(session, title, state=OpportunityState.NEW, company="Acme"):
 def seed(session):
     return {
         "new": add(session, "Fresh role"),
-        "interested": add(session, "Liked role", OpportunityState.INTERESTED),
-        "applied": add(session, "Sent role", OpportunityState.APPLIED),
-        "ignored": add(session, "Nope role", OpportunityState.IGNORE),
+        "interested": add(session, "Liked role", models.OpportunityState.INTERESTED),
+        "applied": add(session, "Sent role", models.OpportunityState.APPLIED),
+        "ignored": add(session, "Nope role", models.OpportunityState.IGNORE),
     }
 
 
@@ -88,7 +94,8 @@ def test_all_tab_keeps_the_row_and_updates_counts(client, session):
     )
     text = response.text
     assert f'id="opportunity-{rows["new"].id}"' in text
-    assert "Liked role" not in text  # only the changed row comes back
+    # only the changed row comes back
+    assert "Liked role" not in text
     assert 'hx-swap-oob="true"' in text and "Interested (2)" in text
 
 
@@ -117,7 +124,10 @@ def seed_places(session):
         "epam": add(session, "Python Poland", company="EPAM Anywhere"),
         "muller": add(session, "Engineer Munich", company="Müller GmbH"),
         "tricon_uk": add(
-            session, "Backend London", OpportunityState.INTERESTED, company="Tricon Solutions"
+            session,
+            "Backend London",
+            models.OpportunityState.INTERESTED,
+            company="Tricon Solutions",
         ),
     }
     rows["tricon"].location = "Lucknow, Uttar Pradesh, India"
@@ -139,7 +149,8 @@ def test_filter_by_country_searches_the_location(client, session):
     seed_places(session)
     text = client.get("/?country=ind").text
     assert "Backend India" in text and "Python Poland" not in text
-    assert "Engineer Munich" in client.get("/?country=MÜNCH").text  # non-ASCII case folding
+    # non-ASCII case folding
+    assert "Engineer Munich" in client.get("/?country=MÜNCH").text
 
 
 def test_filters_combine_and_counts_follow(client, session):
@@ -166,7 +177,8 @@ def test_buttons_keep_filters(client, session):
         f"/opportunities/{rows['tricon'].id}/state",
         data={"state": "ignore", "tab": "review", "company": "tricon", "country": ""},
     )
-    assert "Python Poland" not in response.text  # still filtered
+    # still filtered
+    assert "Python Poland" not in response.text
     assert "To review (0)" in response.text
 
 
@@ -180,10 +192,13 @@ def test_header_stays_when_nothing_matches(client, session):
 def test_queue_highlights_the_row_you_opened(client, session):
     add(session, "Fresh role")
     text = client.get("/").text
-    assert ".item.selected" in text  # style for the selected item
-    assert "jr-current-row" in text  # remembered in localStorage
+    # style for the selected item
+    assert ".item.selected" in text
+    # remembered in localStorage
+    assert "jr-current-row" in text
     assert "htmx:afterSwap" in text
-    assert "scrollIntoView" in text  # after a reload the item may have moved: bring it into view
+    # after a reload the item may have moved: bring it into view
+    assert "scrollIntoView" in text
 
 
 def test_filter_by_title(client, session):
@@ -214,8 +229,10 @@ def test_keyboard_and_next_after_a_decision(client, session):
     add(session, "Fresh role")
     text = client.get("/").text
     assert 'key === "j"' in text and 'key === "k"' in text
-    assert "data-state-key" in text  # I / X / A press the panel's buttons
-    assert "nextElementSibling" in text  # after a decision the next vacancy opens
+    # I / X / A press the panel's buttons
+    assert "data-state-key" in text
+    # after a decision the next vacancy opens
+    assert "nextElementSibling" in text
 
 
 def test_long_item_text_wraps_instead_of_being_cut(client, session):
@@ -228,11 +245,12 @@ def test_long_item_text_wraps_instead_of_being_cut(client, session):
 
 def test_capture_update_leaves_a_notice_when_the_vacancy_left_the_tab(client, session):
     o = add(session, "Senior Java Developer", company="Globex")
-    o.state = OpportunityState.AUTO_IGNORE
+    o.state = models.OpportunityState.AUTO_IGNORE
     o.auto_ignore_reason = "title: java"
     session.commit()
     row = client.get(f"/opportunities/{o.id}/row?tab=review&notify=1").text
-    assert 'class="item"' not in row  # it left To review
+    # it left To review
+    assert 'class="item"' not in row
     assert 'hx-swap-oob="beforeend:#notices"' in row
     assert "Senior Java Developer" in row and "Globex" in row
     assert "moved to <b>Auto-ignored</b>" in row and "title: java" in row
@@ -258,17 +276,15 @@ def test_the_panel_decides_what_is_current_and_clears_after_the_last(client, ses
 
 
 def describe(session, o, text="We use Python."):
-    from job_radar.dedup import add_snapshot, upsert_source_record
-    from job_radar.models import SourceType
 
-    record = upsert_source_record(
+    record = dedup.upsert_source_record(
         session,
-        source_type=SourceType.LINKEDIN_CAPTURE,
+        source_type=models.SourceType.LINKEDIN_CAPTURE,
         external_id=str(o.id),
         url=None,
         opportunity=o,
     )
-    add_snapshot(session, record, text)
+    dedup.add_snapshot(session, record, text)
     session.commit()
 
 
@@ -278,11 +294,13 @@ def test_filter_by_description(client, session):
     describe(session, full)
     text = client.get("/?desc=none").text
     assert f'id="opportunity-{bare.id}"' in text and f'id="opportunity-{full.id}"' not in text
-    assert "To review (2)" in text  # tab counts ignore the switch (#186)
+    # tab counts ignore the switch (#186)
+    assert "To review (2)" in text
     assert ">No description (1)<" in text and ">With description (1)<" in text
     assert ">All (2)<" in text
     assert 'class="col-filter" name="desc" value="none"' in text
-    assert 'href="/?tab=interested&amp;desc=none"' in text  # tab links keep it
+    # tab links keep it
+    assert 'href="/?tab=interested&amp;desc=none"' in text
     text = client.get("/?desc=has").text
     assert f'id="opportunity-{full.id}"' in text and f'id="opportunity-{bare.id}"' not in text
     # The switch itself: three links, the current one marked.
@@ -304,7 +322,8 @@ def test_queue_is_paged(client, session):
     text = client.get("/?per=25").text
     assert text.count('class="item"') == 25
     assert "1\u201325 of 30" in text and 'href="/?tab=review&amp;per=25&amp;page=2"' in text
-    assert "Role 29" in text and "Role 04" not in text  # sorted by score before paging
+    # sorted by score before paging
+    assert "Role 29" in text and "Role 04" not in text
     page2 = client.get("/?per=25&page=2").text
     assert page2.count('class="item"') == 5 and "26\u201330 of 30" in page2 and "Role 04" in page2
     assert 'href="/?tab=review&amp;per=25&amp;page=1"' in page2
@@ -327,9 +346,9 @@ def test_search_redraws_the_description_switch(client, session):
 
 
 def test_sort_by_last_action(client, session):
-    from datetime import UTC, datetime, timedelta
+    import datetime as dt
 
-    from job_radar.manual import add_event
+    import job_radar.manual as manual
 
     old = add(session, "Old role")
     old.score = 9.0
@@ -339,10 +358,13 @@ def test_sort_by_last_action(client, session):
     # Score order by default; Last action puts the one you touched first.
     text = client.get("/?tab=all").text
     assert text.index("Old role") < text.index("Fresh role two")
-    add_event(session, fresh, "call", datetime.now(UTC) - timedelta(minutes=1), "recruiter")
+    manual.add_event(
+        session, fresh, "call", dt.datetime.now(dt.UTC) - dt.timedelta(minutes=1), "recruiter"
+    )
     text = client.get("/?tab=all&sort=recent").text
     assert text.index("Fresh role two") < text.index("Old role")
-    assert "· call</span>" in text  # what the last action was
+    # what the last action was
+    assert "· call</span>" in text
     # A state change by you counts too, and is stamped.
     client.post(f"/opportunities/{old.id}/state", data={"state": "interested", "from": "panel"})
     session.refresh(old)
@@ -357,7 +379,6 @@ def test_sort_by_last_action(client, session):
 
 
 def test_sort_by_claude_match(client, session):
-    from job_radar.models import ClaudeAnalysis
 
     def analysed(title: str, score: float, match: int | None, state: str = "done"):
         o = add(session, title)
@@ -365,7 +386,7 @@ def test_sort_by_claude_match(client, session):
         if match is not None or state != "done":
             result = {"verdict": "maybe", "match": match} if match is not None else None
             session.add(
-                ClaudeAnalysis(
+                models.ClaudeAnalysis(
                     opportunity=o, model="m", prompt_version="v", state=state, result=result
                 )
             )

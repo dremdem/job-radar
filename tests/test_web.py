@@ -1,12 +1,16 @@
-from job_radar.dedup import get_or_create_company
-from job_radar.models import Opportunity, OpportunityState
+"""Tests for the web queue: listing, state changes, the vacancy panel, history and
+notes (docs/queue.md).
+"""
+
+import job_radar.dedup as dedup
+import job_radar.models as models
 
 
 def add_opportunity(
     session, title="Senior Python Engineer", company="Acme", score=None
-) -> Opportunity:
-    opportunity = Opportunity(
-        title=title, company=get_or_create_company(session, company), score=score
+) -> models.Opportunity:
+    opportunity = models.Opportunity(
+        title=title, company=dedup.get_or_create_company(session, company), score=score
     )
     session.add(opportunity)
     session.commit()
@@ -32,7 +36,7 @@ def test_set_state(client, session):
     assert response.status_code == 200
     assert "interested" in response.text
     session.refresh(opportunity)
-    assert opportunity.state is OpportunityState.INTERESTED
+    assert opportunity.state is models.OpportunityState.INTERESTED
 
 
 def test_set_state_rejects_unknown_state(client, session):
@@ -51,8 +55,6 @@ def test_healthz(client):
 
 
 def test_queue_shows_details_and_sorts_by_score(client, session):
-    from job_radar.dedup import upsert_source_record
-    from job_radar.models import SourceType
 
     low = add_opportunity(session, title="Low match")
     low.score = 2
@@ -61,9 +63,9 @@ def test_queue_shows_details_and_sorts_by_score(client, session):
     high.location = "Worldwide (Remote)"
     high.easy_apply = True
     high.score_reasons = [{"sign": "+", "text": "Python"}, {"sign": "-", "text": "Frontend"}]
-    upsert_source_record(
+    dedup.upsert_source_record(
         session,
-        source_type=SourceType.LINKEDIN_ALERT,
+        source_type=models.SourceType.LINKEDIN_ALERT,
         external_id="42",
         url="https://www.linkedin.com/jobs/view/42/",
         opportunity=high,
@@ -120,18 +122,16 @@ def test_reject_is_a_toggle(client, session):
 
 
 def test_queue_shows_company_history(client, session):
-    from datetime import UTC, datetime
-
-    from job_radar.models import Application, ApplicationReview, ApplicationSource
+    import datetime as dt
 
     known = add_opportunity(session, title="Known company role")
     session.add(
-        Application(
+        models.Application(
             company_id=known.company_id,
-            applied_at=datetime(2026, 3, 12, tzinfo=UTC),
+            applied_at=dt.datetime(2026, 3, 12, tzinfo=dt.UTC),
             role="Python Developer",
-            source=ApplicationSource.LINKEDIN,
-            review=ApplicationReview.CONFIRMED,
+            source=models.ApplicationSource.LINKEDIN,
+            review=models.ApplicationReview.CONFIRMED,
         )
     )
     session.commit()
@@ -157,13 +157,11 @@ def test_queue_rows_have_state_buttons(client, session):
 
 
 def test_public_search_jobs_are_marked(client, session):
-    from job_radar.dedup import upsert_source_record
-    from job_radar.models import SourceType
 
     o = add_opportunity(session, title="Found by search")
-    upsert_source_record(
+    dedup.upsert_source_record(
         session,
-        source_type=SourceType.LINKEDIN_SEARCH,
+        source_type=models.SourceType.LINKEDIN_SEARCH,
         external_id="7",
         url="https://www.linkedin.com/jobs/view/7/",
         opportunity=o,
@@ -173,7 +171,6 @@ def test_public_search_jobs_are_marked(client, session):
 
 
 def test_ignore_with_reason_from_the_queue(client, session):
-    from job_radar.models import OpportunityNote, OpportunityState
 
     o = add_opportunity(session, title="India only role")
     o.location = "Lucknow, Uttar Pradesh, India"
@@ -195,14 +192,14 @@ def test_ignore_with_reason_from_the_queue(client, session):
     )
     assert response.status_code == 200
     session.refresh(o)
-    assert o.state is OpportunityState.IGNORE
+    assert o.state is models.OpportunityState.IGNORE
     assert "only India · residents" in response.text
     # The other vacancy of the same company now carries a lower score in the list...
     assert f'id="opportunity-{other.id}"' in response.text and ">6.5<" in response.text
     # ...and the risk on its own page.
     assert "Last time Acme hired only in India" in client.get(f"/opportunities/{other.id}").text
 
-    note = session.query(OpportunityNote).one()
+    note = session.query(models.OpportunityNote).one()
     client.post(f"/notes/{note.id}/delete")
     assert "Last time Acme hired only in India" not in client.get(f"/opportunities/{other.id}").text
 
@@ -236,37 +233,39 @@ def test_queue_shows_language_risk(client, session):
 
 
 def test_server_migrates_the_database_on_startup(tmp_path):
-    from fastapi.testclient import TestClient
+    import fastapi.testclient as fastapi_testclient
 
-    from job_radar.config import Settings
-    from job_radar.web.app import create_app
+    import job_radar.config as config
+    import job_radar.web.app as web_app
 
-    url = f"sqlite:///{tmp_path / 'fresh.db'}"  # never migrated
-    with TestClient(create_app(Settings(database_url=url))) as fresh:
+    # never migrated
+    url = f"sqlite:///{tmp_path / 'fresh.db'}"
+    with fastapi_testclient.TestClient(
+        web_app.create_app(config.Settings(database_url=url))
+    ) as fresh:
         assert fresh.get("/settings").status_code == 200
         assert fresh.get("/").status_code == 200
 
 
 def test_queue_shows_python_check_from_description(client, session):
-    from job_radar.dedup import add_snapshot, upsert_source_record
-    from job_radar.models import SourceType
 
     good = add_opportunity(session, title="Backend Engineer A")
     bad = add_opportunity(session, title="Backend Engineer B")
     bad.score = 8.0
     for o, text in ((good, "Strong Python 3.10+ and FastAPI."), (bad, "Go and Rust only.")):
-        record = upsert_source_record(
+        record = dedup.upsert_source_record(
             session,
-            source_type=SourceType.LINKEDIN_CAPTURE,
+            source_type=models.SourceType.LINKEDIN_CAPTURE,
             external_id=str(o.id),
             url=None,
             opportunity=o,
         )
-        add_snapshot(session, record, text)
+        dedup.add_snapshot(session, record, text)
     session.commit()
     text = client.get(f"/opportunities/{good.id}/panel").text
     assert "Python in description (x1; also FastAPI)" in text
-    assert "Strong Python 3.10+" in text  # the quote
+    # the quote
+    assert "Strong Python 3.10+" in text
     bad_text = client.get(f"/opportunities/{bad.id}/panel").text
     assert "No Python in description" in bad_text and "Why 5.0" in bad_text
 
@@ -276,15 +275,13 @@ def test_settings_offers_no_python_rule(client):
 
 
 def test_himalayas_jobs_are_attributed(client, session):
-    from job_radar.dedup import add_snapshot, upsert_source_record
-    from job_radar.models import SourceType
 
     o = add_opportunity(session, title="Python Developer")
     url = "https://himalayas.app/companies/acme/jobs/python-developer"
-    record = upsert_source_record(
-        session, source_type=SourceType.HIMALAYAS, external_id=url, url=url, opportunity=o
+    record = dedup.upsert_source_record(
+        session, source_type=models.SourceType.HIMALAYAS, external_id=url, url=url, opportunity=o
     )
-    add_snapshot(session, record, "Python and Django.")
+    dedup.add_snapshot(session, record, "Python and Django.")
     session.commit()
     text = client.get(f"/opportunities/{o.id}/panel").text
     assert '<span class="badge">via Himalayas</span>' in text
@@ -296,7 +293,6 @@ def test_settings_offers_language_rule(client):
 
 
 def test_queue_rows_carry_phone_card_hooks(client, session):
-    from job_radar.models import OpportunityState
 
     o = add_opportunity(session, score=7.5)
     o.score_reasons = [{"sign": "+", "text": "Python"}]
@@ -313,18 +309,22 @@ def test_queue_rows_carry_phone_card_hooks(client, session):
     )
     assert response.status_code == 200
     session.refresh(o)
-    assert o.state is OpportunityState.INTERESTED
+    assert o.state is models.OpportunityState.INTERESTED
 
 
 def test_applications_rows_have_labels(client, session):
-    from datetime import UTC, datetime
-
-    from job_radar.models import Application, ApplicationReview, ApplicationSource
+    import datetime as dt
 
     o = add_opportunity(session)
-    session.add(Application(company_id=o.company_id, applied_at=datetime(2026, 3, 1, tzinfo=UTC),
-                            role="Dev", source=ApplicationSource.MANUAL,
-                            review=ApplicationReview.CONFIRMED))  # fmt: skip
+    session.add(
+        models.Application(
+            company_id=o.company_id,
+            applied_at=dt.datetime(2026, 3, 1, tzinfo=dt.UTC),
+            role="Dev",
+            source=models.ApplicationSource.MANUAL,
+            review=models.ApplicationReview.CONFIRMED,
+        )
+    )
     session.commit()
     assert 'data-label="Company"' in client.get("/applications").text
 
@@ -335,7 +335,8 @@ def test_bootstrap_look(client, session):
     assert "bootstrap@5.3" in text and "bsTheme" in text and '"dark"' in text
     assert "IBM+Plex+Sans" in text
     assert 'class="navbar' in text and 'class="nav-link active"' in text
-    assert 'class="tabs nav nav-pills' in text  # tabs
+    # tabs
+    assert 'class="tabs nav nav-pills' in text
     panel = client.get(f"/opportunities/{o.id}/panel").text
     assert "btn-outline-success" in panel and "<kbd>I</kbd>" in panel
     page = client.get(f"/opportunities/{o.id}").text
@@ -358,8 +359,10 @@ def test_reason_redraws_only_the_company_rows(client, session):
             "from": "panel",
         },
     ).text
-    assert 'id="queue"' not in response  # the list itself is not re-rendered
-    assert f'<a id="opportunity-{o.id}" hx-swap-oob="delete">' in response  # it left To review
+    # the list itself is not re-rendered
+    assert 'id="queue"' not in response
+    # it left To review
+    assert f'<a id="opportunity-{o.id}" hx-swap-oob="delete">' in response
     assert f'id="opportunity-{sibling.id}"' in response and 'hx-swap-oob="outerHTML"' in response
     assert f'id="opportunity-{other.id}"' not in response
     assert 'id="tabs"' in response
@@ -382,13 +385,11 @@ def test_vacancy_page_goes_back_to_the_queue_it_came_from(client, session):
 
 
 def test_panel_links_are_big_buttons(client, session):
-    from job_radar.dedup import upsert_source_record
-    from job_radar.models import SourceType
 
     o = add_opportunity(session, title="Python Developer")
-    upsert_source_record(
+    dedup.upsert_source_record(
         session,
-        source_type=SourceType.LINKEDIN_ALERT,
+        source_type=models.SourceType.LINKEDIN_ALERT,
         external_id="42",
         url="https://www.linkedin.com/jobs/view/42/",
         opportunity=o,
@@ -399,7 +400,8 @@ def test_panel_links_are_big_buttons(client, session):
     assert 'class="btn btn-sm btn-outline-info link-btn" data-open-key="o"' in links
     assert "Open on linkedin.com ↗ <kbd>O</kbd>" in links
     assert f'href="/opportunities/{o.id}">Full page →' in links
-    assert "Full page" not in client.get(f"/opportunities/{o.id}").text  # already on it
+    # already on it
+    assert "Full page" not in client.get(f"/opportunities/{o.id}").text
     assert 'key === "o"' in client.get("/").text
 
 
@@ -422,34 +424,39 @@ def test_other_pages_share_the_inbox_look(client, session):
 
 
 def test_times_are_shown_in_local_time():
-    from datetime import UTC, datetime, timedelta, timezone
+    import datetime as dt
 
-    from job_radar.web.app import local_time
+    import job_radar.web.app as web_app
 
-    bangkok = timezone(timedelta(hours=7))
+    bangkok = dt.timezone(dt.timedelta(hours=7))
     # Stored as UTC, naive (SQLite) or aware: shown in the machine's zone.
-    assert local_time(datetime(2026, 10, 7, 16, 36), "%H:%M", tz=bangkok) == "23:36"
-    assert local_time(datetime(2026, 10, 7, 16, 36, tzinfo=UTC), "%H:%M", tz=bangkok) == "23:36"
-    assert local_time(datetime(2026, 10, 7, 20, 0), "%Y-%m-%d", tz=bangkok) == "2026-10-08"
-    assert local_time(None, "%H:%M") == ""
+    assert web_app.local_time(dt.datetime(2026, 10, 7, 16, 36), "%H:%M", tz=bangkok) == "23:36"
+    assert (
+        web_app.local_time(dt.datetime(2026, 10, 7, 16, 36, tzinfo=dt.UTC), "%H:%M", tz=bangkok)
+        == "23:36"
+    )
+    assert (
+        web_app.local_time(dt.datetime(2026, 10, 7, 20, 0), "%Y-%m-%d", tz=bangkok) == "2026-10-08"
+    )
+    assert web_app.local_time(None, "%H:%M") == ""
 
 
 def test_panel_shows_other_vacancies_of_the_company(client, session):
-    from datetime import UTC, datetime
-
-    from job_radar.models import OpportunityState
+    import datetime as dt
 
     katowice = add_opportunity(session, title="Senior Python Developer", company="Sii Poland")
-    katowice.location, katowice.state = "Katowice (Remote)", OpportunityState.APPLIED
-    katowice.state_changed_at = datetime(2026, 10, 15, 7, 56, tzinfo=UTC)
-    seen = add_opportunity(session, title="Data Engineer", company="Sii Poland")  # untouched
+    katowice.location, katowice.state = "Katowice (Remote)", models.OpportunityState.APPLIED
+    katowice.state_changed_at = dt.datetime(2026, 10, 15, 7, 56, tzinfo=dt.UTC)
+    # untouched
+    seen = add_opportunity(session, title="Data Engineer", company="Sii Poland")
     warsaw = add_opportunity(session, title="Senior Python Developer", company="Sii Poland")
     warsaw.location = "Warsaw (Remote)"
     session.commit()
     text = client.get(f"/opportunities/{warsaw.id}/panel").text
     assert "Other vacancies here" in text
     assert f'href="/opportunities/{katowice.id}"' in text and "Katowice (Remote)" in text
-    assert f'href="/opportunities/{seen.id}"' not in text  # only your states
+    # only your states
+    assert f'href="/opportunities/{seen.id}"' not in text
     assert "already applied 2026-10-15" in text
     # The list says so too.
     assert "applied here 15.10" in client.get("/").text

@@ -1,32 +1,35 @@
 """SQLite connection settings (docs/architecture.md#database, #22)."""
 
+import pathlib
 import sqlite3
-from pathlib import Path
 
-from sqlalchemy import Engine, text
+import sqlalchemy as sa
 
 
-def pragma(engine: Engine, name: str) -> str | int:
+def pragma(engine: sa.Engine, name: str) -> str | int:
     with engine.connect() as conn:
-        return conn.execute(text(f"PRAGMA {name}")).scalar_one()
+        return conn.execute(sa.text(f"PRAGMA {name}")).scalar_one()
 
 
-def test_connections_use_wal_busy_timeout_and_foreign_keys(engine: Engine):
+def test_connections_use_wal_busy_timeout_and_foreign_keys(engine: sa.Engine):
     assert pragma(engine, "journal_mode") == "wal"
     assert pragma(engine, "busy_timeout") == 30000
     assert pragma(engine, "foreign_keys") == 1
 
 
-def test_a_commit_does_not_wait_for_an_open_read(engine: Engine, tmp_path: Path):
-    pragma(engine, "journal_mode")  # the engine has connected once: the file is in WAL now
+def test_a_commit_does_not_wait_for_an_open_read(engine: sa.Engine, tmp_path: pathlib.Path):
+    # the engine has connected once: the file is in WAL now
+    pragma(engine, "journal_mode")
     reader = sqlite3.connect(tmp_path / "test.db", isolation_level=None, timeout=0)
     reader.execute("BEGIN")
-    reader.execute("SELECT count(*) FROM companies").fetchone()  # holds a read snapshot
+    # holds a read snapshot
+    reader.execute("SELECT count(*) FROM companies").fetchone()
     try:
         with engine.begin() as conn:
-            conn.execute(text("PRAGMA busy_timeout=0"))  # fail at once instead of waiting
+            # fail at once instead of waiting
+            conn.execute(sa.text("PRAGMA busy_timeout=0"))
             conn.execute(
-                text(
+                sa.text(
                     "INSERT INTO companies (name, normalized_name, aliases, domains, created_at) "
                     "VALUES ('Acme', 'acme', '[]', '[]', CURRENT_TIMESTAMP)"
                 )
