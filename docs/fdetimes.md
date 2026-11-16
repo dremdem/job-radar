@@ -18,6 +18,10 @@ FDE Times has no API or feed, so Job Radar reads its public pages with plain HTT
 
 Runs as part of **Sync** / `./jr sync`, or alone: `uv run job-radar sync fdetimes`. Off with `JOB_RADAR_FDETIMES=false`.
 
+## Applications
+
+When you apply through the FDE Times form, FDE Times mails `Application received: <role> at <company>` from `account@fdetimes.net`. If that mail reaches Job Radar (the `job-proposal` label, [gmail.md](gmail.md)), Mail analysis records a confirmed application. The matching vacancy is marked Applied, or created when missing. See [applications.md](applications.md#sources) (#15).
+
 ## Descriptions
 
 The description is on the role page, in its schema.org `JobPosting` data. It is fetched by the **Descriptions** job (the button in the header, and the *Descriptions* step of Sync), after the LinkedIn descriptions:

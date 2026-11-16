@@ -34,6 +34,11 @@ LINKEDIN_SENDER = "jobs-noreply@linkedin.com"
 _LINKEDIN_SUBJECT = re.compile(r"your application was sent to (?P<company>.+)$", re.IGNORECASE)
 _JOB_ID = re.compile(r"linkedin\.com/(?:comm/)?jobs/view/(\d+)")
 
+FDETIMES_DOMAIN = "fdetimes.net"
+_FDETIMES_SUBJECT = re.compile(r"^application received:\s*(?P<rest>.+ at .+)$", re.IGNORECASE)
+# What the contact step may have called a confirmation that came before #15.
+_RELABEL = ("interview", "other", "recruiter_outreach")
+
 ATS_DOMAINS = (
     "workablemail.com",
     "ashbyhq.com",
@@ -202,6 +207,14 @@ def detect_application(
             needs_body=html is None and text is None,
         )
     domain = address.rpartition("@")[2]
+    if domain == FDETIMES_DOMAIN or domain.endswith("." + FDETIMES_DOMAIN):
+        # "Application received: <role> at <company>"; a role may contain " at " itself.
+        if not (match := _FDETIMES_SUBJECT.match(subject)):
+            return None
+        role, _, company = match["rest"].rpartition(" at ")
+        return DetectedApplication(
+            source=models.ApplicationSource.FDETIMES, company=company.strip(), role=role.strip()
+        )
     if not any(domain == d or domain.endswith("." + d) for d in ATS_DOMAINS):
         return None
     probe = f"{subject}\n{snippet}"
@@ -264,6 +277,47 @@ def _opportunity_for(session: sa_orm.Session, job_id: str | None) -> int | None:
     )
 
 
+def _fdetimes_vacancy(session: sa_orm.Session, company_id: int, role: str) -> models.Opportunity:
+    """The vacancy an FDE Times confirmation is about: the FDE Times one of the company with
+    this title, else another one with this title, else a new one. Marked Applied; other
+    copies with the title join it (#269)."""
+    import job_radar.applied_duplicates as applied_duplicates
+    import job_radar.dedup as dedup
+
+    same = [
+        o
+        for o in session.scalars(
+            sa.select(models.Opportunity)
+            .where(models.Opportunity.company_id == company_id)
+            .order_by(models.Opportunity.id.desc())
+        )
+        if applied_duplicates.same_title(o.title) == applied_duplicates.same_title(role)
+    ]
+    ranked = sorted(
+        same,
+        key=lambda o: (
+            not any(r.source_type is models.SourceType.FDETIMES for r in o.source_records),
+            o.state is not models.OpportunityState.APPLIED,
+        ),
+    )
+    if ranked:
+        keep = ranked[0]
+    else:
+        keep = models.Opportunity(title=role[:255], company_id=company_id)
+        session.add(keep)
+    if keep.state is not models.OpportunityState.APPLIED:
+        keep.state = models.OpportunityState.APPLIED
+        keep.auto_ignore_reason = None
+    session.flush()
+    now = dt.datetime.now(dt.UTC)
+    for dup in ranked[1:]:
+        # "interested" or applied: your own call, kept apart
+        if dup.state in applied_duplicates.MERGEABLE:
+            applied_duplicates._seen_again(session, keep, dup, now)
+            dedup.merge_opportunities(session, keep, dup)
+    return keep
+
+
 def import_applications(
     session: sa_orm.Session, fetch_body: linkedin_rejections.FetchBody | None = None
 ) -> ImportStats:
@@ -277,7 +331,13 @@ def import_applications(
         sa.select(models.EmailMessage)
         .where(
             models.EmailMessage.direction == models.EmailDirection.IN,
-            models.EmailMessage.detected_event.is_(None),
+            sa.or_(
+                models.EmailMessage.detected_event.is_(None),
+                sa.and_(
+                    models.EmailMessage.from_addr.ilike(f"%@{FDETIMES_DOMAIN}%"),
+                    models.EmailMessage.detected_event.in_(_RELABEL),
+                ),
+            ),
             # deleted from the company history (#225)
             models.EmailMessage.hidden_at.is_(None),
         )
@@ -319,22 +379,25 @@ def import_applications(
                 source=found.source,
                 review=(
                     models.ApplicationReview.CONFIRMED
-                    if found.source is models.ApplicationSource.LINKEDIN
+                    if found.source
+                    in (models.ApplicationSource.LINKEDIN, models.ApplicationSource.FDETIMES)
                     else models.ApplicationReview.SUGGESTED
                 ),
                 email_message_id=email.id,
             )
             session.add(app)
             stats.new += 1
-        if (
-            found.source is models.ApplicationSource.LINKEDIN
-            and app.review is models.ApplicationReview.SUGGESTED
-        ):
-            # LinkedIn states the application as a fact; a dismissal by the user still wins.
+        confirmed = (models.ApplicationSource.LINKEDIN, models.ApplicationSource.FDETIMES)
+        if found.source in confirmed and app.review is models.ApplicationReview.SUGGESTED:
+            # LinkedIn and FDE Times state it as a fact; a dismissal by the user still wins.
             app.review = models.ApplicationReview.CONFIRMED
         app.role = app.role or found.role
         app.linkedin_job_id = app.linkedin_job_id or found.linkedin_job_id
         app.opportunity_id = app.opportunity_id or _opportunity_for(session, found.linkedin_job_id)
+        if found.source is models.ApplicationSource.FDETIMES and found.role:
+            app.opportunity_id = app.opportunity_id or (
+                _fdetimes_vacancy(session, company.id, found.role).id
+            )
         email.company_id = company.id
         email.company_match = "exact"
         if waiting:

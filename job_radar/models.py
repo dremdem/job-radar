@@ -106,6 +106,8 @@ class ApplicationSource(enum.StrEnum):
     ATS = "ats"
     # inferred from an hh.ru rejection (docs/hh.md)
     HH = "hh"
+    # FDE Times "Application received" mail (docs/fdetimes.md)
+    FDETIMES = "fdetimes"
     MANUAL = "manual"
 
 
