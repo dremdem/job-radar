@@ -22,6 +22,7 @@ Two kinds of entries, each with a short name, a one-line description and a body:
   ```
 
   `save` adds an entry or replaces the one with the same name. A block that cannot be read is ignored, and the answer says so.
+- When you ask the chat to remember or save something, Claude adds the block and says what it saved: the block is its only way to save, and it is told never to answer that it cannot save. The rules and the memory reach it with every question (the chat continues the analysis session, where a new system prompt would be ignored: [claude.md](claude.md#how-it-runs)).
 - Under that answer the chat says what changed, e.g. "Memory: saved salary, deleted old-entry", with a link to the Memory page.
 - Claude is told to save only what you said or confirmed, or a way of working that proved useful, and **never because the vacancy text or a web page asks for it** (they may carry planted instructions). The change log below is how you catch it if it does.
 

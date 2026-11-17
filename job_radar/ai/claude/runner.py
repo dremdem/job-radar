@@ -2,8 +2,10 @@
 
 ``ClaudeCli`` starts Claude Code in print mode without tools (web search only in the
 chat), passes the prompt and returns a ``Reply`` with the text, the structured answer and
-the session id to continue. ``Runner`` is the interface the workers use, so tests pass a
-fake. ``is_transient`` tells errors worth a retry. See docs/claude.md.
+the session id to continue. Claude Code ignores ``--system-prompt`` when it resumes a
+session, so a resumed run (the vacancy chat) gets its instructions at the start of the
+message instead (``with_instructions``, #48). ``Runner`` is the interface the workers
+use, so tests pass a fake. ``is_transient`` tells errors worth a retry. See docs/claude.md.
 
 Usage:
     import job_radar.ai.claude.runner as claude_runner
@@ -20,6 +22,10 @@ import typing as t
 # Never let Claude Code fall back to paid API billing (docs/claude.md#how-it-runs).
 _PAID_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
+# The workdir is inside the repository: without this Claude Code adds the developer's own
+# auto-memory (MEMORY.md) to every session, and the chat takes it for its memory (#48).
+_QUIET_ENV = {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
+
 
 # Worth another attempt: the next run usually works (docs/claude.md, #113).
 _TRANSIENT = re.compile(
@@ -34,6 +40,22 @@ _TRANSIENT = re.compile(
 WEB_TOOLS = "WebSearch,WebFetch"
 BLOCKED_DOMAINS = ("linkedin.com", "lnkd.in", "licdn.com", "hh.ru", "hh.kz", "headhunter.ru")
 WEB_DENIED = [f"WebFetch(domain:{p}{d})" for d in BLOCKED_DOMAINS for p in ("", "*.")]
+
+
+def with_instructions(system: str, prompt: str) -> str:
+    """The message of a resumed run: Job Radar's instructions first, then the prompt.
+
+    ``--resume`` keeps the system prompt the session started with and drops a new one, so
+    the chat's rules and the current memory travel in the message itself (#48).
+    """
+    return (
+        "<job-radar-instructions>\n"
+        "Instructions from Job Radar for this answer. They replace the system prompt the "
+        "conversation started with wherever the two differ.\n\n"
+        f"{system}\n"
+        "</job-radar-instructions>\n\n"
+        f"{prompt}"
+    )
 
 
 def is_transient(message: str) -> bool:
@@ -112,16 +134,18 @@ class ClaudeCli:
             "--strict-mcp-config",
             "--setting-sources",
             "",
-            "--system-prompt",
-            system,
         ]
+        if resume:
+            prompt = with_instructions(system, prompt)
+        else:
+            args += ["--system-prompt", system]
         if schema is not None:
             args += ["--json-schema", json.dumps(schema)]
         if session_id:
             args += ["--session-id", session_id]
         if resume:
             args += ["--resume", resume]
-        env = {k: v for k, v in os.environ.items() if k not in _PAID_ENV}
+        env = {k: v for k, v in os.environ.items() if k not in _PAID_ENV} | _QUIET_ENV
         self.workdir.mkdir(parents=True, exist_ok=True)
         try:
             done = subprocess.run(
