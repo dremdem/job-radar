@@ -961,7 +961,7 @@ def test_page_of_checks_the_host_not_a_substring():
 def test_finished_status_can_be_dismissed_until_the_next_run(engine, database_url, tmp_path):
     """The ✕ on a finished Chrome fill hides it until the next run (#19).
 
-    Runs the page's own script in headless Chromium; see tests/test_chat_keys.py for how.
+    Runs the page's own script in headless Chromium; see tests/web/test_chat_keys.py for how.
     """
     import browser_helpers
 
