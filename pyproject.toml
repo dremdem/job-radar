@@ -55,21 +55,21 @@ dev = [
 
 [tool.ruff.lint.per-file-ignores]
 # Real vacancy titles with full-width and typographic characters, on purpose.
-"tests/test_language.py" = ["RUF001"]
+"tests/scoring/test_language.py" = ["RUF001"]
 # Real Russian-language Telegram posts.
-"tests/test_telegram.py" = ["RUF001"]
+"tests/sources/telegram/test_telegram.py" = ["RUF001"]
 # Real Himalayas titles with typographic dashes.
-"tests/test_himalayas.py" = ["RUF001"]
+"tests/sources/boards/test_himalayas.py" = ["RUF001"]
 # Russian wording in vacancy texts.
 "job_radar/profile/stack.py" = ["RUF001"]
-"tests/test_stack.py" = ["RUF001"]
+"tests/profile/test_stack.py" = ["RUF001"]
 "job_radar/sources/hh/notifications.py" = ["RUF001"]
-"tests/test_hh_notifications.py" = ["RUF001"]
-"tests/test_claude.py" = ["RUF001"]
-"tests/test_suggestions.py" = ["RUF001"]
-"tests/test_hh_digests.py" = ["RUF001"]
-"tests/test_hh_capture.py" = ["RUF001"]
-"tests/test_skills.py" = ["RUF001"]
+"tests/sources/hh/test_hh_notifications.py" = ["RUF001"]
+"tests/ai/test_claude.py" = ["RUF001"]
+"tests/review/test_suggestions.py" = ["RUF001"]
+"tests/sources/hh/test_hh_digests.py" = ["RUF001"]
+"tests/sources/hh/test_hh_capture.py" = ["RUF001"]
+"tests/ai/test_skills.py" = ["RUF001"]
 "job_radar/ai/skills.py" = ["RUF001"]
 "job_radar/sources/hh/digests.py" = ["RUF001"]
 "job_radar/ai/claude/prompt.py" = ["RUF001"]

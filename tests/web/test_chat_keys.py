@@ -2,7 +2,7 @@
 
 The keys are handled in the browser, so the second test runs the real page in headless
 Chromium. It needs Playwright and its Chromium, which the project does not install:
-    uv run --with playwright pytest tests/test_chat_keys.py
+    uv run --with playwright pytest tests/web/test_chat_keys.py
 Without them that test is skipped, and the markup test still runs.
 """
 
