@@ -963,11 +963,11 @@ def test_finished_status_can_be_dismissed_until_the_next_run(engine, database_ur
 
     Runs the page's own script in headless Chromium; see tests/test_chat_keys.py for how.
     """
-    import test_chat_keys
+    import browser_helpers
 
     sync_api = pytest.importorskip("playwright.sync_api")
-    if not test_chat_keys.CHROME.exists():
-        pytest.skip(f"no Chromium at {test_chat_keys.CHROME}")
+    if not browser_helpers.CHROME.exists():
+        pytest.skip(f"no Chromium at {browser_helpers.CHROME}")
 
     def runner(job):
         job.progress(total=2, requests=2, saved=1, errors=1)
@@ -984,7 +984,7 @@ def test_finished_status_can_be_dismissed_until_the_next_run(engine, database_ur
     assert "data-finished=" in status
 
     with sync_api.sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=str(test_chat_keys.CHROME))
+        browser = p.chromium.launch(executable_path=str(browser_helpers.CHROME))
         page = browser.new_page()
         # Only the app's own page is served; LinkedIn, hh.ru and the CDN are never reached.
         # A real origin (not about:blank) is needed for localStorage.

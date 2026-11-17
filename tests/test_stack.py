@@ -4,8 +4,8 @@ mentions that the profile lacks (docs/ai.md#stack-vs-your-cv).
 
 import typing as t
 
+import ai_analysis_fakes
 import pytest
-import test_ai_analysis
 
 import job_radar.ai.local.analysis as local_analysis
 import job_radar.models as models
@@ -102,11 +102,11 @@ def test_stack_risks():
 
 
 def test_analyze_pending_checks_stack_also_for_analyzed_descriptions(session):
-    o = test_ai_analysis.add_vacancy(session, title="Python Developer", text=GO_JOB)
+    o = ai_analysis_fakes.add_vacancy(session, title="Python Developer", text=GO_JOB)
     # Analyzed before a profile existed: no stack yet.
 
     local_analysis.analyze_pending(
-        session, test_ai_analysis.FakeModel([test_ai_analysis.UK_ANSWER])
+        session, ai_analysis_fakes.FakeModel([ai_analysis_fakes.UK_ANSWER])
     )
     assert o.analyses[0].stack is None
 
@@ -121,7 +121,7 @@ def test_analyze_pending_checks_stack_also_for_analyzed_descriptions(session):
 
 
 def test_queue_shows_stack_gap(client, session):
-    o = test_ai_analysis.add_vacancy(session, title="Python Developer", text=GO_JOB)
+    o = ai_analysis_fakes.add_vacancy(session, title="Python Developer", text=GO_JOB)
     model = FakeModel({"Go": {"status": "required", "quote": "working in Go in production"}})
     local_analysis.analyze_pending(session, model, known={k.lower() for k in KNOWN})
     # 8.0 - 1

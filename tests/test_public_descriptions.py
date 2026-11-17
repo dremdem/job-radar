@@ -5,24 +5,24 @@ run with its daily limit and stops (docs/linkedin-public-search.md).
 import datetime as dt
 import re
 
-import paths
+import public_descriptions_fakes
 import sqlalchemy as sa
 
-import job_radar.dedup as dedup
 import job_radar.models as models
 import job_radar.review.auto_ignore as review_auto_ignore
 import job_radar.sources.linkedin.public as linkedin_public
 
-POSTING = (paths.FIXTURES / "linkedin_public" / "job_posting.html").read_text()
 NOW = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
 
 
 def test_fixture_has_no_tracking_or_personal_data():
-    assert not re.search(r"trackingId|refId|midToken|Vladimir|@gmail", POSTING)
+    assert not re.search(
+        r"trackingId|refId|midToken|Vladimir|@gmail", public_descriptions_fakes.POSTING
+    )
 
 
 def test_parse_job_posting():
-    job = linkedin_public.parse_job_posting(POSTING)
+    job = linkedin_public.parse_job_posting(public_descriptions_fakes.POSTING)
     assert (job.title, job.company, job.location) == (
         "Senior Back-end Engineer",
         "ScorePlay",
@@ -32,40 +32,9 @@ def test_parse_job_posting():
     assert linkedin_public.parse_job_posting("<html>nothing</html>") is None
 
 
-class FakeHttp:
-    """Answers every request with the same status and page."""
-
-    def __init__(self, response=(200, "u", POSTING)):
-        self.response, self.urls = response, []
-
-    def __call__(self, url):
-        self.urls.append(url)
-        return self.response
-
-
-def client(response=(200, "u", POSTING)):
-    http = FakeHttp(response)
+def client(response=(200, "u", public_descriptions_fakes.POSTING)):
+    http = public_descriptions_fakes.FakeHttp(response)
     return linkedin_public.PublicSearchClient(http_get=http, sleep=lambda _: None), http
-
-
-def vacancy(session, job_id, score, state=models.OpportunityState.NEW, title="Backend Engineer"):
-    o = models.Opportunity(
-        title=title,
-        company=dedup.get_or_create_company(session, f"Co {job_id}"),
-        state=state,
-        score=score,
-    )
-    session.add(o)
-    session.flush()
-    dedup.upsert_source_record(
-        session,
-        source_type=models.SourceType.LINKEDIN_ALERT,
-        external_id=job_id,
-        url=None,
-        opportunity=o,
-    )
-    session.commit()
-    return o
 
 
 def count(session, model):
@@ -73,9 +42,9 @@ def count(session, model):
 
 
 def test_fetches_descriptions_for_to_review_by_score(session):
-    vacancy(session, "1", score=5.0)
-    vacancy(session, "2", score=9.0)
-    vacancy(session, "3", score=7.0, state=models.OpportunityState.IGNORE)
+    public_descriptions_fakes.vacancy(session, "1", score=5.0)
+    public_descriptions_fakes.vacancy(session, "2", score=9.0)
+    public_descriptions_fakes.vacancy(session, "3", score=7.0, state=models.OpportunityState.IGNORE)
     c, http = client()
     stats = linkedin_public.import_public_descriptions(session, c, now=NOW, max_per_day=5)
     assert (stats.requests, stats.saved) == (2, 2)
@@ -90,7 +59,7 @@ def test_fetches_descriptions_for_to_review_by_score(session):
 
 def test_daily_limit(session):
     for i in range(4):
-        vacancy(session, str(i), score=float(i))
+        public_descriptions_fakes.vacancy(session, str(i), score=float(i))
     c, _ = client()
     assert (
         linkedin_public.import_public_descriptions(session, c, now=NOW, max_per_day=3).requests == 3
@@ -110,8 +79,8 @@ def test_daily_limit(session):
 
 
 def test_blocking_stops_descriptions_and_searches_for_the_day(session):
-    vacancy(session, "1", score=5.0)
-    vacancy(session, "2", score=4.0)
+    public_descriptions_fakes.vacancy(session, "1", score=5.0)
+    public_descriptions_fakes.vacancy(session, "2", score=4.0)
     c, _ = client((429, "u", ""))
     stats = linkedin_public.import_public_descriptions(session, c, now=NOW, max_per_day=5)
     assert stats.blocked and stats.requests == 1
@@ -136,7 +105,7 @@ def test_blocking_stops_descriptions_and_searches_for_the_day(session):
 
 
 def test_description_fetches_do_not_use_the_search_budget(session):
-    vacancy(session, "1", score=5.0)
+    public_descriptions_fakes.vacancy(session, "1", score=5.0)
     c, _ = client()
     linkedin_public.import_public_descriptions(session, c, now=NOW, max_per_day=5)
     searches = session.scalar(
@@ -149,7 +118,7 @@ def test_description_fetches_do_not_use_the_search_budget(session):
 
 def test_no_python_rule_applies_to_fetched_descriptions(session):
     review_auto_ignore.save_rules(session, review_auto_ignore.Rules(no_python=True))
-    o = vacancy(session, "1", score=5.0)
+    o = public_descriptions_fakes.vacancy(session, "1", score=5.0)
     # ScorePlay: no Python
     linkedin_public.import_public_descriptions(session, client()[0], now=NOW, max_per_day=5)
     session.refresh(o)
@@ -160,7 +129,7 @@ def test_no_python_rule_applies_to_fetched_descriptions(session):
 
 
 def test_page_without_description_is_an_error_not_a_block(session):
-    vacancy(session, "1", score=5.0)
+    public_descriptions_fakes.vacancy(session, "1", score=5.0)
     stats = linkedin_public.import_public_descriptions(
         session, client((200, "u", "<html>moved</html>"))[0], now=NOW, max_per_day=5
     )

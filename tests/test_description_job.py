@@ -5,8 +5,8 @@ import threading
 import time
 
 import fastapi.testclient as fastapi_testclient
+import public_descriptions_fakes
 import sqlalchemy as sa
-import test_public_descriptions
 
 import job_radar.config as config
 import job_radar.jobs.pipeline as jobs_pipeline
@@ -37,12 +37,12 @@ def test_pause_defaults_and_is_saved(session):
 
 
 def test_log_keeps_the_vacancy_the_time_and_the_reason(session):
-    ok = test_public_descriptions.vacancy(session, "1", score=9.0)
-    empty = test_public_descriptions.vacancy(session, "2", score=8.0)
-    blocked = test_public_descriptions.vacancy(session, "3", score=7.0)
+    ok = public_descriptions_fakes.vacancy(session, "1", score=9.0)
+    empty = public_descriptions_fakes.vacancy(session, "2", score=8.0)
+    blocked = public_descriptions_fakes.vacancy(session, "3", score=7.0)
     responses = iter(
         [
-            (200, "u", test_public_descriptions.POSTING),
+            (200, "u", public_descriptions_fakes.POSTING),
             (200, "u", "<html>moved</html>"),
             (429, "u", ""),
         ]
@@ -65,10 +65,10 @@ def test_log_keeps_the_vacancy_the_time_and_the_reason(session):
 
 def test_progress_is_reported_after_each_request(session):
     for n in range(3):
-        test_public_descriptions.vacancy(session, str(n), score=float(n))
+        public_descriptions_fakes.vacancy(session, str(n), score=float(n))
     seen = []
     client = linkedin_public.PublicSearchClient(
-        http_get=test_public_descriptions.FakeHttp(), sleep=no_sleep
+        http_get=public_descriptions_fakes.FakeHttp(), sleep=no_sleep
     )
     linkedin_public.import_public_descriptions(
         session, client, now=NOW, max_per_day=10, on_progress=lambda s: seen.append(s.requests)
@@ -78,9 +78,9 @@ def test_progress_is_reported_after_each_request(session):
 
 def test_stop_ends_the_job_without_a_request_and_logs_it(session):
     for n in range(3):
-        test_public_descriptions.vacancy(session, str(n), score=float(n))
+        public_descriptions_fakes.vacancy(session, str(n), score=float(n))
     stop = threading.Event()
-    http = test_public_descriptions.FakeHttp()
+    http = public_descriptions_fakes.FakeHttp()
 
     def get(url):
         # the user presses Stop during the first request
@@ -99,7 +99,7 @@ def test_stop_ends_the_job_without_a_request_and_logs_it(session):
     again = linkedin_public.import_public_descriptions(
         session,
         linkedin_public.PublicSearchClient(
-            http_get=test_public_descriptions.FakeHttp(), sleep=no_sleep
+            http_get=public_descriptions_fakes.FakeHttp(), sleep=no_sleep
         ),
         now=NOW,
         max_per_day=3,
@@ -108,11 +108,11 @@ def test_stop_ends_the_job_without_a_request_and_logs_it(session):
 
 
 def test_the_wait_is_announced_before_it_starts(session):
-    test_public_descriptions.vacancy(session, "1", score=2.0)
-    test_public_descriptions.vacancy(session, "2", score=1.0)
+    public_descriptions_fakes.vacancy(session, "1", score=2.0)
+    public_descriptions_fakes.vacancy(session, "2", score=1.0)
     waits = []
     client = linkedin_public.PublicSearchClient(
-        http_get=test_public_descriptions.FakeHttp(),
+        http_get=public_descriptions_fakes.FakeHttp(),
         sleep=no_sleep,
         pause=(10, 40),
         rand=lambda a, b: 12.0,
@@ -219,7 +219,7 @@ def test_button_runs_with_fdetimes_alone(engine, database_url, tmp_path):
 
 
 def test_log_page_lists_requests_with_reasons(engine, database_url, tmp_path, session):
-    o = test_public_descriptions.vacancy(session, "77", score=5.0, title="Python Backend Engineer")
+    o = public_descriptions_fakes.vacancy(session, "77", score=5.0, title="Python Backend Engineer")
     now = dt.datetime.now(dt.UTC)
     session.add_all(
         [
@@ -236,7 +236,7 @@ def test_log_page_lists_requests_with_reasons(engine, database_url, tmp_path, se
     assert "HTTP 429" in text and "blocked" in text
     assert "2 requests" in text and "1 saved" in text
     # Rows logged before #205 have only the job id; the vacancy is found by it.
-    old = test_public_descriptions.vacancy(session, "79", score=5.0, title="Django Developer")
+    old = public_descriptions_fakes.vacancy(session, "79", score=5.0, title="Django Developer")
     session.add(models.LinkedInFetch(at=now, kind="description", job_id="79", start=0, status="ok"))
     session.commit()
     with web(database_url, tmp_path, lambda job: None) as client:

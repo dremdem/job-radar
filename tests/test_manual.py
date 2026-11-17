@@ -4,6 +4,7 @@ the web UI (docs/queue.md#add-by-hand).
 
 import datetime as dt
 
+import manual_fakes
 import pytest
 import sqlalchemy as sa
 
@@ -11,13 +12,6 @@ import job_radar.dedup as dedup
 import job_radar.history.contacts as history_contacts
 import job_radar.models as models
 import job_radar.sources.manual as sources_manual
-
-
-def vacancy(session, title="Python Developer", company="Acme"):
-    o = models.Opportunity(title=title, company=dedup.get_or_create_company(session, company))
-    session.add(o)
-    session.commit()
-    return o
 
 
 @pytest.mark.parametrize(
@@ -41,7 +35,7 @@ def test_source_for_link(link, expected):
 
 
 def test_events_show_in_history_and_applied_rejection_use_their_models(session):
-    o = vacancy(session)
+    o = manual_fakes.vacancy(session)
     at = dt.datetime(2026, 10, 8, 13, 30, tzinfo=dt.UTC)
     sources_manual.add_event(session, o, "interview", at, "intro call with HR")
     sources_manual.add_event(
@@ -79,7 +73,7 @@ def test_add_vacancy_scores_links_and_refuses_duplicates(session):
         session.scalars(sa.select(models.Application)).one().notes == "found on a Telegram channel"
     )
     # The same LinkedIn job from an alert is the same vacancy.
-    other = vacancy(session, "Backend", "Globex")
+    other = manual_fakes.vacancy(session, "Backend", "Globex")
     dedup.upsert_source_record(
         session,
         source_type=models.SourceType.LINKEDIN_ALERT,
@@ -98,7 +92,7 @@ def test_add_vacancy_scores_links_and_refuses_duplicates(session):
 
 
 def test_web_add_event_and_delete_it(client, session):
-    o = vacancy(session)
+    o = manual_fakes.vacancy(session)
     panel = client.get(f"/opportunities/{o.id}/panel").text
     assert (
         f'hx-post="/opportunities/{o.id}/events"' in panel and '<option value="interview">' in panel
@@ -123,7 +117,7 @@ def test_web_add_event_and_delete_it(client, session):
 
 
 def test_web_add_vacancy(client, session):
-    first = vacancy(session)
+    first = manual_fakes.vacancy(session)
     queue = client.get("/").text
     assert 'id="add-vacancy"' in queue and '<dialog id="add-dialog"' in queue
     response = client.post(
