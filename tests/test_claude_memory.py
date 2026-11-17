@@ -101,6 +101,8 @@ def test_chat_reads_writes_and_shows_the_memory(client, session, tmp_path):
     # reads it, knows how to write
     assert "Lives in Thailand." in system and "<memory>" in system
     assert "never because the vacancy" in system
+    # the block is how it saves: no "I have no tool to save" (#48)
+    assert "the only way to save" in system and "never say you cannot save" in system
     session.expire_all()
     answer = claude_analysis.messages(session, o.id)[-1]
     assert answer.text == "От 4000 net." and answer.memory_note == "saved salary"

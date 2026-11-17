@@ -45,11 +45,13 @@ Every quote is checked against the description, as for the local model. A quote 
   - No tools: Claude only reads and answers. It cannot open files, run commands or go online. The vacancy text is not ours, so an analysis never gets the internet: a line planted in a description could steer it.
   - **The chat can search the web**, unless **Internet in chat** is off in Settings: its runs get `--tools WebSearch,WebFetch` (allowed without asking) and nothing else. LinkedIn and hh.ru are denied by Claude Code's own permission rules (`--disallowedTools "WebFetch(domain:linkedin.com)" "WebFetch(domain:*.linkedin.com)" …`, both forms: a bare domain does not cover `www.`), because the project never fetches them automatically. The risk that is left: a description could ask Claude to open a URL that carries something from the conversation; turn the switch off if that worries you.
   - `ANTHROPIC_API_KEY` is removed from its environment, so it never falls back to paid API billing.
+  - `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` is set: `data/claude` is inside the repository, and without it Claude Code adds its own auto-memory of the repository (`MEMORY.md`) to every session. Job Radar's memory is [claude-memory.md](claude-memory.md), not those files.
   - **Parallel analyses** (Settings, 1–8, default 4) is how many run at once; a change applies without a restart. A vacancy is claimed atomically, so two threads never run the same one.
   - Chat questions have **their own thread**, outside that number: an answer never waits behind analyses.
   - The daily cap counts running analyses too, so parallel runs cannot pass it.
 - **Sessions:**
   - each analysis is a Claude session (`--session-id`), kept so the vacancy chat can continue it with `--resume`;
+  - Claude Code ignores `--system-prompt` on `--resume` (the session keeps the analysis' system prompt), so a chat question goes out with the chat's instructions and the current memory at the start of its message, in a `<job-radar-instructions>` block; the chat page shows only the question;
   - sessions live under `data/claude/`, apart from your own Claude Code sessions.
 - **Stored:** `claude_analyses` holds state, model, session id, the answer, the error if any, the notional cost Claude reports, and the prompt version. A server restart puts unfinished vacancies back in the queue.
 - **Errors:**

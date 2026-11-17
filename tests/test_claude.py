@@ -229,7 +229,9 @@ def fake_claude(tmp_path, monkeypatch):
 import json, os, sys
 prompt = sys.stdin.read()
 json.dump({{"argv": sys.argv[1:], "prompt": prompt, "cwd": os.getcwd(),
-           "key": os.environ.get("ANTHROPIC_API_KEY")}}, open({str(log)!r}, "w"))
+           "key": os.environ.get("ANTHROPIC_API_KEY"),
+           "auto_memory_off": os.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY")}},
+          open({str(log)!r}, "w"))
 print(json.dumps({{"type": "result", "is_error": False, "result": "ok", "session_id": "s-9",
                   "structured_output": {{"verdict": "apply"}}, "total_cost_usd": 0.01}}))
 """)
@@ -255,6 +257,24 @@ def test_cli_runner_uses_print_mode_without_tools_or_api_key(fake_claude, tmp_pa
     assert call["prompt"] == "the prompt" and call["cwd"] == str(workdir)
     # never paid API billing
     assert call["key"] is None
+    # nor Claude Code's own auto-memory of the repository the workdir is in (#48)
+    assert call["auto_memory_off"] == "1"
+    assert argv[argv.index("--system-prompt") + 1] == "SYS"
+
+
+def test_cli_runner_resume_sends_the_instructions_in_the_message(fake_claude, tmp_path):
+    """Claude Code ignores --system-prompt on --resume (#48), so a resumed run (the vacancy
+    chat) carries the instructions at the start of its message."""
+    script, log = fake_claude
+    claude_runner.ClaudeCli(str(script), tmp_path).run(
+        "Запомни это.", system="CHAT RULES", model="sonnet", resume="r"
+    )
+    call = json.loads(log.read_text())
+    assert "--system-prompt" not in call["argv"]
+    assert call["argv"][call["argv"].index("--resume") + 1] == "r"
+    instructions, question = call["prompt"].split("</job-radar-instructions>")
+    assert instructions.startswith("<job-radar-instructions>") and "CHAT RULES" in instructions
+    assert question.strip() == "Запомни это."
 
 
 def test_cli_runner_web_allows_search_but_not_linkedin_or_hh(fake_claude, tmp_path):
