@@ -4,8 +4,8 @@ Skills page (docs/skills.md).
 
 import datetime as dt
 
+import ai_analysis_fakes
 import pytest
-import test_ai_analysis
 
 import job_radar.ai.skills as ai_skills
 import job_radar.models as models
@@ -53,15 +53,15 @@ def gap(skill, must=True, blocker=False):
 
 
 def test_report_counts_and_unlocks(session):
-    only_go = test_ai_analysis.add_vacancy(session, title="A", text="Python and Go.")
+    only_go = ai_analysis_fakes.add_vacancy(session, title="A", text="Python and Go.")
     claude(session, only_go, [gap("Go")])
-    go_and_spark = test_ai_analysis.add_vacancy(session, title="B", text="Python, Go and Spark.")
+    go_and_spark = ai_analysis_fakes.add_vacancy(session, title="B", text="Python, Go and Spark.")
     claude(session, go_and_spark, [gap("Golang"), gap("PySpark"), gap("dbt", must=False)])
-    blocked = test_ai_analysis.add_vacancy(session, title="C", text="Python and Go, UK only.")
+    blocked = ai_analysis_fakes.add_vacancy(session, title="C", text="Python and Go, UK only.")
     claude(session, blocked, [gap("Go")], location="blocker")
-    known = test_ai_analysis.add_vacancy(session, title="D", text="Python.")
+    known = ai_analysis_fakes.add_vacancy(session, title="D", text="Python.")
     claude(session, known, [gap("Django"), gap("Bachelor's degree", blocker=True)])
-    ignored = test_ai_analysis.add_vacancy(
+    ignored = ai_analysis_fakes.add_vacancy(
         session, title="E", text="Go", state=models.OpportunityState.IGNORE
     )
     # ignored without a stack reason: left out
@@ -81,7 +81,7 @@ def test_report_counts_and_unlocks(session):
 
 
 def test_local_stack_check_counts_too(session):
-    o = test_ai_analysis.add_vacancy(session, title="Local", text="Terraform required.")
+    o = ai_analysis_fakes.add_vacancy(session, title="Local", text="Terraform required.")
     session.add(models.DescriptionAnalysis(
         snapshot_id=o.source_records[0].snapshots[0].id, opportunity_id=o.id, model="m",
         work_mode="remote", residence=[],
@@ -101,7 +101,7 @@ def test_best_set_is_greedy():
 
 
 def test_skills_page_and_level_action(client, session):
-    o = test_ai_analysis.add_vacancy(session, title="Go job", text="Python and Go.")
+    o = ai_analysis_fakes.add_vacancy(session, title="Go job", text="Python and Go.")
     claude(session, o, [gap("Go")])
     page = client.get("/skills").text
     assert ">Go<" in page and "Would unlock" in page and 'href="/skills"' in page
@@ -115,7 +115,7 @@ def test_skills_page_and_level_action(client, session):
 
 
 def test_all_analysed_counts_ignored_too(session):
-    o = test_ai_analysis.add_vacancy(
+    o = ai_analysis_fakes.add_vacancy(
         session, title="Ignored", text="Go", state=models.OpportunityState.IGNORE
     )
     claude(session, o, [gap("Go")])
@@ -141,7 +141,7 @@ def test_sort_rows():
 
 
 def test_sort_links_on_the_page(client, session):
-    o = test_ai_analysis.add_vacancy(session, title="Go job", text="Python and Go.")
+    o = ai_analysis_fakes.add_vacancy(session, title="Go job", text="Python and Go.")
     claude(session, o, [gap("Go")])
     page = client.get("/skills?sort=must&dir=desc&scope=all").text
     # flips

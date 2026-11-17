@@ -107,11 +107,11 @@ def test_profile_page(client, tmp_path, monkeypatch):
 
 
 def test_saving_the_profile_asks_the_stack_again(client, session):
-    import test_ai_analysis
+    import ai_analysis_fakes
 
-    o = test_ai_analysis.add_vacancy(session)
+    o = ai_analysis_fakes.add_vacancy(session)
     local_analysis.analyze_pending(
-        session, test_ai_analysis.FakeModel([test_ai_analysis.UK_ANSWER]), known=set()
+        session, ai_analysis_fakes.FakeModel([ai_analysis_fakes.UK_ANSWER]), known=set()
     )
     o.analyses[0].stack = []
     session.commit()

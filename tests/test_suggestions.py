@@ -2,7 +2,7 @@
 one-tap ignore in the queue (docs/applications.md#reasons-and-notes).
 """
 
-import test_ai_analysis
+import ai_analysis_fakes
 
 import job_radar.models as models
 import job_radar.profile.stack as profile_stack
@@ -14,7 +14,7 @@ def kinds(found):
 
 
 def test_language_suggestion(session):
-    o = test_ai_analysis.add_vacancy(
+    o = ai_analysis_fakes.add_vacancy(
         session, title="Senior Python Developer", text="Fluent German is required."
     )
     assert kinds(review_suggestions.suggest(o, description="Fluent German is required.")) == [
@@ -106,7 +106,7 @@ def test_duplicates_are_dropped_and_at_most_three():
 
 
 def test_one_tap_ignore_from_the_row(client, session):
-    o = test_ai_analysis.add_vacancy(
+    o = ai_analysis_fakes.add_vacancy(
         session, title="Senior Python Developer", text="Fluent German is required."
     )
     assert "ignore? \U0001f5e3\ufe0f language: German" in client.get("/").text
@@ -128,7 +128,7 @@ def test_one_tap_ignore_from_the_row(client, session):
 
 
 def test_reason_chips_and_work_format_reason(client, session):
-    o = test_ai_analysis.add_vacancy(session, title="Python Developer", text="Remote.")
+    o = ai_analysis_fakes.add_vacancy(session, title="Python Developer", text="Remote.")
     o.location = "Lucknow, India"
     session.commit()
     panel = client.get(f"/opportunities/{o.id}/panel").text
@@ -200,7 +200,7 @@ def test_reasons_have_icons(client, session):
         review_notes.reason_icon("salary") == "\U0001f4b0"
         and review_notes.reason_icon("nope") == ""
     )
-    o = test_ai_analysis.add_vacancy(session, title="Python Developer", text="Remote.")
+    o = ai_analysis_fakes.add_vacancy(session, title="Python Developer", text="Remote.")
     panel = client.get(f"/opportunities/{o.id}/panel").text
     assert "\U0001f4b0 Salary<" in panel and "\U0001f3e2 Hybrid / on-site<" in panel
     client.post(f"/opportunities/{o.id}/notes", data={"action": "ignore", "kind": "salary"})

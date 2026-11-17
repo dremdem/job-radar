@@ -5,7 +5,7 @@ them on the company (docs/data-model.md).
 import datetime as dt
 import re
 
-import paths
+import linkedin_rejections_fakes
 import pytest
 import sqlalchemy as sa
 
@@ -15,47 +15,13 @@ import job_radar.models as models
 import job_radar.sources.linkedin.alerts as linkedin_alerts
 import job_radar.sources.linkedin.rejections as linkedin_rejections
 
-FIXTURES = paths.FIXTURES / "rejections"
-
-
-def fixture(name: str, ext: str = "html") -> str:
-    return (FIXTURES / f"{name}.{ext}").read_text()
-
-
-def add_email(
-    session,
-    msg_id,
-    *,
-    subject,
-    html,
-    text=None,
-    sender="jobs-noreply@linkedin.com",
-    sent_at=None,
-    categories=("linkedin_alerts",),
-):
-    email = models.EmailMessage(
-        gmail_message_id=msg_id,
-        gmail_thread_id=msg_id,
-        direction=models.EmailDirection.IN,
-        sent_at=sent_at or dt.datetime(2026, 9, 24, tzinfo=dt.UTC),
-        from_addr=f"LinkedIn <{sender}>",
-        to_addr="user@example.com",
-        subject=subject,
-        categories=list(categories),
-        body_html=html,
-        body_text=text,
-    )
-    session.add(email)
-    session.commit()
-    return email
-
 
 def count(session, model) -> int:
     return session.scalar(sa.select(sa.func.count()).select_from(model))
 
 
 def test_fixtures_contain_no_personal_data():
-    for path in sorted(FIXTURES.glob("*.*")):
+    for path in sorted(linkedin_rejections_fakes.FIXTURES.glob("*.*")):
         text = path.read_text()
         assert not re.search(r"midToken|midSig|licdn|@gmail|Yakovenko|Vladimir", text), path.name
 
@@ -91,8 +57,11 @@ def test_detect_rejection_ignores_unrelated_subjects():
 
 
 def test_import_records_rejection_and_links_company(session):
-    email = add_email(
-        session, "m1", subject="Your application to Python engineer at SCUBE", html=fixture("scube")
+    email = linkedin_rejections_fakes.add_email(
+        session,
+        "m1",
+        subject="Your application to Python engineer at SCUBE",
+        html=linkedin_rejections_fakes.fixture("scube"),
     )
     stats = linkedin_rejections.import_rejections(session)
     assert (stats.emails, stats.detected, stats.new) == (1, 1, 1)
@@ -111,8 +80,11 @@ def test_import_records_rejection_and_links_company(session):
 
 
 def test_import_rejections_is_idempotent(session):
-    add_email(
-        session, "m1", subject="Your application to Python engineer at SCUBE", html=fixture("scube")
+    linkedin_rejections_fakes.add_email(
+        session,
+        "m1",
+        subject="Your application to Python engineer at SCUBE",
+        html=linkedin_rejections_fakes.fixture("scube"),
     )
     linkedin_rejections.import_rejections(session)
     assert linkedin_rejections.import_rejections(session).new == 0
@@ -121,8 +93,11 @@ def test_import_rejections_is_idempotent(session):
 
 def test_rejection_email_does_not_create_opportunities(session):
     # The "Top jobs looking for your skills" cards must not become opportunities.
-    add_email(
-        session, "m1", subject="Your application to Python engineer at SCUBE", html=fixture("scube")
+    linkedin_rejections_fakes.add_email(
+        session,
+        "m1",
+        subject="Your application to Python engineer at SCUBE",
+        html=linkedin_rejections_fakes.fixture("scube"),
     )
     # ignores jobs-noreply sender
     linkedin_alerts.import_alerts(session)
@@ -138,19 +113,25 @@ ORIGINDATA = "Your application to Python Developer (+ Frontend Framework Experie
 def test_real_email_with_stub_plain_text_is_detected(session):
     # Real LinkedIn emails: text/plain is "Your update from <company>" + footer,
     # the rejection sentence is only in the HTML part.
-    assert "moving forward" not in fixture("qubika", "txt")
-    add_email(session, "m1", subject=QUBIKA, html=fixture("qubika"), text=fixture("qubika", "txt"))
+    assert "moving forward" not in linkedin_rejections_fakes.fixture("qubika", "txt")
+    linkedin_rejections_fakes.add_email(
+        session,
+        "m1",
+        subject=QUBIKA,
+        html=linkedin_rejections_fakes.fixture("qubika"),
+        text=linkedin_rejections_fakes.fixture("qubika", "txt"),
+    )
     assert linkedin_rejections.import_rejections(session).new == 1
     assert session.scalar(sa.select(models.Rejection)).company.name == "Qubika"
 
 
 def test_did_not_select_wording_is_detected(session):
-    add_email(
+    linkedin_rejections_fakes.add_email(
         session,
         "m1",
         subject=ORIGINDATA,
-        html=fixture("origindata"),
-        text=fixture("origindata", "txt"),
+        html=linkedin_rejections_fakes.fixture("origindata"),
+        text=linkedin_rejections_fakes.fixture("origindata", "txt"),
     )
     assert linkedin_rejections.import_rejections(session).new == 1
 
@@ -176,7 +157,9 @@ class FakeFetch:
 
 def add_bodyless(session, msg_id, subject):
     # Older application updates arrive via label:job-proposal: headers only.
-    return add_email(session, msg_id, subject=subject, html=None, categories=["job_proposal"])
+    return linkedin_rejections_fakes.add_email(
+        session, msg_id, subject=subject, html=None, categories=["job_proposal"]
+    )
 
 
 def test_bodyless_emails_are_fetched_once_and_body_not_stored(session):
@@ -184,7 +167,10 @@ def test_bodyless_emails_are_fetched_once_and_body_not_stored(session):
     viewed = add_bodyless(session, "old2", "Your application to Python Developer at Acme")
     fetch = FakeFetch(
         {
-            "old1": (fixture("qubika"), fixture("qubika", "txt")),
+            "old1": (
+                linkedin_rejections_fakes.fixture("qubika"),
+                linkedin_rejections_fakes.fixture("qubika", "txt"),
+            ),
             "old2": ("<p>Your application was viewed by Acme</p>", None),
         }
     )
@@ -261,7 +247,15 @@ class GoneFetch(FakeFetch):
 def test_email_deleted_from_gmail_is_marked_and_the_rest_goes_on(session, recheck):
     gone = add_bodyless(session, "gone1", "Your application to Python Developer at Acme")
     add_bodyless(session, "old1", QUBIKA)
-    fetch = GoneFetch({"gone1": None, "old1": (fixture("qubika"), fixture("qubika", "txt"))})
+    fetch = GoneFetch(
+        {
+            "gone1": None,
+            "old1": (
+                linkedin_rejections_fakes.fixture("qubika"),
+                linkedin_rejections_fakes.fixture("qubika", "txt"),
+            ),
+        }
+    )
     stats = linkedin_rejections.import_rejections(session, fetch_body=fetch)
     assert (stats.gone, stats.new) == (1, 1)
     session.refresh(gone)

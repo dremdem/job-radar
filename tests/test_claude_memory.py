@@ -4,7 +4,7 @@ change log, and the memory section of the prompt (docs/claude-memory.md).
 
 import json
 
-import test_claude
+import claude_fakes
 
 import job_radar.ai.claude.analysis as claude_analysis
 import job_radar.ai.claude.memory as claude_memory
@@ -91,12 +91,12 @@ def test_prompt_lists_facts_first_and_says_when_full(session):
 
 def test_chat_reads_writes_and_shows_the_memory(client, session, tmp_path):
     claude_memory.save(session, "fact", "thailand", "where I live", "Lives in Thailand.", by="you")
-    o = test_claude.analyzed(session, tmp_path)
+    o = claude_fakes.analyzed(session, tmp_path)
     claude_analysis.ask(session, o.id, "Какую зарплату назвать?")
-    runner = test_claude.FakeRunner(
+    runner = claude_fakes.FakeRunner(
         [claude_runner.Reply("От 4000 net.\n" + block(SALARY), None, "sess-1", None)]
     )
-    test_claude.worker(session, runner, tmp_path).run_once()
+    claude_fakes.worker(session, runner, tmp_path).run_once()
     system = runner.calls[0]["system"]
     # reads it, knows how to write
     assert "Lives in Thailand." in system and "<memory>" in system
@@ -112,12 +112,12 @@ def test_chat_reads_writes_and_shows_the_memory(client, session, tmp_path):
 
 def test_analysis_reads_the_memory(session, tmp_path):
     claude_memory.save(session, "fact", "thailand", "where I live", "Lives in Thailand.", by="you")
-    o = test_claude.vacancy(session)
+    o = claude_fakes.vacancy(session)
     claude_analysis.enqueue(session, [o.id])
-    runner = test_claude.FakeRunner(
-        [claude_runner.Reply("{}", dict(test_claude.RESULT), "s", None)]
+    runner = claude_fakes.FakeRunner(
+        [claude_runner.Reply("{}", dict(claude_fakes.RESULT), "s", None)]
     )
-    test_claude.worker(session, runner, tmp_path).run_once()
+    claude_fakes.worker(session, runner, tmp_path).run_once()
     prompt = runner.calls[0]["prompt"]
     assert "Lives in Thailand." in prompt
     # reads, never writes

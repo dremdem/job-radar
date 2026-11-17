@@ -2,74 +2,13 @@
 residence rule, with a fake local model (docs/ai.md).
 """
 
-import typing as t
-
+import ai_analysis_fakes
 import pytest
 
 import job_radar.ai.local.analysis as local_analysis
-import job_radar.dedup as dedup
 import job_radar.models as models
 import job_radar.review.auto_ignore as review_auto_ignore
 import job_radar.scoring.findings as scoring_findings
-
-UK_ONLY = (
-    "We build payments.\nThe applicant must be based in the UK and able to work fully remotely.\n"
-    "Python and FastAPI."
-)
-
-
-class FakeModel:
-    """A local model that returns the given answers in order."""
-
-    model = "fake:1b"
-
-    def __init__(self, answers: list[dict[str, t.Any] | Exception]):
-        self.answers = answers
-        self.prompts: list[str] = []
-
-    def generate_json(self, prompt: str, schema: dict[str, t.Any]) -> dict[str, t.Any]:
-        self.prompts.append(prompt)
-        answer = self.answers.pop(0)
-        if isinstance(answer, Exception):
-            raise answer
-        return answer
-
-
-def answer(mode="remote", mode_quote="", residence=(), residence_quote="") -> dict[str, t.Any]:
-    return {
-        "work_mode": mode,
-        "work_mode_quote": mode_quote,
-        "residence": list(residence),
-        "residence_quote": residence_quote,
-    }
-
-
-UK_ANSWER = answer(
-    "remote",
-    "able to work fully remotely",
-    ["UK"],
-    "The applicant must be based in the UK and able to work fully remotely.",
-)
-
-
-def add_vacancy(session, title="Python Developer", text=UK_ONLY, state=models.OpportunityState.NEW):
-    o = models.Opportunity(
-        title=title, company=dedup.get_or_create_company(session, "Acme"), score=8.0
-    )
-    o.state = state
-    session.add(o)
-    session.flush()
-    record = dedup.upsert_source_record(
-        session,
-        source_type=models.SourceType.LINKEDIN_CAPTURE,
-        external_id=str(o.id),
-        url=None,
-        opportunity=o,
-    )
-    if text:
-        dedup.add_snapshot(session, record, text)
-    session.commit()
-    return o
 
 
 @pytest.mark.parametrize(
@@ -86,24 +25,29 @@ def add_vacancy(session, title="Python Developer", text=UK_ONLY, state=models.Op
     ],
 )
 def test_quote_in_text(quote, found):
-    assert local_analysis.quote_in_text(quote, UK_ONLY) is found
+    assert local_analysis.quote_in_text(quote, ai_analysis_fakes.UK_ONLY) is found
 
 
 def test_verify_keeps_supported_facts():
-    facts = local_analysis.verify(UK_ANSWER, UK_ONLY)
+    facts = local_analysis.verify(ai_analysis_fakes.UK_ANSWER, ai_analysis_fakes.UK_ONLY)
     assert facts.residence == ["UK"] and facts.work_mode == "remote"
 
 
 def test_verify_drops_invented_quotes_and_places():
     facts = local_analysis.verify(
-        answer("hybrid", "Three days a week in our Berlin office.", ["UK", "Thailand"], "x y z"),
-        UK_ONLY,
+        ai_analysis_fakes.answer(
+            "hybrid", "Three days a week in our Berlin office.", ["UK", "Thailand"], "x y z"
+        ),
+        ai_analysis_fakes.UK_ONLY,
     )
     assert facts.work_mode == "unknown" and facts.work_mode_quote == ""
     assert facts.residence == []
     # A place the text never names is dropped even with a real quote.
     facts = local_analysis.verify(
-        answer(residence=["Thailand"], residence_quote=UK_ANSWER["residence_quote"]), UK_ONLY
+        ai_analysis_fakes.answer(
+            residence=["Thailand"], residence_quote=ai_analysis_fakes.UK_ANSWER["residence_quote"]
+        ),
+        ai_analysis_fakes.UK_ONLY,
     )
     assert facts.residence == []
 
@@ -145,27 +89,31 @@ def test_home_and_its_regions_are_open(thailand):
 
 
 def test_analyze_pending_stores_once_and_only_for_to_review(session):
-    flagged = add_vacancy(session)
-    add_vacancy(session, title="No description", text=None)
-    add_vacancy(session, title="Mine", state=models.OpportunityState.INTERESTED)
+    flagged = ai_analysis_fakes.add_vacancy(session)
+    ai_analysis_fakes.add_vacancy(session, title="No description", text=None)
+    ai_analysis_fakes.add_vacancy(session, title="Mine", state=models.OpportunityState.INTERESTED)
 
-    model = FakeModel([UK_ANSWER])
+    model = ai_analysis_fakes.FakeModel([ai_analysis_fakes.UK_ANSWER])
     stats = local_analysis.analyze_pending(session, model)
     assert (stats.analyzed, stats.flagged, stats.errors) == (1, 1, 0)
     [analysis] = session.query(models.DescriptionAnalysis).all()
     assert analysis.opportunity_id == flagged.id and analysis.model == "fake:1b"
-    assert analysis.residence == ["UK"] and analysis.raw == UK_ANSWER
+    assert analysis.residence == ["UK"] and analysis.raw == ai_analysis_fakes.UK_ANSWER
     assert "must be based in the UK" in model.prompts[0]
 
     # Already analyzed: nothing to do.
-    assert local_analysis.analyze_pending(session, FakeModel([])).analyzed == 0
+    assert local_analysis.analyze_pending(session, ai_analysis_fakes.FakeModel([])).analyzed == 0
 
 
 def test_analyze_pending_limit_and_errors(session):
     for title in ("A", "B", "C"):
-        add_vacancy(session, title=title, text=f"{title}: {UK_ONLY}")
+        ai_analysis_fakes.add_vacancy(
+            session, title=title, text=f"{title}: {ai_analysis_fakes.UK_ONLY}"
+        )
     stats = local_analysis.analyze_pending(
-        session, FakeModel([RuntimeError("bad JSON"), UK_ANSWER]), limit=2
+        session,
+        ai_analysis_fakes.FakeModel([RuntimeError("bad JSON"), ai_analysis_fakes.UK_ANSWER]),
+        limit=2,
     )
     assert (stats.analyzed, stats.errors, stats.pending) == (1, 1, 1)
     assert stats.last_error == "bad JSON"
@@ -173,23 +121,29 @@ def test_analyze_pending_limit_and_errors(session):
 
 def test_ai_rule_auto_ignores(session):
     review_auto_ignore.save_rules(session, review_auto_ignore.Rules(ai_location=True))
-    o = add_vacancy(session)
-    local_analysis.analyze_pending(session, FakeModel([UK_ANSWER]))
+    o = ai_analysis_fakes.add_vacancy(session)
+    local_analysis.analyze_pending(
+        session, ai_analysis_fakes.FakeModel([ai_analysis_fakes.UK_ANSWER])
+    )
     session.refresh(o)
     assert o.state is models.OpportunityState.AUTO_IGNORE
     assert o.auto_ignore_reason == "AI: only for UK"
 
 
 def test_ai_rule_is_off_by_default(session):
-    o = add_vacancy(session)
-    local_analysis.analyze_pending(session, FakeModel([UK_ANSWER]))
+    o = ai_analysis_fakes.add_vacancy(session)
+    local_analysis.analyze_pending(
+        session, ai_analysis_fakes.FakeModel([ai_analysis_fakes.UK_ANSWER])
+    )
     session.refresh(o)
     assert o.state is models.OpportunityState.NEW
 
 
 def test_queue_shows_ai_reason_and_lowers_score(client, session):
-    o = add_vacancy(session)
-    local_analysis.analyze_pending(session, FakeModel([UK_ANSWER]))
+    o = ai_analysis_fakes.add_vacancy(session)
+    local_analysis.analyze_pending(
+        session, ai_analysis_fakes.FakeModel([ai_analysis_fakes.UK_ANSWER])
+    )
     # 8.0 - 2.5; no Python bonus, the title already says Python.
     assert ">5.5<" in client.get("/").text
     text = client.get(f"/opportunities/{o.id}/panel").text
@@ -218,11 +172,13 @@ def test_pipeline_reports(session, tmp_path):
     import job_radar.config as config
     import job_radar.jobs.pipeline as jobs_pipeline
 
-    add_vacancy(session)
+    ai_analysis_fakes.add_vacancy(session)
     lines: list[str] = []
     missing = tmp_path / "missing.yaml"
     settings = config.Settings(ai_analysis=True, profile=missing)
-    jobs_pipeline.analyze_descriptions(session, settings, lines.append, FakeModel([UK_ANSWER]))
+    jobs_pipeline.analyze_descriptions(
+        session, settings, lines.append, ai_analysis_fakes.FakeModel([ai_analysis_fakes.UK_ANSWER])
+    )
     assert lines == [
         f"ai: no {missing}; the stack check is skipped (see profile.example.yaml).",
         "ai: 1 descriptions analyzed, 1 flagged",
@@ -247,7 +203,10 @@ def test_pipeline_reports(session, tmp_path):
 )
 def test_verify_drops_exclusions_preferences_and_flags(places, quote, text):
     assert (
-        local_analysis.verify(answer(residence=places, residence_quote=quote), text).residence == []
+        local_analysis.verify(
+            ai_analysis_fakes.answer(residence=places, residence_quote=quote), text
+        ).residence
+        == []
     )
 
 

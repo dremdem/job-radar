@@ -4,6 +4,7 @@ history shown in the queue (docs/applications.md#company-history).
 
 import datetime as dt
 
+import contacts_fakes
 import pytest
 import sqlalchemy as sa
 
@@ -11,39 +12,6 @@ import job_radar.dedup as dedup
 import job_radar.history.contacts as history_contacts
 import job_radar.history.rejections as history_rejections
 import job_radar.models as models
-
-T0 = dt.datetime(2026, 5, 1, 9, 0, tzinfo=dt.UTC)
-
-
-def add_email(
-    session,
-    msg_id,
-    *,
-    from_addr,
-    subject,
-    snippet="",
-    thread=None,
-    direction=models.EmailDirection.IN,
-    at=T0,
-    company=None,
-    event=None,
-):
-    email = models.EmailMessage(
-        gmail_message_id=msg_id,
-        gmail_thread_id=thread or f"t-{msg_id}",
-        direction=direction,
-        sent_at=at,
-        from_addr=from_addr,
-        to_addr="user@example.com",
-        subject=subject,
-        snippet=snippet,
-        company_id=company.id if company else None,
-        company_match="exact" if company else None,
-        detected_event=event,
-    )
-    session.add(email)
-    session.commit()
-    return email
 
 
 @pytest.mark.parametrize(
@@ -67,7 +35,7 @@ def test_classify(subject, snippet, label):
 
 def test_thread_propagates_company(session):
     acme = dedup.get_or_create_company(session, "Northwind")
-    add_email(
+    contacts_fakes.add_email(
         session,
         "a",
         from_addr="Anna <anna@northwind.com>",
@@ -76,14 +44,14 @@ def test_thread_propagates_company(session):
         company=acme,
         event="application_confirmation",
     )
-    reply = add_email(
+    reply = contacts_fakes.add_email(
         session,
         "b",
         from_addr="me <user@example.com>",
         subject="Re: Northwind | Ready to Move Next?",
         thread="thr",
         direction=models.EmailDirection.OUT,
-        at=T0 + dt.timedelta(hours=1),
+        at=contacts_fakes.T0 + dt.timedelta(hours=1),
     )
     history_contacts.link_and_label(session)
     session.refresh(reply)
@@ -92,13 +60,19 @@ def test_thread_propagates_company(session):
 
 def test_domains_are_learned_but_not_free_mail_or_ats(session):
     acme = dedup.get_or_create_company(session, "Northwind")
-    add_email(
+    contacts_fakes.add_email(
         session, "a", from_addr="anna@northwind.com", subject="x", company=acme, event="other"
     )
-    add_email(session, "g", from_addr="friend@gmail.com", subject="y", company=acme, event="other")
-    add_email(session, "w", from_addr="n@ashbyhq.com", subject="z", company=acme, event="other")
-    other = add_email(session, "b", from_addr="Bob <bob@northwind.com>", subject="Hello")
-    stranger = add_email(session, "c", from_addr="someone@gmail.com", subject="Hi")
+    contacts_fakes.add_email(
+        session, "g", from_addr="friend@gmail.com", subject="y", company=acme, event="other"
+    )
+    contacts_fakes.add_email(
+        session, "w", from_addr="n@ashbyhq.com", subject="z", company=acme, event="other"
+    )
+    other = contacts_fakes.add_email(
+        session, "b", from_addr="Bob <bob@northwind.com>", subject="Hello"
+    )
+    stranger = contacts_fakes.add_email(session, "c", from_addr="someone@gmail.com", subject="Hi")
     history_contacts.link_and_label(session)
     for email in (other, stranger):
         session.refresh(email)
@@ -111,10 +85,12 @@ def test_domains_are_learned_but_not_free_mail_or_ats(session):
 def test_probable_match_by_name_in_subject(session):
     dedup.get_or_create_company(session, "Northwind")
     dedup.get_or_create_company(session, "Rain")
-    long_name = add_email(
+    long_name = contacts_fakes.add_email(
         session, "a", from_addr="x@mailer.example", subject="Your Northwind offer"
     )
-    short_name = add_email(session, "b", from_addr="y@mailer.example", subject="Rain forecast")
+    short_name = contacts_fakes.add_email(
+        session, "b", from_addr="y@mailer.example", subject="Rain forecast"
+    )
     history_contacts.link_and_label(session)
     session.refresh(long_name)
     session.refresh(short_name)
@@ -123,7 +99,7 @@ def test_probable_match_by_name_in_subject(session):
 
 
 def test_ats_rejection_from_snippet_is_recorded(session):
-    email = add_email(
+    email = contacts_fakes.add_email(
         session,
         "r",
         from_addr="Abacum Inc <no-reply@ashbyhq.com>",
@@ -142,7 +118,7 @@ def test_ats_rejection_from_snippet_is_recorded(session):
 
 def test_recruiter_outreach_is_the_first_inbound_message(session):
     acme = dedup.get_or_create_company(session, "Acme Robotics")
-    first = add_email(
+    first = contacts_fakes.add_email(
         session,
         "a",
         from_addr="Jane <jane@acmerobotics.com>",
@@ -150,13 +126,13 @@ def test_recruiter_outreach_is_the_first_inbound_message(session):
         thread="thr",
         company=acme,
     )
-    later = add_email(
+    later = contacts_fakes.add_email(
         session,
         "b",
         from_addr="Jane <jane@acmerobotics.com>",
         subject="Re: Senior Python Engineer role at Acme Robotics",
         thread="thr",
-        at=T0 + dt.timedelta(days=1),
+        at=contacts_fakes.T0 + dt.timedelta(days=1),
         company=acme,
     )
     history_contacts.link_and_label(session)
@@ -167,7 +143,7 @@ def test_recruiter_outreach_is_the_first_inbound_message(session):
 
 def test_company_history_merges_without_duplicates(session):
     acme = dedup.get_or_create_company(session, "Capitole")
-    confirmation = add_email(
+    confirmation = contacts_fakes.add_email(
         session,
         "c",
         from_addr="LinkedIn <jobs-noreply@linkedin.com>",
@@ -179,7 +155,7 @@ def test_company_history_merges_without_duplicates(session):
     session.add(
         models.Application(
             company_id=acme.id,
-            applied_at=T0,
+            applied_at=contacts_fakes.T0,
             role="Sr Python Developer",
             source=models.ApplicationSource.LINKEDIN,
             review=models.ApplicationReview.CONFIRMED,
@@ -189,17 +165,17 @@ def test_company_history_merges_without_duplicates(session):
     history_rejections.mark_rejected(
         session,
         company_id=acme.id,
-        rejected_at=T0 + dt.timedelta(days=7),
+        rejected_at=contacts_fakes.T0 + dt.timedelta(days=7),
         role="Sr Python Developer",
     )
-    add_email(
+    contacts_fakes.add_email(
         session,
         "i",
         from_addr="hr@capitole.com",
         subject="Interview invitation",
         company=acme,
         event="interview",
-        at=T0 + dt.timedelta(days=3),
+        at=contacts_fakes.T0 + dt.timedelta(days=3),
     )
     session.commit()
 
@@ -219,7 +195,7 @@ def test_company_history_empty(session):
 def test_links_made_by_other_modules_count_as_exact(session):
     # Applications/rejections set company_id without company_match.
     acme = dedup.get_or_create_company(session, "Northwind")
-    source = add_email(
+    source = contacts_fakes.add_email(
         session,
         "a",
         from_addr="anna@northwind.com",
@@ -229,16 +205,16 @@ def test_links_made_by_other_modules_count_as_exact(session):
     )
     source.company_id = acme.id
     session.commit()
-    reply = add_email(
+    reply = contacts_fakes.add_email(
         session,
         "b",
         from_addr="me <user@example.com>",
         subject="Re: x",
         thread="thr",
         direction=models.EmailDirection.OUT,
-        at=T0 + dt.timedelta(hours=1),
+        at=contacts_fakes.T0 + dt.timedelta(hours=1),
     )
-    other = add_email(session, "c", from_addr="bob@northwind.com", subject="Hello")
+    other = contacts_fakes.add_email(session, "c", from_addr="bob@northwind.com", subject="Hello")
     stats = history_contacts.link_and_label(session)
     for e in (source, reply, other):
         session.refresh(e)
@@ -248,7 +224,7 @@ def test_links_made_by_other_modules_count_as_exact(session):
 
 
 def test_linkedin_application_viewed_is_linked_exactly(session):
-    email = add_email(
+    email = contacts_fakes.add_email(
         session,
         "v",
         from_addr="LinkedIn <jobs-noreply@linkedin.com>",
@@ -262,14 +238,16 @@ def test_linkedin_application_viewed_is_linked_exactly(session):
 
 def test_name_match_confirmed_by_sender_domain_is_exact_and_learns_domain(session):
     engine = dedup.get_or_create_company(session, "Northwind")
-    named = add_email(
+    named = contacts_fakes.add_email(
         session,
         "a",
         from_addr="Anna - Northwind <anna@northwind.com>",
         subject="Northwind | Ready to Move Next?",
     )
-    later = add_email(session, "b", from_addr="hr@northwind.com", subject="Offer details")
-    elsewhere = add_email(
+    later = contacts_fakes.add_email(
+        session, "b", from_addr="hr@northwind.com", subject="Offer details"
+    )
+    elsewhere = contacts_fakes.add_email(
         session, "c", from_addr="news@mailer.example", subject="Northwind raises a round"
     )
     history_contacts.link_and_label(session)
@@ -287,7 +265,7 @@ def test_hibob_is_an_ats_and_wrong_domain_links_are_undone(session):
     ecars = dedup.get_or_create_company(session, "eCarsTrade")
     ecars.domains = ["hibob.com"]
     bob = '"No-reply (via Bob)" <no-reply@hibob.com>'
-    own = add_email(
+    own = contacts_fakes.add_email(
         session,
         "own",
         from_addr=bob,
@@ -295,7 +273,7 @@ def test_hibob_is_an_ats_and_wrong_domain_links_are_undone(session):
         company=ecars,
         event="other",
     )
-    pure = add_email(
+    pure = contacts_fakes.add_email(
         session,
         "p",
         from_addr=bob,
@@ -303,7 +281,7 @@ def test_hibob_is_an_ats_and_wrong_domain_links_are_undone(session):
         company=ecars,
         event="other",
     )
-    zepz = add_email(
+    zepz = contacts_fakes.add_email(
         session,
         "z",
         from_addr=bob,
@@ -312,7 +290,7 @@ def test_hibob_is_an_ats_and_wrong_domain_links_are_undone(session):
         company=ecars,
         event="other",
     )
-    zepz2 = add_email(
+    zepz2 = contacts_fakes.add_email(
         session,
         "z2",
         from_addr=bob,
@@ -321,7 +299,7 @@ def test_hibob_is_an_ats_and_wrong_domain_links_are_undone(session):
         company=ecars,
         event="other",
     )
-    altery = add_email(
+    altery = contacts_fakes.add_email(
         session,
         "a",
         from_addr='"Polina P. (via Bob)" <notifications@hibob.com>',

@@ -2,10 +2,10 @@
 
 import datetime as dt
 
+import contacts_fakes
+import linkedin_rejections_fakes
+import manual_fakes
 import sqlalchemy as sa
-import test_contacts
-import test_linkedin_rejections
-import test_manual
 
 import job_radar.history.applications as history_applications
 import job_radar.history.contacts as history_contacts
@@ -21,7 +21,7 @@ def kinds(session, company_id) -> list[str]:
 
 
 def test_ignored_then_interested_the_ignore_can_be_deleted_from_the_card(client, session):
-    o = test_manual.vacancy(session)
+    o = manual_fakes.vacancy(session)
     note = review_notes.ignore_with_reason(session, o, models.NoteKind.SALARY, comment="too low")
     # changed your mind
     o.state = models.OpportunityState.INTERESTED
@@ -44,8 +44,8 @@ def test_ignored_then_interested_the_ignore_can_be_deleted_from_the_card(client,
 
 
 def test_every_record_on_the_card_has_a_delete_button(client, session):
-    o = test_manual.vacancy(session)
-    test_contacts.add_email(
+    o = manual_fakes.vacancy(session)
+    contacts_fakes.add_email(
         session, "m1", from_addr="anna@acme.com", subject="Quick chat?", company=o.company
     )
     sources_manual.add_event(session, o, "call", dt.datetime(2026, 10, 1, tzinfo=dt.UTC), "intro")
@@ -63,16 +63,16 @@ def test_every_record_on_the_card_has_a_delete_button(client, session):
 
 def test_mail_records_stay_deleted_after_the_next_sync(session):
 
-    o = test_manual.vacancy(session, title="Python engineer", company="SCUBE")
+    o = manual_fakes.vacancy(session, title="Python engineer", company="SCUBE")
     # A LinkedIn rejection, an ATS confirmation and a plain email.
-    test_linkedin_rejections.add_email(
+    linkedin_rejections_fakes.add_email(
         session,
         "r1",
         subject="Your application to Python engineer at SCUBE",
-        html=test_linkedin_rejections.fixture("scube"),
+        html=linkedin_rejections_fakes.fixture("scube"),
     )
     linkedin_rejections.import_rejections(session)
-    plain = test_contacts.add_email(
+    plain = contacts_fakes.add_email(
         session, "e1", from_addr="hr@scube.com", subject="Hello from SCUBE", company=o.company
     )
     session.add(
@@ -107,7 +107,7 @@ def test_mail_records_stay_deleted_after_the_next_sync(session):
 
 
 def test_unknown_record(client, session):
-    o = test_manual.vacancy(session)
+    o = manual_fakes.vacancy(session)
     data = {"from": "panel", "opportunity": o.id}
     assert client.post("/history/note/999/delete", data=data).status_code == 404
     assert client.post("/history/party/1/delete", data=data).status_code == 404

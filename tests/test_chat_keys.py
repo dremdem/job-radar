@@ -6,29 +6,26 @@ Chromium. It needs Playwright and its Chromium, which the project does not insta
 Without them that test is skipped, and the markup test still runs.
 """
 
-import pathlib
-
+import browser_helpers
+import claude_fakes
 import pytest
-import test_claude
-
-CHROME = pathlib.Path.home() / ".cache/ms-playwright/chromium-1228/chrome-linux64/chrome"
 
 
 def test_the_chat_says_how_to_send(client, session, tmp_path):
-    o = test_claude.analyzed(session, tmp_path)
+    o = claude_fakes.analyzed(session, tmp_path)
     page = client.get(f"/opportunities/{o.id}").text
     assert "Ctrl+Enter" in page and "⌘+Enter" in page
 
 
 def test_ctrl_enter_sends_once_and_enter_is_a_new_line(client, session, tmp_path):
     sync_api = pytest.importorskip("playwright.sync_api")
-    if not CHROME.exists():
-        pytest.skip(f"no Chromium at {CHROME}")
-    o = test_claude.analyzed(session, tmp_path)
+    if not browser_helpers.CHROME.exists():
+        pytest.skip(f"no Chromium at {browser_helpers.CHROME}")
+    o = claude_fakes.analyzed(session, tmp_path)
     html = client.get(f"/opportunities/{o.id}").text
 
     with sync_api.sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=str(CHROME))
+        browser = p.chromium.launch(executable_path=str(browser_helpers.CHROME))
         page = browser.new_page()
         # no LinkedIn, no CDN
         page.route("**/*", lambda route, request: route.abort())
