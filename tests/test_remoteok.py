@@ -6,14 +6,14 @@ the terms-of-use element and nine real jobs.
 
 import datetime as dt
 import json
-import pathlib
 
+import paths
 import sqlalchemy as sa
 
 import job_radar.models as models
 import job_radar.sources.boards.remoteok as boards_remoteok
 
-FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "remoteok" / "api.json"
+FIXTURE = paths.FIXTURES / "remoteok" / "api.json"
 NOW = dt.datetime(2026, 10, 27, tzinfo=dt.UTC)
 
 

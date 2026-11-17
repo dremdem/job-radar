@@ -3,9 +3,9 @@ its limits and stops on blocking (docs/linkedin-public-search.md).
 """
 
 import datetime as dt
-import pathlib
 import re
 
+import paths
 import pytest
 import sqlalchemy as sa
 
@@ -14,9 +14,7 @@ import job_radar.scoring.rules as scoring_rules
 import job_radar.sources.linkedin.alerts as linkedin_alerts
 import job_radar.sources.linkedin.public as linkedin_public
 
-FIXTURE = (
-    pathlib.Path(__file__).parent / "fixtures" / "linkedin_public" / "search_page.html"
-).read_text()
+FIXTURE = (paths.FIXTURES / "linkedin_public" / "search_page.html").read_text()
 NOW = dt.datetime(2026, 9, 25, 12, 0, tzinfo=dt.UTC)
 ALERT_LINK = (
     "https://www.linkedin.com/comm/jobs/search-results/?keywords=Python%20Developer%20Remote"

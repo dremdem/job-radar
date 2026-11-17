@@ -3,9 +3,9 @@ run with its daily limit and stops (docs/linkedin-public-search.md).
 """
 
 import datetime as dt
-import pathlib
 import re
 
+import paths
 import sqlalchemy as sa
 
 import job_radar.dedup as dedup
@@ -13,9 +13,7 @@ import job_radar.models as models
 import job_radar.review.auto_ignore as review_auto_ignore
 import job_radar.sources.linkedin.public as linkedin_public
 
-POSTING = (
-    pathlib.Path(__file__).parent / "fixtures" / "linkedin_public" / "job_posting.html"
-).read_text()
+POSTING = (paths.FIXTURES / "linkedin_public" / "job_posting.html").read_text()
 NOW = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
 
 

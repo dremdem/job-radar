@@ -2,6 +2,7 @@
 bookmarklet (docs/linkedin-capture.md).
 """
 
+import paths
 import sqlalchemy as sa
 
 import job_radar.models as models
@@ -168,12 +169,7 @@ def test_detail_for_a_card_on_the_same_page(session):
 
 # Real card texts from LinkedIn's semantic search page (/jobs/search-results/), sanitized.
 SEMANTIC = __import__("json").loads(
-    (
-        __import__("pathlib").Path(__file__).parent
-        / "fixtures"
-        / "linkedin_capture"
-        / "semantic_search.json"
-    ).read_text()
+    (paths.FIXTURES / "linkedin_capture" / "semantic_search.json").read_text()
 )
 
 

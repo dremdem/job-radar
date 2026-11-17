@@ -3,9 +3,9 @@ importing them as applications and resolving suggestions (docs/applications.md).
 """
 
 import datetime as dt
-import pathlib
 import re
 
+import paths
 import pytest
 import sqlalchemy as sa
 
@@ -14,7 +14,7 @@ import job_radar.history.applications as history_applications
 import job_radar.history.rejections as history_rejections
 import job_radar.models as models
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "applications"
+FIXTURES = paths.FIXTURES / "applications"
 LINKEDIN = "LinkedIn <jobs-noreply@linkedin.com>"
 SENT_SUBJECT = "Alex, your application was sent to VySystems"
 T0 = dt.datetime(2026, 9, 23, 10, 0, tzinfo=dt.UTC)

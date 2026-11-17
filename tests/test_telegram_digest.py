@@ -5,8 +5,8 @@ the import, with a fake Telegraph (docs/telegram.md#digests-digital-nomads).
 import copy
 import datetime as dt
 import json
-import pathlib
 
+import paths
 import sqlalchemy as sa
 
 import job_radar.models as models
@@ -15,9 +15,7 @@ import job_radar.sources.telegram.digest as telegram_digest
 import job_radar.sources.telegram.sources as telegram_sources
 import job_radar.sources.telegram.sync as telegram_sync
 
-FIX = json.loads(
-    (pathlib.Path(__file__).parent / "fixtures" / "telegram" / "digest.json").read_text()
-)
+FIX = json.loads((paths.FIXTURES / "telegram" / "digest.json").read_text())
 NOW = dt.datetime(2026, 10, 1, 12, 0, tzinfo=dt.UTC)
 NOMADS = telegram_sources.Source(
     name="digital_nomads",

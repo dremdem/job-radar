@@ -8,9 +8,9 @@ Fixtures, fetched on 2026-11-10 and trimmed:
 """
 
 import datetime as dt
-import pathlib
 import threading
 
+import paths
 import pytest
 import sqlalchemy as sa
 
@@ -20,7 +20,7 @@ import job_radar.jobs.pipeline as jobs_pipeline
 import job_radar.models as models
 import job_radar.sources.boards.fdetimes as boards_fdetimes
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "fdetimes"
+FIXTURES = paths.FIXTURES / "fdetimes"
 LIST = (FIXTURES / "jobs.html").read_text()
 JOB = (FIXTURES / "job.html").read_text()
 NOW = dt.datetime(2026, 11, 10, 4, 0, tzinfo=dt.UTC)

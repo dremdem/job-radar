@@ -3,16 +3,16 @@ importing their jobs once (docs/linkedin-alerts.md).
 """
 
 import datetime as dt
-import pathlib
 import re
 
+import paths
 import pytest
 import sqlalchemy as sa
 
 import job_radar.models as models
 import job_radar.sources.linkedin.alerts as linkedin_alerts
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "linkedin_alerts"
+FIXTURES = paths.FIXTURES / "linkedin_alerts"
 ALL = sorted(FIXTURES.glob("*.html"))
 
 
