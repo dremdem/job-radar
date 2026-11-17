@@ -42,7 +42,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "D100", "D101", "D104", "
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests"]
+pythonpath = ["tests/helpers"]
 addopts = "-ra -n auto"
 
 [dependency-groups]

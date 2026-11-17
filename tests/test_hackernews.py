@@ -5,14 +5,14 @@ posts (one with a reply) and a deleted comment.
 """
 
 import json
-import pathlib
 
+import paths
 import sqlalchemy as sa
 
 import job_radar.models as models
 import job_radar.sources.boards.hackernews as boards_hackernews
 
-FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "hackernews" / "thread.json"
+FIXTURE = paths.FIXTURES / "hackernews" / "thread.json"
 THREADS = {
     "hits": [
         {"objectID": "49922568", "title": "Ask HN: Who wants to be hired? (October 2026)",

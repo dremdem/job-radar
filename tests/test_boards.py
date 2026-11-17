@@ -5,15 +5,15 @@ Fixtures: trimmed copies of each feed fetched on 2026-10-27/28 (real jobs).
 
 import dataclasses
 import datetime as dt
-import pathlib
 
+import paths
 import pytest
 import sqlalchemy as sa
 
 import job_radar.models as models
 import job_radar.sources.boards.feeds as boards_feeds
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "boards"
+FIXTURES = paths.FIXTURES / "boards"
 NOW = dt.datetime(2026, 10, 28, 8, 0, tzinfo=dt.UTC)
 
 

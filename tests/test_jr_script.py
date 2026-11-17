@@ -2,10 +2,11 @@
 it writes (docs/usage.md).
 """
 
-import pathlib
 import subprocess
 
-JR = pathlib.Path(__file__).parent.parent / "jr"
+import paths
+
+JR = paths.ROOT / "jr"
 
 
 def test_jr_is_valid_bash_and_executable():

@@ -8,14 +8,14 @@ Page 2: 5 jobs, none a developer role, two of them from 2026-10-24.
 
 import datetime as dt
 import json
-import pathlib
 
+import paths
 import sqlalchemy as sa
 
 import job_radar.models as models
 import job_radar.sources.boards.jobicy as boards_jobicy
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "jobicy"
+FIXTURES = paths.FIXTURES / "jobicy"
 NOW = dt.datetime(2026, 10, 28, 4, 0, tzinfo=dt.UTC)
 
 

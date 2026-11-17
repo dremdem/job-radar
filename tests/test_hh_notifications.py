@@ -3,15 +3,15 @@ messages from hh.ru mail, and merging duplicates (docs/hh.md).
 """
 
 import datetime as dt
-import pathlib
 
+import paths
 import pytest
 import sqlalchemy as sa
 
 import job_radar.models as models
 import job_radar.sources.hh.notifications as hh_notifications
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "hh"
+FIXTURES = paths.FIXTURES / "hh"
 
 
 def fixture(name: str) -> tuple[str, str]:

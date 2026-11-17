@@ -3,14 +3,14 @@ their developer vacancies once (docs/hh.md#digests).
 """
 
 import datetime as dt
-import pathlib
 
+import paths
 import sqlalchemy as sa
 
 import job_radar.models as models
 import job_radar.sources.hh.digests as hh_digests
 
-DIGEST = (pathlib.Path(__file__).parent / "fixtures" / "hh" / "digest.html").read_text()
+DIGEST = (paths.FIXTURES / "hh" / "digest.html").read_text()
 
 
 def test_parse_digest():

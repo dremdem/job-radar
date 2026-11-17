@@ -3,9 +3,9 @@ them on the company (docs/data-model.md).
 """
 
 import datetime as dt
-import pathlib
 import re
 
+import paths
 import pytest
 import sqlalchemy as sa
 
@@ -15,7 +15,7 @@ import job_radar.models as models
 import job_radar.sources.linkedin.alerts as linkedin_alerts
 import job_radar.sources.linkedin.rejections as linkedin_rejections
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "rejections"
+FIXTURES = paths.FIXTURES / "rejections"
 
 
 def fixture(name: str, ext: str = "html") -> str:

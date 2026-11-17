@@ -4,15 +4,15 @@ runs and rate limits, with a fake client (docs/himalayas.md).
 
 import datetime as dt
 import json
-import pathlib
 
+import paths
 import pytest
 import sqlalchemy as sa
 
 import job_radar.models as models
 import job_radar.sources.boards.himalayas as boards_himalayas
 
-FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "himalayas" / "search_page.json"
+FIXTURE = paths.FIXTURES / "himalayas" / "search_page.json"
 # The fixture was fetched around this moment (newest pubDate is ~3 h earlier).
 NOW = dt.datetime.fromtimestamp(1790845000, dt.UTC)
 

@@ -3,15 +3,14 @@ score effect and highlighting (docs/queue.md#description-checks).
 """
 
 import json
-import pathlib
+
+import paths
 
 import job_radar.scoring.description as scoring_description
 
-EMPAT = json.loads(
-    (
-        pathlib.Path(__file__).parent / "fixtures" / "linkedin_capture" / "semantic_search.json"
-    ).read_text()
-)["detail"]["description"]
+EMPAT = json.loads((paths.FIXTURES / "linkedin_capture" / "semantic_search.json").read_text())[
+    "detail"
+]["description"]
 ECARSTRADE = (
     "Strong Python 3.10+ with production experience in async programming (asyncio) and FastAPI "
     "(or similar). Solid experience with message queues, ideally RabbitMQ (aio_pika)."

@@ -4,8 +4,8 @@ relevant posts into vacancies (docs/telegram.md).
 
 import datetime as dt
 import json
-import pathlib
 
+import paths
 import pytest
 import sqlalchemy as sa
 
@@ -14,9 +14,7 @@ import job_radar.sources.telegram.posts as telegram_posts
 import job_radar.sources.telegram.sources as telegram_sources
 import job_radar.sources.telegram.sync as telegram_sync
 
-POSTS = json.loads(
-    (pathlib.Path(__file__).parent / "fixtures" / "telegram" / "posts.json").read_text()
-)
+POSTS = json.loads((paths.FIXTURES / "telegram" / "posts.json").read_text())
 NOW = dt.datetime(2026, 10, 1, 12, 0, tzinfo=dt.UTC)
 
 
@@ -58,9 +56,7 @@ def test_parse_collects_links():
 
 
 def test_load_sources_from_example():
-    sources = telegram_sources.load_sources(
-        pathlib.Path(__file__).parent.parent / "telegram.example.yaml"
-    )
+    sources = telegram_sources.load_sources(paths.ROOT / "telegram.example.yaml")
     by_name = {s.name: s for s in sources}
     assert by_name["cyprusithr"].topics == [46685, 46679]
     assert by_name["cyprusithr"].require_tags == ["#vacancy", "#вакансия"]
