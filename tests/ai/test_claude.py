@@ -587,6 +587,46 @@ def test_answers_have_a_copy_button(client, session):
     assert '<textarea class="msg-raw" hidden>Dear team,\n&lt;b&gt;Alex&lt;/b&gt;</textarea>' in page
 
 
+def test_copy_takes_only_the_fenced_letter(client, session):
+    # #54: Copy put Claude's note after the letter on the clipboard too.
+    o = claude_fakes.vacancy(session)
+    claude_analysis.enqueue(session, [o.id])
+    w = client.app.state.claude_worker
+    w.runner = claude_fakes.FakeRunner(
+        [claude_runner.Reply("{}", dict(claude_fakes.RESULT), "s", None)]
+    )
+    w.run_once()
+    claude_analysis.ask(session, o.id, "Cover letter please")
+    answer = (
+        "Here it is:\n\n```\nDear team,\n\nBest regards\n```\n\nBefore you send it, check the hub."
+    )
+    w.runner = claude_fakes.FakeRunner([claude_runner.Reply(answer, None, "s", None)])
+    w.run_once()
+    page = client.get(f"/opportunities/{o.id}").text
+    assert '<textarea class="msg-raw" hidden>Dear team,\n\nBest regards</textarea>' in page
+    # the fence lines are not shown, the letter stands out as a block
+    assert "```" not in page.split('<div class="chat">')[1]
+    assert '<span class="paste">Dear team,\n\nBest regards</span>' in page
+
+
+def test_paste_text():
+    import job_radar.web.templating as web_templating
+
+    # no fence: the whole answer, as before
+    assert web_templating.paste_text("Dear team,\nAlex") == "Dear team,\nAlex"
+    # a fence with a language tag; text around it is left out
+    assert web_templating.paste_text("Note\n```text\nHi\n```\nAfter") == "Hi"
+    # subject and body in two blocks
+    two = "```\nSubject: Python role\n```\nand\n```\nHello\n```"
+    assert web_templating.paste_text(two) == "Subject: Python role\n\nHello"
+
+
+def test_chat_prompt_asks_to_fence_text_to_send():
+    for web in (False, True):
+        text = claude_prompt.chat_system_prompt("English", web=web)
+        assert "```" in text and "outside" in text
+
+
 def test_analyze_says_what_it_queued(client, session):
     claude_fakes.vacancy(session)
     text = client.get("/").text

@@ -4,6 +4,7 @@ Usage:
     import job_radar.web.templating as web_templating
 """
 
+import collections.abc as cabc
 import datetime as dt
 import pathlib
 import re
@@ -32,19 +33,53 @@ def _link(m: re.Match[str]) -> str:
     return scoring_description.link(url) + m.group(3)[len(url) :]
 
 
+# #54: Claude fences text meant to be sent (a letter, a reply) with ``` lines.
+_FENCE = re.compile(r"^\s*```[\w+-]*\s*$")
+
+
+def _fenced(lines: list[str]) -> cabc.Iterator[tuple[bool, list[str]]]:
+    """Runs of lines as (inside a fence, lines), fence lines dropped; an unclosed fence
+    runs to the end."""
+    inside, run = False, []
+    for line in lines:
+        if _FENCE.match(line):
+            if run or inside:
+                yield inside, run
+            inside, run = not inside, []
+        else:
+            run.append(line)
+    if run or inside:
+        yield inside, run
+
+
+def paste_text(text: str) -> str:
+    """What Copy puts on the clipboard: the fenced text (blocks joined by a blank line), or
+    the whole answer when it has no fence (#54)."""
+    blocks = ["\n".join(run).strip("\n") for inside, run in _fenced(text.splitlines()) if inside]
+    return "\n\n".join(b for b in blocks if b) or text
+
+
+def _markup_line(line: str) -> str:
+    """One escaped line: links, **bold** and "> quote"."""
+    line = _LINK.sub(_link, line)
+    line = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", line)
+    if line.startswith("&gt; "):
+        line = f'<span class="quote">{line[5:]}</span>'
+    return line
+
+
 def chat_markup(text: str) -> markupsafe.Markup:
-    """Claude's light Markdown made safe: escape first, then links, **bold** and "> quote"."""
-    lines = []
-    for line in str(markupsafe.escape(text)).splitlines():
-        line = _LINK.sub(_link, line)
-        line = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", line)
-        if line.startswith("&gt; "):
-            line = f'<span class="quote">{line[5:]}</span>'
-        lines.append(line)
-    return markupsafe.Markup("\n".join(lines))  # nosec B704: built from escape(text) above
+    """Claude's light Markdown made safe: escape first, then links, **bold**, "> quote" and
+    fenced text to send shown as a block without the fence lines."""
+    parts = []
+    for inside, run in _fenced(str(markupsafe.escape(text)).splitlines()):
+        body = "\n".join(_markup_line(line) for line in run)
+        parts.append(f'<span class="paste">{body.strip(chr(10))}</span>' if inside else body)
+    return markupsafe.Markup("\n".join(parts))  # nosec B704: built from escape(text) above
 
 
 templates.env.filters["chat_markup"] = chat_markup
+templates.env.filters["paste_text"] = paste_text
 
 
 def pause_left(until: dt.datetime | None) -> str:
