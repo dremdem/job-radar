@@ -17,6 +17,7 @@ import job_radar.history.rejections as history_rejections
 import job_radar.models as models
 import job_radar.review.auto_ignore as review_auto_ignore
 import job_radar.review.notes as review_notes
+import job_radar.review.undo as review_undo
 import job_radar.sources.manual as sources_manual
 import job_radar.web.context as web_context
 import job_radar.web.deps as web_deps
@@ -66,10 +67,8 @@ def set_state(
     filters = web_context.Filters(country, company, title, q, desc, per, sort)
     tab = web_context.valid_tab(tab)
     opportunity = web_context.get_opportunity(session, opportunity_id)
-    opportunity.state = state
-    opportunity.state_changed_at = dt.datetime.now(dt.UTC)
-    # your choice replaces the rule's
-    opportunity.auto_ignore_reason = None
+    # logged, so Z can undo it (#56)
+    review_undo.change_state(session, opportunity, state)
     session.commit()
     # the vacancy page: redraw its buttons only
     if source == "page":
@@ -86,6 +85,27 @@ def set_state(
     )
     context["show_row"] = states is None or opportunity.state in states
     return web_templating.templates.TemplateResponse(request, "_row_and_tabs.html", context)
+
+
+@router.get("/undo")
+def last_action(session: web_deps.SessionDep) -> dict:
+    # What Z offers to undo, for the confirmation (#56).
+    last = review_undo.last_action(session)
+    if last is None:
+        return {"action": None}
+    return {"action": last.action.id, "opportunity": last.opportunity.id, "text": last.text}
+
+
+@router.post("/undo")
+def undo_action(session: web_deps.SessionDep, action: t.Annotated[int, fastapi.Form()]) -> dict:
+    # Undo the action the confirmation showed; the page then reloads on its vacancy.
+    try:
+        opportunity = review_undo.undo(session, action)
+    except LookupError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e)) from e
+    except review_undo.UndoConflict as e:
+        raise fastapi.HTTPException(status_code=409, detail=str(e)) from e
+    return {"opportunity": opportunity.id, "state": opportunity.state.value}
 
 
 @router.post("/opportunities/{opportunity_id}/unavailable/clear")
@@ -219,7 +239,7 @@ def add_opportunity_note(
     opportunity = web_context.get_opportunity(session, opportunity_id)
     try:
         if action == "ignore":
-            review_notes.ignore_with_reason(session, opportunity, kind, detail, comment)
+            review_undo.ignore_with_reason(session, opportunity, kind, detail, comment)
         elif action == "note":
             review_notes.add_note(session, opportunity, models.NoteKind.NOTE, comment=comment)
         else:

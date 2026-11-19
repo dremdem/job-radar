@@ -160,6 +160,19 @@ A reason to ignore a vacancy, or a free note (`opportunity_notes`). See [applica
 | `comment` | Optional free text |
 | `created_at` | UTC |
 
+## UserAction
+
+One decision you made in the queue (`user_actions`): interested, ignore, applied, or an ignore with a reason. It keeps what the vacancy looked like before, so **Z** can undo it. See [queue.md](queue.md#undo). No foreign keys, like `LinkedInFetch`: merging or deleting vacancies never trips over the log, and an action whose vacancy is gone is skipped.
+
+| Column | Notes |
+|---|---|
+| `opportunity_id` | The vacancy |
+| `from_state`, `to_state` | The state before and after |
+| `from_state_changed_at`, `from_auto_ignore_reason` | What undo puts back |
+| `note_id` | The reason an ignore with a reason added; undo deletes it |
+| `created_at` | UTC |
+| `undone_at` | UTC; set when undone, the action is then never offered again |
+
 ## AppSetting
 
 Key/value settings edited on the Settings page (`app_settings`): `key` (primary key), `value` (JSON). See [settings.md](settings.md).

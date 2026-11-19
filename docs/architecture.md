@@ -114,7 +114,7 @@ Why the order holds: sources store a vacancy and then call the rules (`review`) 
 | sources | `sources/` | Everything that brings vacancies and mail in: `gmail/`, `linkedin/`, `hh/`, `telegram/`, `boards/` (`himalayas`, `hackernews`, `remoteok`, `jobicy`, `fdetimes`, `feeds`), `manual.py`, the shared `titles.py` and `http.py`, and `capture_read.js` (the page reader of the bookmarklet and the Chrome fill) |
 | ai | `ai/` | `local/` (Ollama), `claude/` (Claude Code), `skills.py` (skills gap report) |
 | history | `history/` | `applications.py`, `rejections.py`, `contacts.py` |
-| review | `review/` | The queue: `auto_ignore.py`, `applied_duplicates.py`, `notes.py`, `suggestions.py` |
+| review | `review/` | The queue: `auto_ignore.py`, `applied_duplicates.py`, `notes.py`, `suggestions.py`, `undo.py` |
 | scoring | `scoring/` | Checks that need no model and no decision: `rules.py`, `description.py`, `language.py`, `findings.py` |
 | profile | `profile/` | Who the user is: `home.py`, `stack.py` |
 | dedup | `dedup.py` | Idempotent upserts |

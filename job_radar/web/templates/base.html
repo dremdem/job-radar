@@ -251,6 +251,65 @@
   <div><span id="desc-status" class="small" hx-get="/descriptions/status" hx-trigger="load" hx-swap="outerHTML"></span></div>
   <div><span id="chrome-status" class="small" hx-get="/chrome-fill/status" hx-trigger="load" hx-swap="outerHTML"></span></div>
   {% block content %}{% endblock %}
+<dialog id="undo-dialog" class="jr-dialog" aria-labelledby="undo-title">{# Z: undo your last decision (#56) #}
+  <form method="dialog">
+    <h2 id="undo-title" class="section-title mb-2">Undo?</h2>
+    <p class="mb-1">Last action: <b id="undo-text"></b></p>
+    <p id="undo-error" class="neg mb-2" hidden></p>
+    <div class="d-flex gap-2 justify-content-end mt-3">
+      <button type="submit" value="no" class="btn btn-sm btn-outline-secondary" id="undo-no">No <kbd>N</kbd></button>
+      <button type="submit" value="yes" class="btn btn-sm btn-primary" id="undo-yes">Yes, undo <kbd>Y</kbd></button>
+    </div>
+  </form>
+</dialog>
+<script>
+  // Z: undo your last decision (interested / ignore / applied / an ignore reason), after a
+  // confirmation that says what and on which vacancy (#56, docs/queue.md#undo).
+  (function () {
+    var dialog = document.getElementById("undo-dialog");
+    var text = document.getElementById("undo-text"), error = document.getElementById("undo-error");
+    var yes = document.getElementById("undo-yes"), actionId = null;
+    function ask() {
+      fetch("/undo", {headers: {"Accept": "application/json"}}).then(function (r) { return r.json(); }).then(function (last) {
+        error.hidden = true;
+        actionId = last.action;
+        text.textContent = last.action ? last.text : "nothing to undo";
+        yes.hidden = !last.action;
+        dialog.showModal();
+        (last.action ? yes : document.getElementById("undo-no")).focus();
+      });
+    }
+    window.jrUndo = ask;
+    function run() {
+      var body = new URLSearchParams({action: actionId});
+      fetch("/undo", {method: "POST", body: body}).then(function (r) {
+        return r.json().then(function (data) { return {ok: r.ok, data: data}; });
+      }).then(function (res) {
+        if (!res.ok) { error.textContent = res.data.detail || "Could not undo"; error.hidden = false; yes.hidden = true; dialog.showModal(); return; }
+        // Come back to the vacancy: the queue opens the remembered item after a reload.
+        try { localStorage.setItem("jr-current-row", "opportunity-" + res.data.opportunity); } catch (e) {}
+        location.reload();
+      });
+    }
+    dialog.addEventListener("close", function () {
+      if (dialog.returnValue === "yes" && actionId) run();
+      dialog.returnValue = "";
+    });
+    dialog.addEventListener("keydown", function (event) {
+      var key = event.key.toLowerCase();
+      if (key === "y" && !yes.hidden) { event.preventDefault(); dialog.close("yes"); }
+      else if (key === "n") { event.preventDefault(); dialog.close("no"); }
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.key.toLowerCase() !== "z") return;
+      if (document.querySelector("dialog[open]")) return;
+      var tag = (event.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || event.target.isContentEditable) return;
+      event.preventDefault();
+      ask();
+    });
+  })();
+</script>
 <script>
   // Copy a Claude answer in one tap (#152); http on a LAN address has no Clipboard API.
   document.addEventListener("click", function (event) {

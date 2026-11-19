@@ -38,8 +38,19 @@ Pick a vacancy in the list, read the panel, decide. After **interested**, **igno
 | `O` | Open the posting on its site (LinkedIn, hh.ru, …) in a new tab |
 | `Enter` | Open the vacancy page |
 | `/` | Search |
+| `Z` | Undo your last decision (works on every page) |
 
 Keys are ignored while you type in a field.
+
+### Undo
+
+A stray `A` moves a vacancy to Applied and out of the tab. **Z** (or **Z undo** above the list) asks first:
+
+> Last action: **applied · Backend Engineer — Acme**. Undo?
+
+**Yes** (`Y`, `Enter`) puts the vacancy back as it was: its state, when it changed and the auto-ignore reason, if a rule had set one. An ignore with a reason also loses that reason. The page reloads with the vacancy selected. **No** (`N`, `Esc`) closes the question.
+
+Every decision is logged (`interested`, `ignore`, `applied`, from the panel, the row or the vacancy page, and an ignore with a reason), so pressing **Z** again offers the decision before it. Undo refuses, saying why, when the vacancy changed after the decision (a later Sync, a merge), so it never overwrites something newer. Notes, events and the **rejected** mark are not decisions: they have their own delete and toggle.
 
 **Links.** Under the title the panel has a row of big buttons: **Open on linkedin.com ↗** (one per site the vacancy came from, in a new tab) and **Full page →**.
 
