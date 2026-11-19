@@ -332,6 +332,7 @@ def remove_demo(session: sa_orm.Session) -> int:
         models.ClaudeMessage,
         models.ClaudeAnalysis,
         models.OpportunityNote,
+        models.UserAction,
     ):
         session.execute(sa.delete(model).where(model.opportunity_id.in_(opportunities)))
     # what you logged on a demo vacancy

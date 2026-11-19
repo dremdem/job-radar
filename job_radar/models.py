@@ -3,7 +3,8 @@
 Core tables: ``Company`` and its ``Opportunity`` (vacancy) rows; every place a vacancy was
 seen is a ``SourceRecord`` with ``JobSnapshot`` texts. Mail is stored as ``EmailMessage``;
 ``Application`` and ``Rejection`` come from it or are added by hand.
-``OpportunityNote`` and ``CompanyEvent`` hold the user's own notes and events.
+``OpportunityNote`` and ``CompanyEvent`` hold the user's own notes and events;
+``UserAction`` logs each decision in the queue so the last one can be undone.
 Analyses: ``DescriptionAnalysis`` (local model), ``ClaudeAnalysis`` with its chat in
 ``ClaudeMessage``, and Claude's memory in ``ClaudeMemory``. ``SyncCursor``,
 ``LinkedInFetch``, ``AppSetting`` and ``TelegramPost`` are bookkeeping. Enums are stored
@@ -365,6 +366,27 @@ class OpportunityNote(Base):
     created_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
 
     company: sa_orm.Mapped[Company] = sa_orm.relationship()
+
+
+class UserAction(Base):
+    """One decision you made in the queue (interested, ignore, applied, an ignore reason),
+    with what the vacancy looked like before, so it can be undone with Z. See
+    docs/queue.md#undo."""
+
+    __tablename__ = "user_actions"
+
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    # No foreign keys, as in LinkedInFetch: merging or deleting vacancies never trips over
+    # the log; an action whose vacancy is gone is skipped.
+    opportunity_id: sa_orm.Mapped[int] = sa_orm.mapped_column(index=True)
+    from_state: sa_orm.Mapped[OpportunityState] = sa_orm.mapped_column(_enum(OpportunityState))
+    to_state: sa_orm.Mapped[OpportunityState] = sa_orm.mapped_column(_enum(OpportunityState))
+    from_state_changed_at: sa_orm.Mapped[dt.datetime | None]
+    from_auto_ignore_reason: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
+    # the reason an ignore with a reason added; undo deletes it
+    note_id: sa_orm.Mapped[int | None]
+    created_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
+    undone_at: sa_orm.Mapped[dt.datetime | None]
 
 
 # The mark the Chrome fill leaves in a vacancy's history (#272). Not a contact, not your action.
