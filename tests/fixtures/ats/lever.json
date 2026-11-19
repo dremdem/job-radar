@@ -1,0 +1,27 @@
+[
+  {
+    "id": "5a1c2b3d-0000-4000-8000-000000000001",
+    "text": "Sr. Python Developer",
+    "categories": {"commitment": "Full-time", "department": "Engineering", "location": "Remote, Poland", "team": "Platform"},
+    "workplaceType": "remote",
+    "descriptionPlain": "Globex builds billing software.",
+    "lists": [
+      {"text": "What you will need", "content": "<li>Python 3.12</li><li>Django</li>"},
+      {"text": "Nice to have", "content": "<li>Kubernetes</li>"}
+    ],
+    "additionalPlain": "We hire in Poland only.",
+    "hostedUrl": "https://jobs.lever.co/globex/5a1c2b3d-0000-4000-8000-000000000001",
+    "applyUrl": "https://jobs.lever.co/globex/5a1c2b3d-0000-4000-8000-000000000001/apply"
+  },
+  {
+    "id": "5a1c2b3d-0000-4000-8000-000000000002",
+    "text": "Office Manager",
+    "categories": {"location": "Warsaw, Poland"},
+    "workplaceType": "onsite",
+    "descriptionPlain": "Office.",
+    "lists": [],
+    "additionalPlain": "",
+    "hostedUrl": "https://jobs.lever.co/globex/5a1c2b3d-0000-4000-8000-000000000002",
+    "applyUrl": "https://jobs.lever.co/globex/5a1c2b3d-0000-4000-8000-000000000002/apply"
+  }
+]

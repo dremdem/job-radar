@@ -2,7 +2,8 @@
 
 Commands: ``db upgrade`` and the duplicate merges, ``serve`` for the web UI, ``sync`` for
 one source or all of them, ``import ...`` for single import steps over mail already in the
-database, ``gmail auth`` for the one-time read-only consent, ``analyze`` for the local
+database, ``ats ...`` for original postings on employer boards (docs/ats.md), ``gmail auth`` for the
+one-time read-only consent, ``analyze`` for the local
 model and ``demo`` for sample data. The commands are thin: the work is done in
 ``pipeline`` and the source modules. See docs/usage.md.
 
@@ -13,6 +14,7 @@ Usage:
 import datetime as dt
 import typing as t
 
+import sqlalchemy as sa
 import typer
 
 import job_radar.config as config
@@ -28,6 +30,8 @@ gmail_app = typer.Typer(help="Gmail (read-only).", no_args_is_help=True)
 app.add_typer(gmail_app, name="gmail")
 import_app = typer.Typer(help="Turn stored data into opportunities.", no_args_is_help=True)
 app.add_typer(import_app, name="import")
+ats_app = typer.Typer(help="Original postings on employer ATS boards.", no_args_is_help=True)
+app.add_typer(ats_app, name="ats")
 
 
 @db_app.command("upgrade")
@@ -147,6 +151,69 @@ def gmail_auth() -> None:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e
     typer.echo(f"Token saved to {settings.gmail_token}")
+
+
+def _session_run(action: t.Callable[..., None]) -> None:
+    settings = config.Settings()
+    db.upgrade_database(settings.database_url)
+    engine = db.make_engine(settings.database_url)
+    try:
+        with db.make_session_factory(engine)() as session:
+            action(session, settings)
+    finally:
+        engine.dispose()
+
+
+@ats_app.command("run")
+def ats_run() -> None:
+    """Look up the original postings of alert vacancies on employer ATS boards."""
+    _session_run(lambda session, settings: jobs_pipeline.import_ats(session, settings, typer.echo))
+
+
+@ats_app.command("boards")
+def ats_boards_list() -> None:
+    """Known employer boards and how each was found."""
+
+    def show(session, _settings) -> None:
+        for board in session.scalars(sa.select(models.AtsBoard).order_by(models.AtsBoard.id)):
+            typer.echo(
+                f"{board.company.name}: {board.provider}/{board.slug} {board.status} "
+                f"({board.found_by})" + (f", error: {board.error}" if board.error else "")
+            )
+
+    _session_run(show)
+
+
+@ats_app.command("candidates")
+def ats_candidates() -> None:
+    """Vacancies whose original posting is not certain, with the postings it could be."""
+    import job_radar.sources.ats.resolve as ats_resolve
+
+    def show(session, _settings) -> None:
+        for lookup, opportunity in ats_resolve.lookups(session):
+            typer.echo(f"#{opportunity.id} {opportunity.title} ({opportunity.location or '?'})")
+            if lookup.detail:
+                typer.echo(f"  {lookup.detail}")
+            for c in lookup.candidates:
+                typer.echo(f"  - {c['title']} ({c['location'] or '?'}) {c['url']}")
+
+    _session_run(show)
+
+
+@ats_app.command("confirm")
+def ats_confirm(company: str, provider: str, slug: str) -> None:
+    """Record that COMPANY's board is PROVIDER/SLUG (e.g. `acme greenhouse acme`)."""
+    import job_radar.sources.ats.resolve as ats_resolve
+
+    def confirm(session, _settings) -> None:
+        try:
+            board = ats_resolve.confirm_board(session, company, provider, slug)
+        except ValueError as e:
+            typer.echo(str(e), err=True)
+            raise typer.Exit(1) from e
+        typer.echo(f"{board.company.name}: {board.provider}/{board.slug} verified")
+
+    _session_run(confirm)
 
 
 @import_app.command("linkedin")

@@ -64,6 +64,13 @@ class Settings(pydantic_settings.BaseSettings):
     fdetimes_regions: str = ""
     # role pages per Descriptions run
     fdetimes_max_descriptions: int = 50
+    # Original postings of LinkedIn alert vacancies on the employer's ATS board through the
+    # official public APIs of Greenhouse, Lever, Ashby, Workable (#2, docs/ats.md).
+    ats: bool = True
+    # try slugs derived from the company name when no board link is known
+    ats_guess: bool = True
+    # requests per run; the rest waits for the next run
+    ats_max_requests: int = 60
     # Remotive, Working Nomads, We Work Remotely public feeds (docs/boards.md).
     boards: bool = True
     # hh.ru digests from the remote saved search, received on or after this date (docs/hh.md).

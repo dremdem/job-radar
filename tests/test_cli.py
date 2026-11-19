@@ -33,6 +33,7 @@ def test_sync_gmail_without_token_explains_auth(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_HIMALAYAS", "false")
     # no network in tests
     monkeypatch.setenv("JOB_RADAR_FDETIMES", "false")
+    monkeypatch.setenv("JOB_RADAR_ATS", "false")
     monkeypatch.setenv("JOB_RADAR_AI_ANALYSIS", "false")
     result = runner.invoke(cli.app, ["sync", "gmail"])
     assert result.exit_code == 1
@@ -53,6 +54,7 @@ def test_sync_on_a_fresh_clone_succeeds_without_gmail(tmp_path, monkeypatch):
         "JOBICY",
         "FDETIMES",
         "BOARDS",
+        "ATS",
         "AI_ANALYSIS",
     ):
         # no network in tests
@@ -167,3 +169,13 @@ def test_sync_himalayas_can_be_disabled(tmp_path, monkeypatch):
     monkeypatch.setenv("JOB_RADAR_HIMALAYAS", "false")
     result = runner.invoke(cli.app, ["sync", "himalayas"])
     assert result.exit_code == 0 and "himalayas: disabled" in result.output
+
+
+def test_ats_commands(tmp_path, monkeypatch):
+    monkeypatch.setenv("JOB_RADAR_DATABASE_URL", f"sqlite:///{tmp_path / 'j.db'}")
+    result = runner.invoke(cli.app, ["ats", "confirm", "Globex", "lever", "globex"])
+    assert result.exit_code == 1 and "no company 'Globex'" in result.output
+    for command in (["ats", "boards"], ["ats", "candidates"], ["ats", "run"]):
+        result = runner.invoke(cli.app, command)
+        assert result.exit_code == 0, result.output
+    assert "ats: 0 vacancies checked" in result.output

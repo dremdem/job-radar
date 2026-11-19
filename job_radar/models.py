@@ -7,7 +7,8 @@ seen is a ``SourceRecord`` with ``JobSnapshot`` texts. Mail is stored as ``Email
 ``UserAction`` logs each decision in the queue so the last one can be undone.
 Analyses: ``DescriptionAnalysis`` (local model), ``ClaudeAnalysis`` with its chat in
 ``ClaudeMessage``, and Claude's memory in ``ClaudeMemory``. ``SyncCursor``,
-``LinkedInFetch``, ``AppSetting`` and ``TelegramPost`` are bookkeeping. Enums are stored
+``LinkedInFetch``, ``AppSetting`` and ``TelegramPost`` are bookkeeping; ``AtsBoard`` and
+``AtsLookup`` remember employer boards and the search for original postings (#2). Enums are stored
 as plain strings. Schema changes go through Alembic migrations. See docs/data-model.md.
 
 Usage:
@@ -73,6 +74,12 @@ class SourceType(enum.StrEnum):
     TELEGRAM = "telegram"
     # added by hand; external_id = the link, or "manual:<n>" (#182)
     MANUAL = "manual"
+    # the original posting on the employer's ATS board (#2, docs/ats.md);
+    # external_id = "<board slug>:<job id>", job ids are unique only within a board
+    GREENHOUSE = "greenhouse"
+    LEVER = "lever"
+    ASHBY = "ashby"
+    WORKABLE = "workable"
 
 
 class OpportunityState(enum.StrEnum):
@@ -441,6 +448,57 @@ class TelegramPost(Base):
     opportunity_id: sa_orm.Mapped[int | None] = sa_orm.mapped_column(
         sa.ForeignKey("opportunities.id")
     )
+
+
+class AtsBoard(Base):
+    """An employer's job board on an ATS (Greenhouse, Lever, Ashby, Workable), see docs/ats.md.
+
+    Kept apart from the company's aliases: ``status`` says how sure the link is. Only a
+    ``verified`` board gets its postings attached; a ``guessed`` one (a slug derived from
+    the name that the API could not tie to the company) gives candidates only; ``absent``
+    remembers a guess the API did not know, so it is not asked again for a month.
+    """
+
+    __tablename__ = "ats_boards"
+    __table_args__ = (sa.UniqueConstraint("provider", "slug"),)
+
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    company_id: sa_orm.Mapped[int] = sa_orm.mapped_column(sa.ForeignKey("companies.id"), index=True)
+    # greenhouse / lever / ashby / workable
+    provider: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    slug: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(128))
+    # verified / guessed / absent
+    status: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    # link (a tenant URL in stored data) / name (the board's own company name) / manual / guess
+    found_by: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    # the company name the board gives, when the API has one
+    board_name: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
+    checked_at: sa_orm.Mapped[dt.datetime | None]
+    error: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
+    created_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
+
+    company: sa_orm.Mapped[Company] = sa_orm.relationship()
+
+
+class AtsLookup(Base):
+    """The last search for a vacancy's original posting, one row per vacancy (docs/ats.md).
+
+    ``candidates`` lists the postings that could be it when the match is not certain, for
+    the user to pick by hand.
+    """
+
+    __tablename__ = "ats_lookups"
+
+    id: sa_orm.Mapped[int] = sa_orm.mapped_column(primary_key=True)
+    # No foreign key, as in UserAction: merging vacancies never trips over the log.
+    opportunity_id: sa_orm.Mapped[int] = sa_orm.mapped_column(unique=True)
+    # matched / ambiguous / no_match / no_board / taken / error
+    status: sa_orm.Mapped[str] = sa_orm.mapped_column(sa.String(16))
+    board_id: sa_orm.Mapped[int | None]
+    # [{provider, slug, id, title, location, url}]
+    candidates: sa_orm.Mapped[list[dict[str, str]]] = sa_orm.mapped_column(sa.JSON, default=list)
+    detail: sa_orm.Mapped[str | None] = sa_orm.mapped_column(sa.String(255))
+    checked_at: sa_orm.Mapped[dt.datetime] = sa_orm.mapped_column(default=utcnow)
 
 
 class DescriptionAnalysis(Base):
