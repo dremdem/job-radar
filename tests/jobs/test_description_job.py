@@ -130,6 +130,7 @@ def test_sync_starts_the_background_job_instead_of_fetching(tmp_path, engine, da
         himalayas=False,
         # no network in tests
         fdetimes=False,
+        ats=False,
         ai_analysis=False,
         linkedin_public_search=True,
     )

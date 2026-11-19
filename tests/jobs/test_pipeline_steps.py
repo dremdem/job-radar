@@ -14,6 +14,7 @@ def settings(tmp_path, database_url, **extra) -> config.Settings:
         "gmail_token": tmp_path / "missing.json",
         "himalayas": False,
         "fdetimes": False,
+        "ats": False,
         "ai_analysis": False,
     }
     return config.Settings(**(base | extra))

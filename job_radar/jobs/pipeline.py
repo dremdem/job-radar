@@ -2,10 +2,11 @@
 
 Every source has an ``import_*`` step: mail (LinkedIn alerts, rejections, applications,
 hh.ru, contacts), job boards (Himalayas, Remotive and the like, Jobicy, Remote OK, FDE
-Times, Hacker News), Telegram, and the description jobs (public pages, Chrome fill, local
-model analysis). ``run_sync`` runs them one by one; a failed step is reported and does not
-stop the rest. Every step reports through ``echo`` (one line per call), so the same text
-reaches the terminal or the web status. See docs/queue.md#sync-mail.
+Times, Hacker News), Telegram, original postings on employer ATS boards, and the
+description jobs (public pages, Chrome fill, local model analysis). ``run_sync`` runs them
+one by one; a failed step is reported and does not stop the rest. Every step reports
+through ``echo`` (one line per call), so the same text reaches the terminal or the web
+status. See docs/queue.md#sync-mail.
 
 Usage:
     import job_radar.jobs.pipeline as jobs_pipeline
@@ -363,6 +364,32 @@ def import_fdetimes(
     )
 
 
+def import_ats(session: sa_orm.Session, settings: config.Settings, echo: Echo, client=None) -> None:
+    """Original postings of alert vacancies on the employer's ATS board (docs/ats.md)."""
+    import job_radar.sources.ats.boards as ats_boards
+    import job_radar.sources.ats.resolve as ats_resolve
+
+    if not settings.ats:
+        echo("ats: disabled (JOB_RADAR_ATS=false).")
+        return
+    stats = ats_resolve.import_ats(
+        session,
+        client or ats_boards.AtsClient(max_requests=settings.ats_max_requests),
+        guess=settings.ats_guess,
+    )
+    echo(
+        f"ats: {stats.vacancies} vacancies checked, {stats.matched} matched, "
+        f"{stats.ambiguous} to pick by hand, {stats.no_match} not found, "
+        f"{stats.no_board} without a board, {stats.requests} requests"
+    )
+    if stats.taken:
+        echo(f"ats: {stats.taken} postings already on another vacancy")
+    for error in stats.errors[:5]:
+        echo(f"ats: {error}")
+    if stats.limited:
+        echo("ats: request limit reached; the rest waits for the next run.")
+
+
 def import_remoteok(
     session: sa_orm.Session, settings: config.Settings, echo: Echo, client=None
 ) -> None:
@@ -577,6 +604,7 @@ STEPS: list[tuple[str, str, str, str]] = [
     ("fdetimes", "FDE Times", "fdetimes", "first"),
     ("boards", "Other boards", "boards", "last"),
     ("mail", "Mail analysis", "", "all"),
+    ("ats", "ATS originals", "ats", "first"),
     ("descriptions", "Descriptions", "descriptions", "first"),
     ("ai", "AI analysis", "ai", "last"),
 ]
@@ -634,6 +662,7 @@ def run_sync(
         "jobicy": settings.jobicy,
         "fdetimes": settings.fdetimes,
         "boards": settings.boards,
+        "ats": settings.ats,
         "descriptions": descriptions_on(settings),
         "ai": settings.ai_analysis,
     }
@@ -718,6 +747,9 @@ def run_sync(
             run("fdetimes", lambda e: import_fdetimes(session, settings, e))
             run("boards", lambda e: import_boards(session, settings, e))
             run("mail", mail)
+            # After mail (applications fold copies away), before the public descriptions, which
+            # skip vacancies that already have one.
+            run("ats", lambda e: import_ats(session, settings, e))
             # Late: the rules for fetched descriptions see applications/rejections above.
             if start_descriptions is not None:
                 run("descriptions", lambda e: e(

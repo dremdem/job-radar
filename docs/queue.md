@@ -110,6 +110,7 @@ The status next to the button lists the steps, one line each, updated while it w
 | FDE Times | Fresh Forward Deployed Engineer roles ([fdetimes.md](fdetimes.md)) |
 | Other boards | Remotive, Working Nomads, We Work Remotely ([boards.md](boards.md)) |
 | Mail analysis | Rejections, applications, contacts from stored mail ([applications.md](applications.md)) |
+| ATS originals | The original posting of alert vacancies on the employer's ATS board: full description and real link ([ats.md](ats.md)) |
 | Descriptions | Starts the background **Descriptions** job, if enabled: LinkedIn ([linkedin-public-search.md](linkedin-public-search.md#the-descriptions-button-205)), then FDE Times ([fdetimes.md](fdetimes.md#descriptions)) |
 | AI analysis | Work mode, residence and stack with the local model ([ai.md](ai.md)) |
 

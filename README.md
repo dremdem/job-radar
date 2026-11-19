@@ -93,7 +93,7 @@ Real sources need their own setup: Gmail OAuth ([docs/gmail.md](docs/gmail.md)),
 |---|---|
 | Using it | [usage](docs/usage.md) · [queue](docs/queue.md) · [settings](docs/settings.md) · [skills gap](docs/skills.md) |
 | AI | [local model](docs/ai.md) · [Claude analysis](docs/claude.md) · [Claude memory](docs/claude-memory.md) |
-| Sources | [Gmail](docs/gmail.md) · [LinkedIn alerts](docs/linkedin-alerts.md) · [hh.ru](docs/hh.md) · [Telegram](docs/telegram.md) · [boards](docs/boards.md) · [Himalayas](docs/himalayas.md) · [Hacker News](docs/hackernews.md) · [Remote OK](docs/remoteok.md) · [Jobicy](docs/jobicy.md) · [FDE Times](docs/fdetimes.md) |
+| Sources | [Gmail](docs/gmail.md) · [LinkedIn alerts](docs/linkedin-alerts.md) · [hh.ru](docs/hh.md) · [Telegram](docs/telegram.md) · [boards](docs/boards.md) · [Himalayas](docs/himalayas.md) · [Hacker News](docs/hackernews.md) · [Remote OK](docs/remoteok.md) · [Jobicy](docs/jobicy.md) · [FDE Times](docs/fdetimes.md) · [ATS originals](docs/ats.md) |
 | Internals | [architecture](docs/architecture.md) · [data model](docs/data-model.md) · [applications](docs/applications.md) · [ADRs](docs/adr/) |
 
 ## License

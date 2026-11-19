@@ -53,6 +53,7 @@ A second `./jr start` does not start a second server.
 | `job-radar import contacts` | Link mail to companies and label it, for company history in the queue |
 | `job-radar import linkedin-search` | Opt-in: first 25 jobs of each new alert search from LinkedIn's public guest search, see [docs/linkedin-public-search.md](linkedin-public-search.md) |
 | `job-radar import descriptions` | Descriptions for To review from public job pages: LinkedIn (opt-in, see [docs/linkedin-public-search.md](linkedin-public-search.md#descriptions-public-job-page)) and FDE Times ([docs/fdetimes.md](fdetimes.md#descriptions)) |
+| `job-radar ats run` / `boards` / `candidates` / `confirm COMPANY PROVIDER SLUG` | Original postings of alert vacancies on employer ATS boards, see [docs/ats.md](ats.md#commands) |
 | `job-radar sync telegram` | Vacancies from allowlisted Telegram channels via telegram-mcp, see [docs/telegram.md](telegram.md) |
 | `job-radar sync himalayas` | Fresh worldwide Python vacancies from the Himalayas public API, see [docs/himalayas.md](himalayas.md) |
 | `job-radar sync hackernews` | Remote Python posts from the monthly "Ask HN: Who is hiring?" thread, see [docs/hackernews.md](hackernews.md) |
@@ -78,6 +79,7 @@ Settings come from environment variables with the `JOB_RADAR_` prefix, or from `
 | `JOB_RADAR_REMOTEOK` | `true` | Read Remote OK on every sync ([docs/remoteok.md](remoteok.md)) |
 | `JOB_RADAR_JOBICY` | `true` | Read Jobicy on every sync ([docs/jobicy.md](jobicy.md)) |
 | `JOB_RADAR_FDETIMES` | `true` | Read the FDE Times job list on every sync and its role pages in the Descriptions job ([docs/fdetimes.md](fdetimes.md)) |
+| `JOB_RADAR_ATS` | `true` | Look up the original postings of LinkedIn alert vacancies on employer ATS boards on every sync; `JOB_RADAR_ATS_GUESS`, `JOB_RADAR_ATS_MAX_REQUESTS` ([docs/ats.md](ats.md#settings)) |
 | `JOB_RADAR_FDETIMES_FIRST_RUN_DAYS` | `7` | How far back the first FDE Times run reads |
 | `JOB_RADAR_FDETIMES_RELATED` | `false` | Also the related AI roles, not only FDE ones |
 | `JOB_RADAR_FDETIMES_REGIONS` | — | Only these regions, e.g. `remote,apac` (`north-america`, `europe`, `apac`, `remote`, `other`); all by default |

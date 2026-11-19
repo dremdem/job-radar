@@ -50,7 +50,7 @@ One sighting of an opportunity in a source. Unique on `(source_type, external_id
 
 | Column | Notes |
 |---|---|
-| `source_type` | `linkedin_alert`, `linkedin_search` (public guest search, [linkedin-public-search.md](linkedin-public-search.md)), `linkedin_capture` (pages sent by the bookmarklet, [linkedin-capture.md](linkedin-capture.md)), `linkedin_link` (a LinkedIn job id seen as the original link of a vacancy from another source, e.g. a Telegram digest), `gmail`, `hh` (`external_id` = the hh.ru vacancy id, [hh.md](hh.md)), `himalayas` (`external_id` = the job page URL, [himalayas.md](himalayas.md)), `hackernews` (`external_id` = the "Who is hiring?" comment id, [hackernews.md](hackernews.md)), `remoteok` (`external_id` = the Remote OK job id, [remoteok.md](remoteok.md)), `jobicy` (`external_id` = the Jobicy job id, [jobicy.md](jobicy.md)), `fdetimes` (`external_id` = the FDE Times role slug, [fdetimes.md](fdetimes.md)), `remotive`, `workingnomads` (`external_id` = the board's job id), `weworkremotely` (`external_id` = the job page URL, all three in [boards.md](boards.md)), `telegram` (`external_id` = `<chat>:<message id>`, or `telegraph:<page>` for a digest vacancy). A LinkedIn job id is one opportunity whichever LinkedIn source saw it |
+| `source_type` | `linkedin_alert`, `linkedin_search` (public guest search, [linkedin-public-search.md](linkedin-public-search.md)), `linkedin_capture` (pages sent by the bookmarklet, [linkedin-capture.md](linkedin-capture.md)), `linkedin_link` (a LinkedIn job id seen as the original link of a vacancy from another source, e.g. a Telegram digest), `gmail`, `hh` (`external_id` = the hh.ru vacancy id, [hh.md](hh.md)), `himalayas` (`external_id` = the job page URL, [himalayas.md](himalayas.md)), `hackernews` (`external_id` = the "Who is hiring?" comment id, [hackernews.md](hackernews.md)), `remoteok` (`external_id` = the Remote OK job id, [remoteok.md](remoteok.md)), `jobicy` (`external_id` = the Jobicy job id, [jobicy.md](jobicy.md)), `fdetimes` (`external_id` = the FDE Times role slug, [fdetimes.md](fdetimes.md)), `remotive`, `workingnomads` (`external_id` = the board's job id), `weworkremotely` (`external_id` = the job page URL, all three in [boards.md](boards.md)), `telegram` (`external_id` = `<chat>:<message id>`, or `telegraph:<page>` for a digest vacancy), `greenhouse`, `lever`, `ashby`, `workable` (the original posting on the employer's ATS board, `external_id` = `<board slug>:<job id>`, [ats.md](ats.md)). A LinkedIn job id is one opportunity whichever LinkedIn source saw it |
 | `external_id` | Stable id inside the source (e.g. LinkedIn job id) |
 | `url` | Canonical URL, tracking parameters stripped |
 | `opportunity_id` | |
@@ -122,6 +122,32 @@ A Gmail message relevant to the search. Unique on `gmail_message_id`.
 | `company_id` | Optional link, see [applications.md](applications.md#linking-mail-to-a-company) |
 | `company_match` | Nullable: `exact` or `probable` |
 | `hidden_at` | Nullable: when you deleted it from the company history; hidden mail is never imported again as an application or a rejection |
+
+## AtsBoard
+
+An employer's board on an ATS, see [ats.md](ats.md#finding-the-employers-board). Unique per `provider` and `slug`.
+
+| Field | Notes |
+|---|---|
+| `company_id` | Required |
+| `provider`, `slug` | `greenhouse` / `lever` / `ashby` / `workable` and the employer's tenant name |
+| `status` | `verified` (postings attached), `guessed` (candidates only), `absent` (a guess the API did not know) |
+| `found_by` | `link`, `name`, `manual`, `guess` |
+| `board_name` | The company name the board gives, when the API has one |
+| `checked_at`, `error` | Last read and its error, if any |
+
+## AtsLookup
+
+The last search for a vacancy's original posting, one row per vacancy; no foreign key, like the action log.
+
+| Field | Notes |
+|---|---|
+| `opportunity_id` | Unique |
+| `status` | `matched`, `ambiguous`, `no_match`, `no_board`, `taken`, `error` |
+| `board_id` | The board of the match or of the candidates |
+| `candidates` | JSON list of `{provider, slug, id, title, location, url}` |
+| `detail` | Why, for errors and guessed boards |
+| `checked_at` | UTC; an unsuccessful lookup is repeated after a week |
 
 ## SyncCursor
 

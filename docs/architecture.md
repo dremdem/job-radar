@@ -111,7 +111,7 @@ Why the order holds: sources store a vacancy and then call the rules (`review`) 
 |---|---|---|
 | web, cli | `cli.py` (`job-radar`), `web/` | Entry points. `web/app.py` builds the app, `routes/` has one router per feature (queue, claude, settings, jobs, capture, applications), `context.py` builds what the templates show, `templating.py` holds the Jinja environment, `deps.py` the dependencies of the routes. `./jr` is a shell helper |
 | jobs, demo | `jobs/` | Background work: `pipeline.py` (every sync step in order), `sync_job.py`, `description_job.py`. `demo.py` fills a demo database |
-| sources | `sources/` | Everything that brings vacancies and mail in: `gmail/`, `linkedin/`, `hh/`, `telegram/`, `boards/` (`himalayas`, `hackernews`, `remoteok`, `jobicy`, `fdetimes`, `feeds`), `manual.py`, the shared `titles.py` and `http.py`, and `capture_read.js` (the page reader of the bookmarklet and the Chrome fill) |
+| sources | `sources/` | Everything that brings vacancies and mail in: `gmail/`, `linkedin/`, `hh/`, `telegram/`, `boards/` (`himalayas`, `hackernews`, `remoteok`, `jobicy`, `fdetimes`, `feeds`), `ats/` (original postings on employer ATS boards), `manual.py`, the shared `titles.py` and `http.py`, and `capture_read.js` (the page reader of the bookmarklet and the Chrome fill) |
 | ai | `ai/` | `local/` (Ollama), `claude/` (Claude Code), `skills.py` (skills gap report) |
 | history | `history/` | `applications.py`, `rejections.py`, `contacts.py` |
 | review | `review/` | The queue: `auto_ignore.py`, `applied_duplicates.py`, `notes.py`, `suggestions.py`, `undo.py` |
