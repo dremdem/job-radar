@@ -17,3 +17,5 @@ sources:
     require_tags: ["#vacancy", "#вакансия"]
   - name: twinslashjobs
     chat: twinslashjobs
+  - name: jobsearchhhhh
+    chat: jobsearchhhhh         # Вакансии IT (СНГ, ЕС, Весь Мир); posts start with a contact line and "id N"

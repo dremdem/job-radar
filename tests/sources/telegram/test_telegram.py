@@ -168,3 +168,22 @@ def test_narrative_sentence_is_not_split_into_title_and_company():
         "**Компания iGaming в поиске Data Analyst (junior+) с опытом в Python**"
     )
     assert job.company is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "❗️Пишите @recruiter, ОТКЛИКИ НЕ ПО ЛОКАЦИИ НЕ РАССМАТРИВАЮТСЯ\n"
+        "id 7147\nBackend & AI Engineer, Python\nRemote, EU",
+        "id 133633\nBackend & AI Engineer, Python\nRemote, EU",
+        "Write to @recruiter for details\nBackend & AI Engineer, Python",
+    ],
+)
+def test_contact_and_id_lines_are_not_the_title(text):
+    job = telegram_posts.parse_post(text)
+    assert job.title == "Backend & AI Engineer, Python"
+
+
+def test_example_lists_jobsearchhhhh():
+    sources = telegram_sources.load_sources(paths.ROOT / "telegram.example.yaml")
+    assert any(s.chat == "jobsearchhhhh" for s in sources)
