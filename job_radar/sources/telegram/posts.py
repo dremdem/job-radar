@@ -21,6 +21,10 @@ _HASHTAGS_ONLY = re.compile(r"^(#\w[\w-]*[\s,]*)+$", re.UNICODE)
 _NOISE_LINE = re.compile(
     r"^(hiring|we.?re hiring|вакансия|vacancy|ищем|ребята активно ищут\W*)\s*:?\s*$", re.I
 )
+# Service lines some channels put before the role (jobsearchhhhh, issue #59):
+# "Пишите @recruiter ..." and a bare "id 7147".
+_CONTACT_LINE = re.compile(r"^(?:пишите|писать|write to|contact|dm)\b.*@\w+", re.I)
+_ID_LINE = re.compile(r"^id\s*\d+$", re.I)
 _LOOKING_FOR = re.compile(r"^(looking for|position|role|позиция|должность)\s*:\s*(.+)$", re.I)
 _LOCATION_LINE = re.compile(
     r"^(?:📍|🌐|🌍)\s*(.+)$|^(?:location|локация|location/format)\s*:\s*(.+)$", re.I
@@ -76,7 +80,13 @@ def parse_post(text: str) -> PostJob | None:
     if title is None:
         for i, line in enumerate(lines):
             stripped = _strip(line)
-            if not stripped or _HASHTAGS_ONLY.match(stripped) or _NOISE_LINE.match(stripped):
+            if (
+                not stripped
+                or _HASHTAGS_ONLY.match(stripped)
+                or _NOISE_LINE.match(stripped)
+                or _CONTACT_LINE.match(stripped)
+                or _ID_LINE.match(stripped)
+            ):
                 continue
             title = stripped
             first_block = lines[i + 1 : i + 2]
