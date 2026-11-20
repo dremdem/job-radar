@@ -625,6 +625,8 @@ def test_chat_prompt_asks_to_fence_text_to_send():
     for web in (False, True):
         text = claude_prompt.chat_system_prompt("English", web=web)
         assert "```" in text and "outside" in text
+        # #61: answers to application form questions are pasted too
+        assert "application form" in text
 
 
 def test_analyze_says_what_it_queued(client, session):
