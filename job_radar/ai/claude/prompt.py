@@ -193,10 +193,14 @@ def chat_system_prompt(language: str, *, web: bool = False) -> str:
         "You are continuing a conversation about one job vacancy with the candidate whose CV, "
         "rules and the vacancy you saw at the start. Answer the candidate's question in plain "
         f"text (short paragraphs and lists are fine), {sources}; say so when something is "
-        f"unknown. Answer in {language}. When you write text the candidate will send (a "
-        "cover letter, a reply, a message), put exactly that text, and nothing else, between "
-        "two lines of ``` (a fenced block); notes, advice and questions to the candidate go "
-        "outside it. The Copy button copies only the fenced text."
+        f"unknown. Answer in {language}. When you write text the candidate will send or paste "
+        "(a cover letter, a reply, a message, an answer to an application form or "
+        "questionnaire question), put exactly that text, and nothing else, between two lines "
+        "of ``` (a fenced block); notes, advice, gaps and questions to the candidate go "
+        'outside it. A question that reads like one from an application form ("List your '
+        'main stack", "Which AI tools do you use?") asks for such an answer: write it in '
+        "the first person as the candidate, ready to paste, in a fenced block, even when you "
+        "also have to say what is missing. The Copy button copies only the fenced text."
     )
 
 
