@@ -75,6 +75,9 @@ _BLOCK_TITLE = re.compile(
 _HH_PAGE = re.compile(r"^https?://(?:[\w-]+\.)?hh\.(?:ru|kz|by|uz)/vacancy/(\d+)")
 # With the token the extension connects its own connect page to the client (#250).
 _CONNECT_PAGE = re.compile(r"^chrome-extension://[a-p]{32}/connect\.html")
+# Playwright MCP 0.0.84 connects with no tab at all; the first `browser_tabs list` then opens
+# a blank one in the extension's tab group (#63).
+_BLANK_PAGE = "about:blank"
 _TAB_LINE = re.compile(r"^- \d+:.*\]\((\S+)\)\s*$")
 _JOB_ID = re.compile(r"currentJobId=(\d+)|/jobs/view/(?:[^/?#]*-)?(\d+)")
 
@@ -347,7 +350,7 @@ async def fill_descriptions(
 
     async def visit(opportunity: models.Opportunity, record: models.SourceRecord, url: str) -> bool:
         """One vacancy, start to end. False when the whole run has to stop."""
-        nonlocal tab_url, attempted, uncertain, errors_in_a_row
+        nonlocal tab_url, attempted, uncertain, errors_in_a_row, own_tab, keep_open
         job_id = record.external_id
         hh = record.source_type == models.SourceType.HH
         source = stats.sources["hh" if hh else "linkedin"]
@@ -357,12 +360,13 @@ async def fill_descriptions(
         source.opened += 1
         progress()
         started = time.monotonic()
-        if tab_url is None and reuse:
+        if tab_url is None and own_tab:
             attempted = url
             await browser.navigate(url)
         elif tab_url is None:
             attempted = url
             await browser.open_tab(url)
+            own_tab = True
         else:
             # The extension follows one tab; make sure it is still ours before leaving it.
             here = str((await browser.evaluate(PROBE)).get("href"))
@@ -370,6 +374,7 @@ async def fill_descriptions(
             if not ours and not (uncertain and here.startswith("chrome-error:")):
                 stats.blocked, stats.reason = True, "another page in the tab: stopped"
                 say(f"stopped: the tab shows {here}, not our vacancy")
+                keep_open = True
                 return False
             attempted = url
             await browser.navigate(url)
@@ -388,15 +393,14 @@ async def fill_descriptions(
             stats.blocked, stats.reason = True, reason
             log(opportunity, job_id, url, "blocked", reason)
             say(f"{site}: {reason} — stopped; the tab is left open for you to see")
-            # leave it open
-            tab_url = None
+            keep_open = True
             return False
         if page_of(str(probe.get("href"))) != expected:
             source.problems += 1
             stats.blocked, stats.reason = True, "another page in the tab: stopped"
             log(opportunity, job_id, url, "error", f"tab shows {probe.get('href')}")
             say(f"stopped: expected job {job_id}, the tab shows {probe.get('href')}")
-            tab_url = None
+            keep_open = True
             return False
         # hh.ru shows it all (#260)
         if not hh and await browser.evaluate(EXPAND):
@@ -410,7 +414,7 @@ async def fill_descriptions(
             stats.blocked, stats.reason = True, "another page in the tab: stopped"
             log(opportunity, job_id, url, "error", "the page changed while reading")
             say(f"stopped: the page changed while reading job {job_id}")
-            tab_url = None
+            keep_open = True
             return False
         result = linkedin_capture.import_capture(session, own_payload(payload, job_id))
         timing = (
@@ -443,14 +447,18 @@ async def fill_descriptions(
     attempted: str | None = None
     # the last vacancy failed: the tab may show the browser's error page
     uncertain = False
-    # The extension's connect page is the run's own tab: use it, and close it at the end,
-    # so nothing is left open (#250). Any other tab is the user's: open a new one instead.
+    # The extension's connect page (#250), or the blank tab Playwright MCP opened for the
+    # list itself (#63), is the run's own tab: use it, and close it at the end, so nothing is
+    # left open. Any other tab is the user's: open a new one instead.
     try:
         tabs = await browser.list_tabs() if todo else []
     except Exception:
         # unknown: be safe and open a tab of our own
         tabs = []
-    reuse = len(tabs) == 1 and bool(_CONNECT_PAGE.match(tabs[0]))
+    # the run has a tab of its own, to use and to close at the end
+    own_tab = len(tabs) == 1 and (tabs[0] == _BLANK_PAGE or bool(_CONNECT_PAGE.match(tabs[0])))
+    # a block or another page in it: left open for the user to see
+    keep_open = False
     errors_in_a_row = 0
     try:
         for n, (opportunity, record) in enumerate(todo):
@@ -486,7 +494,8 @@ async def fill_descriptions(
                 break
     finally:
         progress()
-        if tab_url is not None:
+        # also after errors (#63): the tab may still show a failed page
+        if own_tab and not keep_open:
             # the tab may be gone already
             with contextlib.suppress(Exception):
                 await browser.close_tab()
