@@ -1,6 +1,6 @@
 # Security policy
 
-Job Radar runs on your own machine and keeps its data in a local SQLite file. It has no server of its own, and nothing is reachable from outside unless you expose it yourself. The web UI listens on `127.0.0.1` only.
+Job Radar runs on your own machine and keeps its data in a local SQLite file. It has no server of its own, and nothing is reachable from outside unless you expose it yourself. The web UI listens on `127.0.0.1` only. To reach it from your other devices, `./jr tailscale on` puts it behind `tailscale serve`, which is visible only inside your own tailnet (not Funnel, not the internet); see [docs/usage.md](docs/usage.md#one-address-tailscale).
 
 ## Reporting a vulnerability
 

@@ -9,6 +9,8 @@ What it does not do: open pages, click, scroll, log in, or send any request to L
 1. Start the app (`uv run job-radar serve`) and open **Capture** in the header (`/capture`).
 2. Drag the **→ Job Radar** link to the bookmarks bar.
 
+The bookmarklet remembers one address of the app: `JOB_RADAR_PUBLIC_URL` when it is set (one Tailscale address for home and away, see [usage.md](usage.md#one-address-tailscale)), otherwise the address you opened Capture from. After changing it, drag the bookmarklet again.
+
 ## Use
 
 - **Search results** (from an alert's "See all jobs", or any LinkedIn job search): scroll the list to the end of the first page (~25 jobs; LinkedIn only fills cards you scrolled to), then click **→ Job Radar**. Every job card on the page is sent.
@@ -19,7 +21,7 @@ A new tab opens on `/capture` and shows what was received: jobs on the page, new
 ## How it works
 
 1. The bookmarklet collects job ids and each card's visible text: on the semantic search page (`/jobs/search-results/`, where alert emails lead) cards are `componentkey="job-card-component-ref-<id>"`; on classic pages it uses `/jobs/view/<id>` links and `data-job-id`. For the open vacancy (`currentJobId` or `/jobs/view/<id>`) it also sends the tab title ("<title> \| <company> \| LinkedIn") and the description (`componentkey="JobDetails_AboutTheJob_<id>"` on the semantic page, including the part folded under "… more").
-2. It opens `http://127.0.0.1:<port>/capture#<data>`. The data is in the URL **fragment**, which browsers never send over the network; the page address is kept without its query string (no tracking or personal tokens).
+2. It opens `<app address>/capture#<data>` (`http://127.0.0.1:<port>` or `JOB_RADAR_PUBLIC_URL`). The data is in the URL **fragment**, which browsers never send over the network; the page address is kept without its query string (no tracking or personal tokens).
 3. The capture page posts the data to the local server (same origin, so LinkedIn's security policy is not involved) and clears the fragment.
 4. The server parses the card text (title, company, location, salary, Easy Apply; noise such as "Promoted", "Be an early applicant", "3 connections work here" is dropped), creates opportunities with `source_type = linkedin_capture` (dedup by LinkedIn job id across alert, search and capture), scores them like alert jobs and stores a description as a `JobSnapshot`.
 

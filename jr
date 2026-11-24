@@ -6,6 +6,10 @@ cd "$(dirname "$0")"
 HOST=127.0.0.1
 PORT=8000
 URL="http://$HOST:$PORT"
+# The one address at home and away (#66): JOB_RADAR_PUBLIC_URL from the environment or .env.
+PUBLIC_URL=${JOB_RADAR_PUBLIC_URL:-$(sed -n 's/^JOB_RADAR_PUBLIC_URL=//p' .env 2>/dev/null | tail -n1 | tr -d "\"'" || true)}
+PUBLIC_URL=${PUBLIC_URL%/}
+OPEN_URL=${PUBLIC_URL:-$URL}
 PID_FILE=data/server.pid
 LOG_FILE=data/server.log
 ROOT=$(pwd -P)
@@ -47,7 +51,7 @@ autostart() {
       systemctl --user daemon-reload
       systemctl --user enable --now "$UNIT"
       if wait_up; then
-        echo "Autostart on: $URL starts with the machine (unit: $UNIT_FILE)"
+        echo "Autostart on: $(where) starts with the machine (unit: $UNIT_FILE)"
       else
         echo "The service did not come up; see: systemctl --user status $UNIT" >&2
         return 1
@@ -66,6 +70,42 @@ autostart() {
       echo "Usage: ./jr autostart on|off" >&2
       return 2
       ;;
+  esac
+}
+
+# How to reach the server: the public address first, the local one for this machine only.
+where() {
+  if [[ -n $PUBLIC_URL ]]; then echo "$PUBLIC_URL (here also $URL)"; else echo "$URL"; fi
+}
+
+# tailscale serve: HTTPS on the machine's tailnet name, proxied to the local server.
+# Tailnet only (not Funnel); the server itself stays on 127.0.0.1.
+tailscale_serve() {
+  if [[ ! ${1:-status} =~ ^(on|off|status)$ ]]; then
+    echo "Usage: ./jr tailscale on|off|status" >&2
+    return 2
+  fi
+  if ! command -v tailscale >/dev/null; then
+    echo "tailscale is not installed: https://tailscale.com/download" >&2
+    return 1
+  fi
+  case "${1:-status}" in
+    on)
+      if ! tailscale serve --bg --https=443 "$URL"; then
+        echo "If it says access denied, allow your user once: sudo tailscale set --operator=\$USER" >&2
+        return 1
+      fi
+      local name
+      name=$(tailscale status --json | python3 -c 'import json, sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')
+      echo
+      echo "Job Radar over Tailscale: https://$name"
+      if [[ $PUBLIC_URL != "https://$name" ]]; then
+        echo "Put it in .env so the bookmarklet and ./jr use it, then ./jr restart:"
+        echo "  JOB_RADAR_PUBLIC_URL=https://$name"
+      fi
+      ;;
+    off) tailscale serve --https=443 off ;;
+    status) tailscale serve status ;;
   esac
 }
 
@@ -88,19 +128,19 @@ wait_up() {
 
 start() {
   if managed; then
-    systemctl --user start "$UNIT" && wait_up && echo "Job Radar is running: $URL (systemd: $UNIT)"
+    systemctl --user start "$UNIT" && wait_up && echo "Job Radar is running: $(where) (systemd: $UNIT)"
     return
   fi
   if [[ -n $(server_pid) ]]; then
-    echo "Already running: $URL"
+    echo "Already running: $(where)"
     return 0
   fi
   mkdir -p data
   nohup uv run job-radar serve --host "$HOST" --port "$PORT" >>"$LOG_FILE" 2>&1 &
   echo $! >"$PID_FILE"
   if wait_up; then
-    echo "Job Radar is running: $URL (log: $LOG_FILE)"
-    command -v xdg-open >/dev/null && xdg-open "$URL" >/dev/null 2>&1 || true
+    echo "Job Radar is running: $(where) (log: $LOG_FILE)"
+    command -v xdg-open >/dev/null && xdg-open "$OPEN_URL" >/dev/null 2>&1 || true
   else
     echo "The server did not start; last lines of $LOG_FILE:" >&2
     tail -n 20 "$LOG_FILE" >&2
@@ -130,11 +170,11 @@ stop() {
 
 status() {
   if managed; then
-    echo "$(systemctl --user is-active "$UNIT"): $URL (autostart on, systemd: $UNIT)"
+    echo "$(systemctl --user is-active "$UNIT"): $(where) (autostart on, systemd: $UNIT)"
     return
   fi
   if [[ -n $(server_pid) ]]; then
-    echo "Running: $URL (pid $(server_pid))"
+    echo "Running: $(where) (pid $(server_pid))"
   else
     echo "Not running. Start it with: ./jr start"
   fi
@@ -154,6 +194,7 @@ Usage: ./jr <command>
   update    git pull, install dependencies, restart the web UI
   check     ruff + pytest
   autostart on|off  Start with the machine, restart on crash (systemd user service)
+  tailscale on|off|status  One HTTPS address at home and away (tailscale serve)
   unit      Print that service file
   help      This list
 EOF
@@ -164,12 +205,13 @@ case "${1:-help}" in
   stop) stop ;;
   restart)
     if managed; then
-      systemctl --user restart "$UNIT" && wait_up && echo "Restarted: $URL (systemd: $UNIT)"
+      systemctl --user restart "$UNIT" && wait_up && echo "Restarted: $(where) (systemd: $UNIT)"
     else
       stop && start
     fi
     ;;
   autostart) autostart "${2:-}" ;;
+  tailscale) tailscale_serve "${2:-}" ;;
   unit) unit ;;
   status) status ;;
   logs) touch "$LOG_FILE" && tail -f "$LOG_FILE" ;;

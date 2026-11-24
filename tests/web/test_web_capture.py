@@ -18,6 +18,25 @@ def test_capture_page_offers_the_bookmarklet(client):
     assert "/api/capture" in text
 
 
+def test_capture_page_uses_the_public_url(tmp_path, engine, database_url):
+    import fastapi.testclient as fastapi_testclient
+
+    import job_radar.config as config
+    import job_radar.web.app as web_app
+
+    settings = config.Settings(
+        database_url=database_url,
+        capture_debug_dir=tmp_path / "debug",
+        public_url="https://box.example.ts.net/",
+    )
+    app = web_app.create_app(settings, start_worker=False)
+    with fastapi_testclient.TestClient(app) as client:
+        text = client.get("/capture").text
+    # both bookmarklets, whatever address the page was opened from
+    assert text.count("https://box.example.ts.net&#39;") == 2
+    assert "testserver" not in text
+
+
 def test_api_capture(client, session):
     response = client.post(
         "/api/capture",

@@ -28,6 +28,7 @@ def test_jr_help_lists_commands():
         "check",
         "autostart",
         "unit",
+        "tailscale",
     ):
         assert command in out
 
@@ -51,3 +52,17 @@ def test_jr_unit_describes_the_service():
 def test_jr_autostart_needs_on_or_off():
     result = subprocess.run([str(JR), "autostart", "maybe"], capture_output=True, text=True)
     assert result.returncode != 0 and "on|off" in result.stderr
+
+
+def test_jr_tailscale_needs_on_off_or_status():
+    result = subprocess.run([str(JR), "tailscale", "maybe"], capture_output=True, text=True)
+    assert result.returncode != 0 and "on|off|status" in result.stderr
+
+
+def test_jr_works_without_env_file(tmp_path):
+    # A fresh clone has no .env; reading JOB_RADAR_PUBLIC_URL from it must not stop jr.
+    copy = tmp_path / "jr"
+    copy.write_text(JR.read_text())
+    copy.chmod(0o755)
+    out = subprocess.run([str(copy), "help"], capture_output=True, text=True, check=True).stdout
+    assert "tailscale" in out

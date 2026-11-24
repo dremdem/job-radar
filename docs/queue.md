@@ -129,7 +129,7 @@ The full log is under **details**, and a **reload** link appears at the end. Whe
 
 ## Phone
 
-At phone width the list fills the screen, and tapping a vacancy opens its page. The page has the same panel content with large buttons; **← Queue** brings you back to the same item. The page works over Tailscale too (`tailscale serve`).
+At phone width the list fills the screen, and tapping a vacancy opens its page. The page has the same panel content with large buttons; **← Queue** brings you back to the same item. The page works over Tailscale too, on the same address as at home ([usage.md](usage.md#one-address-tailscale)).
 
 ## Look
 

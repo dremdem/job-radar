@@ -33,11 +33,33 @@ A small wrapper so you do not have to remember the commands below:
 | `./jr check` | `ruff` + `pytest` |
 | `./jr autostart on` / `off` | Start Job Radar with the machine and restart it if it crashes (a systemd **user** service, no root) / turn that off |
 | `./jr unit` | Print that service file without installing it |
+| `./jr tailscale on` / `off` / `status` | One HTTPS address for home and away through `tailscale serve`, see [below](#one-address-tailscale) |
 | `./jr help` | This list |
 
 A second `./jr start` does not start a second server.
 
 **Autostart.** `./jr autostart on` writes `~/.config/systemd/user/job-radar.service` and enables it. The service runs `uv run job-radar serve` in this folder on 127.0.0.1:8000, logs to `data/server.log` and uses the `PATH` of the shell you ran it from, so `claude` and `uv` are found. After that, `./jr start` / `stop` / `restart` / `status` go through `systemctl --user`. The service starts at boot without a login when *linger* is on for your user (`loginctl show-user $USER -p Linger`); otherwise it starts when you log in. Run `./jr autostart on` again after moving the folder or changing `PATH`.
+
+## One address (Tailscale)
+
+The server listens on `127.0.0.1:8000` only. To open it from a laptop or phone away from home **and** use the same address at home, put it behind [Tailscale](https://tailscale.com) on the machine that runs it:
+
+```sh
+./jr tailscale on     # tailscale serve --bg --https=443 http://127.0.0.1:8000
+```
+
+It prints the machine's HTTPS name, `https://<machine>.<tailnet>.ts.net`. Put it in `.env` and restart:
+
+```sh
+JOB_RADAR_PUBLIC_URL=https://<machine>.<tailnet>.ts.net
+./jr restart
+```
+
+That address works on every device in your tailnet, the machine itself included, with a real certificate. `tailscale serve` is tailnet-only (it is not Funnel), so nothing is reachable from the internet. With `JOB_RADAR_PUBLIC_URL` set:
+- the bookmarklets on **Capture** are built with it, whatever address you opened the page from, so one bookmarklet works at home and away (drag it to the bookmarks bar again once; Chrome sync carries it to your other devices);
+- `./jr start` opens it, and `start` / `status` / `restart` print it.
+
+`./jr tailscale status` shows what is served, `./jr tailscale off` stops it. If `tailscale serve` says access denied, allow your user once: `sudo tailscale set --operator=$USER`.
 
 ## CLI
 
