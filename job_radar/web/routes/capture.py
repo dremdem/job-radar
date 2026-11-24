@@ -44,9 +44,10 @@ def _save_debug(path: pathlib.Path, text: str) -> None:
 
 @router.get("/capture", response_class=fastapi_responses.HTMLResponse)
 def capture_page(
-    request: fastapi.Request, session: web_deps.SessionDep
+    request: fastapi.Request, settings: web_deps.SettingsDep, session: web_deps.SessionDep
 ) -> fastapi_responses.HTMLResponse:
-    base = str(request.base_url)
+    # One bookmarklet for home and away: the public address when set (#66).
+    base = settings.public_url or str(request.base_url)
     context = {
         "bookmarklet": bookmarklet(base),
         "debug_bookmarklet": bookmarklet(base, "bookmarklet_debug"),

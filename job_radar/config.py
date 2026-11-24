@@ -25,6 +25,10 @@ class Settings(pydantic_settings.BaseSettings):
     )
 
     database_url: str = "sqlite:///data/job_radar.db"
+    # The one address of the web UI at home and away, e.g. the Tailscale HTTPS name
+    # (docs/usage.md#one-address-tailscale); the bookmarklet is built with it. Empty: the
+    # address the page was opened from.
+    public_url: str = ""
     gmail_client_secret: pathlib.Path = pathlib.Path("secrets/gmail_client_secret.json")
     gmail_token: pathlib.Path = pathlib.Path("secrets/gmail_token.json")
     # Opt-in public LinkedIn guest search, see docs/linkedin-public-search.md.
