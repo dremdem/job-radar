@@ -33,7 +33,7 @@ a vacancy take 11–20 s instead of a few.
 1. It takes the To review vacancies from LinkedIn and hh.ru that have no description, best
    score first (both sites together), up to 50. hh.ru:
    [ADR 0002](adr/0002-chrome-fill-hh.md); the page is `https://hh.ru/vacancy/<id>`.
-2. It works in **a tab of its own** and never touches your tabs. With the token, the extension connects its own connect page (`chrome-extension://…/connect.html`), and the run uses that page. If the extension was given one of your tabs instead (the connect dialog), the run opens a new tab and leaves yours alone.
+2. It works in **a tab of its own** and never touches your tabs. With the token, the extension connects either its own connect page (`chrome-extension://…/connect.html`) or no tab at all; then the run's first look at the tabs makes Playwright MCP open a blank tab in the extension's tab group. The run uses that page, so there is only one tab. If the extension was given one of your tabs instead (the connect dialog), the run opens a new tab and leaves yours alone.
 3. For each vacancy it:
    - waits for the page to load and for the description to appear on it (checked every
      0.4–0.8 s, at most 10 s);
@@ -52,7 +52,7 @@ a vacancy take 11–20 s instead of a few.
    - waits its own random pause, **Settings → Fill from Chrome** (2–4 s by default; the guest pause of the Descriptions button stays 10–40 s), then goes on
      to the next vacancy in the same tab. Before leaving the page, it checks again that the
      tab is still its own.
-4. At the end it closes its tab, so nothing is left open.
+4. At the end it closes its tab, so nothing is left open, and the extension's tab group goes with it. This holds after errors too (a page that timed out or failed). The tab stays open only when the run stopped on a block or verification page, or because the tab showed another page, so that you can see it.
 
 Three vacancies in a row that failed in any way stop the run: the browser has gone away, or
 the layout has changed and the bookmarklet needs the same fix.

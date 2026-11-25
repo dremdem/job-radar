@@ -400,6 +400,30 @@ def test_extension_connect_page_is_used_and_closed_so_nothing_is_left(session):
     assert kinds.count("navigate") == 2 and kinds[-1] == "close_tab"
 
 
+def test_blank_tab_made_by_the_first_tab_list_is_used_and_closed(session):
+    """#63: the extension starts with no tab; `browser_tabs list` makes Playwright MCP open a
+    blank one in the extension's group. It is the run's own: no second tab, and it is closed."""
+    vacancy(session, "101")
+    vacancy(session, "102")
+    browser = FakeBrowser(tabs=["about:blank"])
+    stats = run(session, browser)
+    kinds = [k for k, _ in browser.calls]
+    assert stats.saved == 2
+    assert "open_tab" not in kinds
+    assert kinds.count("navigate") == 2 and kinds[-1] == "close_tab"
+
+
+def test_the_runs_tab_is_closed_when_its_only_page_fails(session):
+    """#63: a page that errors before it shows the vacancy still leaves nothing open."""
+    hh_vacancy(session, "4235", score=9)
+    pages = {"4235": FakePage("4235", fail=linkedin_chrome.BrowserError("net::ERR_TIMED_OUT"))}
+    for tabs in (["about:blank"], [CONNECT_PAGE]):
+        browser = FakeBrowser(pages, tabs=tabs)
+        stats = run(session, browser)
+        assert stats.errors == 1, tabs
+        assert browser.calls[-1] == ("close_tab", ""), tabs
+
+
 def test_a_users_tab_is_never_navigated(session):
     cases = (["https://mail.google.com/mail/u/0/"], [CONNECT_PAGE, "https://x.com/"], [])
     for n, tabs in enumerate(cases):
