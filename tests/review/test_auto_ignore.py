@@ -404,3 +404,67 @@ def test_claude_skip_rule_round_trip_and_apply_to_review(session):
     )
     # your own state is never changed
     assert mine.state is models.OpportunityState.INTERESTED
+
+
+STACK_ON = review_auto_ignore.Rules(countries=(), stack_title=True)
+
+
+def stack_reason(session, title, rules=STACK_ON):
+    return review_auto_ignore.reason_for(session, opp(session, title=title), rules, NOW)
+
+
+def test_stack_in_title_rule_is_off_by_default_with_a_list(session):
+    rules = review_auto_ignore.load_rules(session)
+    assert not rules.stack_title
+    assert "Ruby" in rules.stacks and "Java" in rules.stacks
+    assert stack_reason(session, "Mid/Senior Backend Engineer - Ruby", rules) is None
+
+
+def test_stack_in_title_moves_another_stack(session):
+    for title, stack in (
+        ("Mid/Senior Backend Engineer - Ruby", "Ruby"),
+        ("Senior Java Developer", "Java"),
+        ("Backend Engineer (Ruby on Rails)", "Ruby"),
+        ("Senior .NET Engineer", ".NET"),
+        ("C# Backend Developer", "C#"),
+        ("C++ Engineer, Trading", "C++"),
+        ("PHP/Laravel Developer", "PHP"),
+        ("Senior Golang Engineer", "Golang"),
+        ("Backend Engineer (Go)", "Go"),
+        ("Senior Go Developer", "Go"),
+        ("Platform Engineer - Go", "Go"),
+        ("Node.js Engineer", "Node.js"),
+        ("senior kotlin developer", "Kotlin"),
+    ):
+        assert stack_reason(session, title) == f"stack in title: {stack}", title
+
+
+def test_stack_in_title_keeps_python_and_lookalikes(session):
+    for title in (
+        "Product Data Engineer (Python or Ruby)",
+        "Senior Python/Go Engineer",
+        "Django Developer (some Java)",
+        "Senior JavaScript Engineer",
+        "Go-to-Market Engineer",
+        "Engineer who wants to go remote",
+        "Backend Engineer",
+        "Trust & Safety Engineer",
+    ):
+        assert stack_reason(session, title) is None, title
+
+
+def test_stack_list_is_yours_and_empty_turns_it_off(session):
+    mine = review_auto_ignore.Rules(countries=(), stack_title=True, stacks=("Haskell",))
+    assert stack_reason(session, "Haskell Engineer", mine) == "stack in title: Haskell"
+    assert stack_reason(session, "Senior Java Developer", mine) is None
+    empty = review_auto_ignore.Rules(countries=(), stack_title=True, stacks=())
+    assert stack_reason(session, "Senior Java Developer", empty) is None
+
+
+def test_parse_stacks_keeps_symbols_and_drops_repeats():
+    assert review_auto_ignore.parse_stacks(" ruby ,.NET; C#\nC++, Ruby, ") == (
+        "ruby",
+        ".NET",
+        "C#",
+        "C++",
+    )

@@ -1,11 +1,11 @@
 """Auto-ignore rules: move noise out of To review into its own state.
 
 The rules are chosen on the Settings page and stored as ``Rules``: hybrid or on-site work,
-companies already applied to, ignored or rejected within N days, no Python in the
-description, a residence restriction, another language, a location in a chosen country,
-Claude's "skip" reasons and vacancies a site says are closed. Only vacancies in the
-``new`` state move; the user's own states are never touched, and an auto-ignored vacancy
-shows the rule that moved it.
+companies already applied to, ignored or rejected within N days, another stack in the
+title, no Python in the description, a residence restriction, another language, a location
+in a chosen country, Claude's "skip" reasons and vacancies a site says are closed.
+Only vacancies in the ``new`` state move; the user's own states are never touched, and an
+auto-ignored vacancy shows the rule that moved it.
 
 Main entry points: ``load_rules`` / ``save_rules``, ``apply_rules`` for one vacancy,
 ``apply_to_review`` for the whole queue, ``apply_claude_rule`` after an analysis, and
@@ -48,6 +48,15 @@ COUNTRY_PLACES = {
         "Hyderabad", "Quetta", "Sialkot",
     ),
 }  # fmt: skip
+DEFAULT_STACKS = (
+    "Ruby", "Rails", "Java", "Kotlin", "Scala", ".NET", "C#", "PHP", "Golang", "Go", "Rust",
+    "Elixir", "C++", "iOS", "Android", "Node.js",
+)  # fmt: skip
+# A title that says Python keeps the vacancy, whatever else it names (#68).
+_PYTHON_TITLE = re.compile(r"\b(python|django|fastapi|flask)", re.IGNORECASE)
+# "Go" is also a word ("Go-to-Market", "go remote"): only a capital Go in brackets, at the end
+# of the title, or before a role, counts as the stack.
+_GO_STACK = r"(?-i:\bGo)(?=\s*(?:\)|$|(?i:developer|engineer|programmer|backend)\b))"
 # The main reasons Claude names for a `skip` (claude/prompt.py), as shown in Settings (#245).
 CLAUDE_KINDS = {
     "location": "location (only some country / region)",
@@ -83,6 +92,9 @@ class Rules:
     claude_kinds: tuple[str, ...] = ()
     # the site says not available (#276) or not accepting (#278)
     unavailable: bool = True
+    # the title names another stack and not Python (#68)
+    stack_title: bool = False
+    stacks: tuple[str, ...] = DEFAULT_STACKS
 
     @property
     def any(self) -> bool:
@@ -99,6 +111,7 @@ class Rules:
                 self.claude_any,
                 self.claude_kinds,
                 self.unavailable,
+                self.stack_title and self.stacks,
             )
         )
 
@@ -113,6 +126,33 @@ def parse_countries(text: str) -> tuple[str, ...]:
         if name and name.casefold() not in {f.casefold() for f in found}:
             found.append(name)
     return tuple(found)
+
+
+def parse_stacks(text: str) -> tuple[str, ...]:
+    """ "ruby, .NET\nC#" -> ("ruby", ".NET", "C#"): as typed, without repeats of any case."""
+    found: list[str] = []
+    for part in re.split(r"[,;\n]", text):
+        name = " ".join(part.split())
+        if name and name.casefold() not in {f.casefold() for f in found}:
+            found.append(name)
+    return tuple(found)
+
+
+def _stack_pattern(stack: str) -> str:
+    if stack.casefold() == "go":
+        return _GO_STACK
+    # a whole word, symbols included: Java is not JavaScript, C is not C#
+    return rf"(?<![\w.#+]){re.escape(stack)}(?![\w#+])"
+
+
+def stack_in_title(title: str, stacks: tuple[str, ...]) -> str | None:
+    """The first listed stack the title names, unless it says Python too (#68)."""
+    if _PYTHON_TITLE.search(title):
+        return None
+    for stack in stacks:
+        if re.search(_stack_pattern(stack), title, re.IGNORECASE):
+            return stack
+    return None
 
 
 def country_of(location: str | None, countries: tuple[str, ...]) -> str | None:
@@ -131,7 +171,7 @@ def load_rules(session: sa_orm.Session) -> Rules:
     if row is None or not isinstance(row.value, dict):
         return Rules()
     known = {k: v for k, v in row.value.items() if k in Rules.__dataclass_fields__}
-    for name in ("countries", "claude_kinds"):
+    for name in ("countries", "claude_kinds", "stacks"):
         # JSON has no tuples
         if isinstance(known.get(name), list):
             known[name] = tuple(known[name])
@@ -304,6 +344,8 @@ def reason_for(
         )
         if latest and latest >= since:
             return f"ignored another {company} vacancy on {latest:%Y-%m-%d}"
+    if rules.stack_title and (stack := stack_in_title(opportunity.title, rules.stacks)):
+        return f"stack in title: {stack}"
     if rules.no_python and scoring_description.lacks_python(
         opportunity.title, scoring_description.latest_description(opportunity)
     ):
