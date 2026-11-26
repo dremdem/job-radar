@@ -5,7 +5,8 @@ Claude workers. Pages: the queue (``/``, ``/opportunities``) with a vacancy pane
 history and chat; Applications, Skills, Memory, Profile and Settings; the LinkedIn request
 log. Buttons post to small endpoints (``/sync``, ``/descriptions``, ``/chrome-fill``,
 ``/claude/analyze``) that start background work and report its status for htmx to poll.
-``/api/capture`` receives pages from the bookmarklet. See docs/queue.md and
+``/api/capture`` receives pages from the bookmarklet. ``/favicon.svg`` is the tab
+icon (``favicon.svg`` next to this module). See docs/queue.md and
 docs/settings.md.
 
 Usage:
@@ -14,8 +15,10 @@ Usage:
 
 import collections.abc as cabc
 import contextlib
+import pathlib
 
 import fastapi
+import fastapi.responses as fastapi_responses
 
 import job_radar.ai.claude.analysis as claude_analysis
 import job_radar.ai.claude.runner as jr_claude_runner
@@ -31,6 +34,9 @@ import job_radar.web.routes.jobs as routes_jobs
 import job_radar.web.routes.queue as routes_queue
 import job_radar.web.routes.settings as routes_settings
 import job_radar.web.templating as web_templating
+
+# The tab icon (#70): a radar with a sweep and a blip, in the inbox colours.
+FAVICON = (pathlib.Path(__file__).parent / "favicon.svg").read_text()
 
 
 def create_app(
@@ -106,6 +112,12 @@ def create_app(
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    # Browsers ask for /favicon.ico on their own; both paths give the SVG.
+    @app.get("/favicon.svg", include_in_schema=False)
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> fastapi_responses.Response:
+        return fastapi_responses.Response(FAVICON, media_type="image/svg+xml")
 
     app.include_router(routes_queue.router)
     app.include_router(routes_claude.router)

@@ -139,6 +139,8 @@ The UI is dark: ground #101318, accent #3D7BFF, IBM Plex Sans with Plex Mono for
 - applied is blue;
 - the main actions are filled.
 
+The browser tab shows the app's own icon: a radar screen with a blue sweep and an amber blip on a dark tile (`job_radar/web/favicon.svg`, served at `/favicon.svg` and `/favicon.ico`).
+
 The other pages (Applications, Skills, Settings, Profile, Capture) use the same parts: a page header with a short explanation, content in dark cards, tables with small uppercase headers and Plex Mono for dates and numbers, and status pills (applied blue, rejected red, interview or offer green). On a phone, table rows become cards.
 
 ## Add by hand
