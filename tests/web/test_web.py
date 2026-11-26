@@ -54,6 +54,19 @@ def test_healthz(client):
     assert client.get("/healthz").json() == {"status": "ok"}
 
 
+def test_favicon_is_served_as_svg(client):
+    for path in ("/favicon.svg", "/favicon.ico"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/svg+xml"
+        assert response.text.startswith("<svg")
+
+
+def test_pages_link_the_favicon(client):
+    page = client.get("/settings").text
+    assert '<link rel="icon" href="/favicon.svg" type="image/svg+xml">' in page
+
+
 def test_queue_shows_details_and_sorts_by_score(client, session):
 
     low = add_opportunity(session, title="Low match")
