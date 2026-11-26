@@ -181,3 +181,13 @@ def test_rule_moves_a_vacancy_that_is_not_accepting(session):
         )
         is None
     )
+
+
+def test_stack_in_title_rule_is_edited_on_settings(client, session):
+    text = client.get("/settings").text
+    assert 'name="stack_title"' in text and 'name="stacks"' in text and "Ruby, Rails" in text
+    client.post("/settings", data={"stack_title": "on", "stacks": "Ruby, Haskell", "days": "90"})
+    rules = review_auto_ignore.load_rules(session)
+    assert (rules.stack_title, rules.stacks) == (True, ("Ruby", "Haskell"))
+    text = client.get("/settings").text
+    assert 'name="stack_title" checked' in text and "Ruby, Haskell" in text

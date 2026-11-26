@@ -48,6 +48,8 @@ def save_settings(
     countries: t.Annotated[str, fastapi.Form()] = "",
     claude_any: t.Annotated[str | None, fastapi.Form()] = None,
     claude_kinds: t.Annotated[list[str] | None, fastapi.Form()] = None,
+    stack_title: t.Annotated[str | None, fastapi.Form()] = None,
+    stacks: t.Annotated[str, fastapi.Form()] = "",
 ) -> fastapi_responses.HTMLResponse:
     rules = review_auto_ignore.Rules(
         hybrid=hybrid is not None,
@@ -62,6 +64,8 @@ def save_settings(
         countries=review_auto_ignore.parse_countries(countries),
         claude_any=claude_any is not None,
         claude_kinds=review_auto_ignore.parse_claude_kinds(claude_kinds),
+        stack_title=stack_title is not None,
+        stacks=review_auto_ignore.parse_stacks(stacks),
     )
     review_auto_ignore.save_rules(session, rules)
     context = web_context.settings_context(session, settings)

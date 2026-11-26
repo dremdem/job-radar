@@ -42,6 +42,11 @@
       <span class="small muted">a vacancy located there is ignored at once; India and Pakistan also by their big cities and states. Empty: off</span>
     </div>
     <div class="form-row">
+      <label class="form-check"><input type="checkbox" class="form-check-input" name="stack_title" {% if rules.stack_title %}checked{% endif %}> Another stack in the title</label>
+      <label class="d-flex align-items-center gap-2 flex-grow-1"><input type="text" class="form-control form-control-sm" name="stacks" value="{{ rules.stacks | join(', ') }}" placeholder="Ruby, Java, PHP"></label>
+      <span class="small muted">the title names one of these and not Python (Django, FastAPI, Flask): “Backend Engineer - Ruby” goes, “Data Engineer (Python or Ruby)” stays. Java is not JavaScript; Go counts as a stack only as “(Go)”, “Go Developer”, “- Go”</span>
+    </div>
+    <div class="form-row">
       <label class="d-flex align-items-center gap-2">Look back <input type="number" class="form-control form-control-sm num-input" name="days" value="{{ rules.days }}" min="1" max="3650"> days</label>
       <span class="small muted">rejections, applications and ignores older than this do not count</span>
     </div>
