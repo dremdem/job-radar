@@ -2,7 +2,7 @@
 {% set finished = job.state in ("done", "failed") %}
 <span id="sync-status" class="small"{% if job.state == "running" %} hx-get="/sync/status?polled=1" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}{% if finished and job.finished_at %} data-finished="{{ job.finished_at.isoformat() }}"{% endif %}>
   {% if job.state == "running" %}
-    <b>Sync running…</b>
+    <b>Sync running…</b>{% if already %} <span class="muted">already running, not started again</span>{% endif %}
   {% elif job.state == "done" %}
     <b>Sync done</b> {{ (job.finished_at | local("%H:%M")) if job.finished_at else "" }}{% if job.failed_steps %} · <span class="neg">{{ job.failed_steps | length }} step{{ "s" if job.failed_steps | length > 1 }} failed</span>{% endif %} · <a href="/">reload</a>
   {% elif job.state == "failed" %}
@@ -25,3 +25,4 @@
   </details>
   {% endif %}
 </span>
+{% with oob = true %}{% include "_sync_button.html" %}{% endwith %}

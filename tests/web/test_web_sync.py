@@ -84,12 +84,69 @@ def test_only_one_sync_at_a_time(engine, database_url):
         release.wait(5)
 
     with make_client(database_url, runner) as client:
-        client.post("/sync")
+        first = client.post("/sync").text
+        assert "already running" not in first
         second = client.post("/sync").text
         assert "running" in second and "working" in second
+        assert "already running" in second
         release.set()
         wait_done(client)
     assert calls == [1]
+
+
+def test_concurrent_posts_start_one_sync(engine, database_url):
+    release, calls = threading.Event(), []
+
+    def runner(echo, on_steps):
+        calls.append(1)
+        release.wait(5)
+
+    with make_client(database_url, runner) as client:
+        gate, codes = threading.Barrier(5), []
+
+        def click():
+            gate.wait()
+            codes.append(client.post("/sync").status_code)
+
+        threads = [threading.Thread(target=click) for _ in range(5)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        release.set()
+        wait_done(client)
+    assert codes == [200] * 5 and calls == [1]
+
+
+def sync_button(text):
+    """The Sync button's tag without ``hx-disabled-elt``: a bare ``disabled`` is the attribute."""
+    start = text.index('id="sync-button"')
+    tag = text[text.rindex("<button", 0, start) : text.index("</button>", start)]
+    return tag.replace('hx-disabled-elt="this"', "")
+
+
+def test_button_is_disabled_while_running(engine, database_url):
+    release = threading.Event()
+
+    def runner(echo, on_steps):
+        release.wait(5)
+
+    with make_client(database_url, runner) as client:
+        assert "disabled" not in sync_button(client.get("/").text)
+        started = client.post("/sync").text
+        # the button in the status response replaces the header one (out of band)
+        assert 'hx-swap-oob="true"' in sync_button(started) and "disabled" in sync_button(started)
+        assert "disabled" in sync_button(client.get("/sync/status?polled=1").text)
+        assert "disabled" in sync_button(client.get("/").text)
+        release.set()
+        over = wait_done(client)
+        assert "disabled" not in sync_button(over)
+        assert "disabled" not in sync_button(client.get("/").text)
+
+
+def test_button_is_disabled_during_the_click(client):
+    text = client.get("/").text
+    assert 'id="sync-button"' in text and 'hx-disabled-elt="this"' in text
 
 
 def test_sync_error_is_shown(engine, database_url):

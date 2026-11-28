@@ -93,7 +93,7 @@ Company history, reasons and notes: [applications.md](applications.md).
 
 ## Sync
 
-**Sync** in the header runs the same pipeline as `./jr sync` (`uv run job-radar sync gmail`) in the background of the server. Only one sync runs at a time; clicking again shows the one in progress.
+**Sync** in the header runs the same pipeline as `./jr sync` (`uv run job-radar sync gmail`) in the background of the server. Only one sync runs at a time. While it runs the button is disabled (on page load, in every status poll and during the click itself) and becomes active again when the sync is over. A request that still reaches the server while a sync runs (a double click, another tab, `curl -X POST /sync`) does not start a second one: the status says "already running" and shows the one in progress (#72).
 
 The status next to the button lists the steps, one line each, updated while it works:
 
