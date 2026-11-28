@@ -1,0 +1,2 @@
+{# The header's Sync button. Disabled while a sync runs; the status fragment sends it again out of band, so it turns active when the poll sees the sync end (#72). #}
+<button type="button" id="sync-button" class="btn btn-sm btn-primary" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML" hx-disabled-elt="this"{% if job.state == "running" %} disabled title="Sync is running"{% endif %}{% if oob %} hx-swap-oob="true"{% endif %}>Sync</button>

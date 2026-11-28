@@ -99,10 +99,11 @@ def _fetch_log(session: sa_orm.Session, days: int) -> tuple[list[dict], list[Log
 def start_sync(
     sync_job: web_deps.SyncJobDep, sync_runner: web_deps.SyncRunnerDep, request: fastapi.Request
 ) -> fastapi_responses.HTMLResponse:
-    # a second click just shows the running one
-    sync_job.start(sync_runner)
+    # A request while a sync runs (double click, another tab) starts nothing and shows the
+    # running one with "already running" (#72).
+    started = sync_job.start(sync_runner)
     return web_templating.templates.TemplateResponse(
-        request, "_sync_status.html", {"job": sync_job}
+        request, "_sync_status.html", {"job": sync_job, "already": not started}
     )
 
 
